@@ -1,0 +1,415 @@
+# Design
+
+The full design of the simulation. Section numbers are referenced from `CLAUDE.md` and `GUARDRAILS.md`. Don't renumber; add subsections instead.
+
+Anything marked **[provisional]** is a starting point to revisit with data. Anything marked **[open]** needs a decision (see `STATUS.md`).
+
+---
+
+## 0. Philosophy and the floor
+
+### 0.1 The rule
+Code mechanisms, never outcomes. The simulation contains physics, ecology, bodies, and minds that learn. Society is something the analysis layer finds.
+
+### 0.2 The floor
+Something has to be given. The **floor** is the line between what we code and what must emerge. The floor is set at roughly what evolution handed early humans: bodies, drives, a learning mind, the ability to watch and copy others, and pointing. Everything above that has to emerge.
+
+Two principles keep the floor honest:
+1. **Every given faculty needs an ecological alibi**: a reason it would exist in a world where society never forms (`GUARDRAILS.md` §3).
+2. **Every given bias is a heritable dial.** Evolution can turn it down to its neutral value. Dials that could *produce* a hoped-for outcome start **centered on neutral, with wide variance**, so evolution has to do the pushing. Dials that are *survival-critical* for founders (infant care, for example) start at viable values, and that choice is logged as a viability decision.
+
+### 0.3 What is given vs. what must emerge
+
+| Given (the floor) | Must emerge (never coded) |
+|---|---|
+| Terrain, water, climate, weather, day/night, light | Camps, home ranges, territories |
+| Plants and animals with ecological behavior | Knowing which plants are food or poison |
+| Materials with physical attributes; fire as a physical process | Tool making, fire keeping, fire making, cooking |
+| Real hidden causes (pathogens, delayed toxins, ambush predators) | Beliefs about invisible causes; gods |
+| Metabolism, hydration, thermoregulation, injury, healing, aging | Care for the injured; food sharing |
+| Sexual reproduction, gestation, lactation, child dependency | Pair bonds, marriage-like patterns, incest avoidance |
+| Genes as heritable dials, recombination, mutation, inbreeding depression | Which social dispositions evolve |
+| Perception, drives, associative learning, world model, hidden-cause inference | Superstition, ritual, offerings |
+| Watching and copying others, with heritable copying biases | Teaching, traditions, techniques |
+| Pointing at perceivable things; coining arbitrary tokens | Shared vocabulary, talking about absent things, myths |
+| Physical primitives: give, take, attack, follow, signal, etc. | Trade, leadership, hierarchy, law, raids, war, states |
+
+### 0.4 Language floors
+- **Floor 1 (start here):** pointing (deixis) is free. An agent can refer to anything both it and the listener can currently perceive. Referring to anything absent (a place, a person, a hidden cause) requires a **coined token**, an arbitrary symbol the speaker invents. Listeners must *infer* what a coined token means. Messages are unordered bags of up to K tokens (K = 4 [provisional]). Talking about absent things (what linguists call displacement) has to be invented, and myths need displacement.
+- **Floor 2 (later):** no free pointing. Signal meanings are learned from scratch through repeated signaling games. Requires a learned-signal implementation of the same interface (§6.6).
+- **Floor 3 (research):** compositional language that can express causes, past events, and claims about absent agents. As far as we know, nobody has demonstrated this from scratch. It is not a roadmap milestone; it's a direction.
+
+The signal layer sits behind an interface (§6.6), so the floor can be raised without rewriting anything above it.
+
+### 0.5 No LLMs in agent minds
+Agents use small, structured learners whose content is learned. An LLM brings all of human culture with it, so anything it "invents" is retrieval (Project Sid's religion was seeded and LLM-driven). See `GUARDRAILS.md` T12.
+
+---
+
+## 1. Time, space, and scale
+
+### 1.1 Time [provisional]
+- Base tick: **10 simulated minutes**. A day is 144 ticks. Day and night are real, because darkness matters (§2.4, §7.6).
+- **Calendar compression:** a simulated year is shorter than 365 days (default 48 days, so 12 days per season). Lifespans, maturity, and gestation are expressed in years and scale with it. **Ratios are preserved**: the fraction of life spent as a dependent child, interbirth interval relative to lifespan, and so on. This is the main lever for getting enough generations.
+- Sleeping agents update coarsely (once per hour), since little happens while asleep.
+- The environment updates on its own slower clock: plants daily, climate per season.
+
+### 1.2 Space [provisional]
+- Environment grid: 512 × 512 cells, 100 m per cell (about 51 km per side), so several populations can start out of contact.
+- Agents and animals have continuous positions; the grid holds terrain, water, vegetation, and objects.
+
+### 1.3 Scale budget
+Mind complexity × population × generations is the budget, and all three can't be maxed. Cultural phenomena (techniques, vocabularies, beliefs) can emerge within a few generations. Genetic changes to dispositions need many. So:
+- **Cultural experiments:** hundreds of agents, ~5–20 generations, many seeds.
+- **Evolutionary experiments:** fewer seeds, longer runs, simplified minds where justified.
+
+**Phase 0 benchmark target [provisional]:** 500 agents at ≥ 1 generation per ~10 real minutes on one core, so 100 generations is an overnight run. Seeds run in parallel across cores. If TypeScript can't hit this, hot loops port to Rust/WASM (`DECISIONS.md` D-007).
+
+### 1.4 Determinism
+Seeded PRNG streams (separate streams for climate, ecology, each agent's decisions, so adding an agent doesn't reshuffle the weather). Fixed update order. State is serializable for snapshot and replay.
+
+---
+
+## 2. World
+
+### 2.1 Terrain
+Elevation (slope affects movement cost), soil type (affects plant growth), barriers (cliffs, deep water, desert) that make **circumscription** a map property (§7.11). Map generators must be able to produce both open and hemmed-in landscapes from the same parameters, for experiment E3.
+
+### 2.2 Water
+Rivers, lakes, springs. **Stagnant water carries pathogen load** that rises with temperature and with carcasses or waste nearby. Flowing water carries less. Agents can't see pathogens (§2.7).
+
+### 2.3 Climate and weather
+- Seasonal cycles of temperature and rainfall.
+- **Multi-year variability** as a stochastic process (drought runs, cold snaps). Variance is a first-class experiment knob (E1).
+- Storms with **lightning**, which can ignite dry vegetation and occasionally strikes animals or agents. These are salient events with no visible cause (§4.4).
+- Weather is never conditioned on agent state (`GUARDRAILS.md` T8).
+
+### 2.4 Light
+Daylight and night. Moonlight varies by phase. Perception range drops sharply in the dark (§4.1). **Fire emits light** in a radius, so agents near a fire can see each other at night.
+
+### 2.5 Plants
+Each species has attributes:
+- calories and nutrients per unit, seasonality, growth and regrowth rates
+- **toxicity**, sometimes with a *delayed* effect (illness hours later, which makes cause hard to learn)
+- **processing requirements**: some species are only safe or calorie-rich after pounding, soaking, or cooking
+- seed dispersal (including seeds passing through or discarded by animals and agents)
+- **storability** (decay rate once harvested), **harvest synchrony** (ripens all at once or trickles), **visibility** (above ground vs. underground). These three matter for the appropriability hypothesis (§7.11, E4).
+
+### 2.6 Animals
+Animals are environment. Simple drive-based behavior is fine.
+- **Prey:** small and fast; large and strong (multiple attackers needed); herd species with seasonal migration.
+- **Predators:** pursuit predators; **ambush predators** that hunt at night from tall vegetation; scavengers.
+- Predators avoid fire (that's animal behavior; agents have to *learn* the correlation).
+- Population dynamics through births and deaths, not fixed counts.
+
+### 2.7 Real hidden causes
+The world contains causes agents can't perceive, so inferring hidden causes is sometimes **correct and useful**:
+- pathogens in stagnant water and rotting carcasses
+- delayed plant toxins
+- ambush predators concealed in vegetation at night
+
+This is the ecological alibi for hidden-cause inference (§4.4). Without real hidden causes, evolution would have no reason to keep the bias.
+
+### 2.8 Materials and objects
+Objects have physical attributes, never use-labels: mass, length, hardness, **fracture behavior** (some stones flake into sharp edges when struck), edge sharpness, flammability, fuel value, insulation (hides), durability.
+- Striking object A on object B can change B (a flake breaks off with an edge) according to the materials.
+- Certain stone pairs make sparks when struck; a spark near dry tinder may ignite it.
+- **Shelter is physical:** cells with natural cover (caves, overhangs, dense trees) or with enough stacked long wood and hide reduce wind, rain, and heat loss. Huts, if they happen, are accumulations of objects.
+- A carried hide reduces heat loss. Clothing, if it happens, is carrying.
+
+### 2.9 Fire
+A physical process: needs fuel and oxygen, spreads to adjacent flammable cells by dryness and wind, dies without fuel. A burning stick is a carriable object that keeps burning for a while. Fire gives light (§2.4) and heat (reduces thermoregulation cost nearby), deters predators (§2.6), and cooking raises the calories extracted from some foods and detoxifies others (§2.5).
+
+---
+
+## 3. Bodies
+
+### 3.1 Metabolism
+- Basal rate from body mass, sex, and age, using a standard equation (Schofield or Mifflin–St Jeor) [provisional].
+- **Activity cost per action**, scaled by body mass, carried load, terrain slope, and gait, using MET-style multipliers (Compendium of Physical Activities). It doesn't have to be exact; it has to be consistent, so efficiency is something agents can learn.
+- **Muscle is expensive:** more muscle raises strength *and* basal cost.
+- Energy is stored as fat (with an upper limit) and used when intake falls short. Starvation follows depletion.
+- The energy audit test (`GUARDRAILS.md` §1) checks every calorie is accounted for.
+
+### 3.2 Hydration and temperature
+Water loss scales with heat, activity, and illness. Dehydration kills faster than starvation. Heat and cold change metabolic cost; shelter, fire, hides, and huddling near others reduce exposure.
+
+### 3.3 Injury and healing
+- Types: lacerations (bleeding, infection risk from pathogens), fractures (reduced mobility for a long time), strains (from overexertion), bites.
+- Healing takes time and calories. Immobile agents can't forage, so whether anyone brings them food matters (§7.3).
+- Infection risk depends on pathogen exposure (§2.7).
+
+### 3.4 Fitness, fatigue, and skill
+- **Fitness–fatigue model** (Banister): exertion adds to a slow-rising, slow-decaying *fitness* and a fast-rising, fast-decaying *fatigue*. Performance = base + fitness − fatigue.
+- **Injury risk** rises when short-term load outruns long-term load (the acute-to-chronic workload idea from sports science) and when fatigue is high. Muscle tears from overexertion fall out of this.
+- **Skills** (per action × object category) improve with practice on a power-law curve, raise success rate and energy efficiency, and decay slowly with disuse. Watching a skilled agent gives a partial boost (§5.6).
+
+### 3.5 Aging and death
+Growth, maturity, senescence (rising hazard with age), and death from starvation, dehydration, exposure, predation, injury, infection, illness, old age, or violence. Death leaves a carcass (food for scavengers, pathogen source).
+
+### 3.6 Reproduction
+- Two sexes. Mating requires **both** agents to select the mate action toward each other.
+- Conception probability depends on energy balance (fertility drops in energy deficit) and age.
+- **Gestation and lactation** carry real energy costs. Infants are fully dependent: they must be carried and fed. Children can forage partially and learn, but don't produce net calories until late in development (calibrated in §9).
+- Expensive, slow-maturing children are the ecological reason pair bonds might pay (§7.4). Nothing in the code makes them happen.
+
+### 3.7 Genetics
+- Each heritable dial has two alleles. The expressed value is their mean plus developmental noise. Recombination happens per dial, with Gaussian mutation.
+- Separately, a set of **recessive deleterious loci** causes inbreeding depression when two copies match (§7.5).
+- The genealogy is tracked for genetics and for the analysis layer. **Agents can't read it.**
+- Dial list (each with an alibi at its definition in code): body size, basal efficiency, hiddenCauseBias, learning rate, exploration temperature, risk tolerance, curiosity weight, attachment strength, separation sensitivity, disclosure tendency, copying biases (success, attended-model, conformity), aggression threshold, co-reared mate aversion, signal coining propensity.
+
+---
+
+## 4. Minds
+
+Small, structured learners. The *structure* of the mind is given, the way evolution gave it to us. The *content* is learned.
+
+### 4.1 Perception
+- Range depends on light, terrain, and vegetation. Night with no fire means very short range.
+- Agents perceive entity *categories* (species, material type, terrain feature) and recognize *individual* agents they've met before (internal IDs, not names).
+- Agents perceive what others are doing (action and target) when in range.
+- No access to anything not perceived: no pathogen loads, no genealogy, no others' internal states.
+
+### 4.2 Drives (closed list)
+Homeostatic signals the agent tries to reduce. Adding to this list requires an alibi and owner approval (`GUARDRAILS.md` T3).
+
+| Drive | Alibi |
+|---|---|
+| Hunger | energy balance |
+| Thirst | water balance |
+| Thermal discomfort | temperature regulation |
+| Pain | avoid tissue damage |
+| Fatigue / sleepiness | recovery |
+| Fear | avoid predators and threats |
+| Mating drive | reproduction (age- and energy-dependent) |
+| Separation discomfort | infants who stay near caregivers survive, and caregivers who stay near infants raise them. Strength is the heritable `attachmentStrength` dial. |
+| Curiosity | exploration finds resources. Information gain is rewarding, weighted by the `curiosity` dial. |
+
+There is **no status drive, belonging drive, meaning drive, or conformity drive.**
+
+### 4.3 Memory and world model
+- **Episodic buffer:** recent events (what happened, where, when, who was present, what I did, how drives changed). Decays.
+- **Semantic associations:** learned links between features (place, time of day, season, entity categories present, own recent actions, others' recent actions) and outcomes (drive changes, injuries, illness, food found). Updated by prediction error, with the `learningRate` dial.
+- **Entity models:** for each entity type *and* each known individual, a model of how it responds to my actions ("when I approach X, X attacks"; "when I give to Y, Y later gives back"). The **same machinery** applies to every entity, including hidden-cause nodes (§4.4). That generality is what allows propitiation-like behavior to emerge without special code.
+- **Per-individual ledger** (§5.4).
+
+### 4.4 Hidden-cause inference
+- When a **salient event** (injury, illness, death, food appearing or vanishing, lightning, drought) happens with **no perceived entity that explains it**, the agent may posit a **hidden-cause node**, with probability set by the `hiddenCauseBias` dial and the event's salience.
+- If an existing hidden-cause node fits the context (similar place, time, preceding features), the agent reinforces that node instead of creating a new one.
+- Hidden-cause nodes are ordinary entities in the world model. They gather associations (where and when they act, what precedes their effects), and agents model their "responses" with the same entity-model machinery (§4.3).
+- **Ecological alibi:** real hidden causes exist (§2.7). Avoiding the spot where unseen harm happened before is genuinely protective.
+- **Expected side effect, which is not coded:** the same machinery over-fires on lightning, drought, and random deaths. That's where superstition, and possibly gods, come from (§7.7).
+
+### 4.5 Learning
+- Action–outcome learning from own experience (temporal-difference style over contextual features) [provisional; architecture to be designed in Phase 3 as an [F] task].
+- **Delays matter.** Associating a plant with illness hours later is hard, by design, because it makes social learning valuable.
+- Learning from others (§5.6) and from signals (§6) feeds the same world model, weighted by credibility.
+
+### 4.6 Action selection
+Value of each available action = expected drive reduction over a short horizon (from the world model), minus expected energy cost and risk (weighted by `riskTolerance`). Choose by softmax with `explorationTemperature`. No scripted behavior trees for agents.
+
+---
+
+## 5. Interaction primitives
+
+### 5.1 Perceiving others
+Agents perceive others' positions, actions, targets, visible condition (injured, carrying something, an infant), and what they're eating.
+
+### 5.2 Familiarity and co-rearing
+Agents present together during the younger one's early childhood get a **co-reared** mark in each other's ledgers. That's the *only* kin cue agents have. They can't read the genealogy.
+
+### 5.3 Attachment
+Bond strength toward each known individual grows with time in proximity, received gives, physical contact, and co-rearing, and decays with absence. Bonded others' distress and absence feed the separation drive. Harm to bonded others is aversive, which is the alibi for defending offspring.
+
+### 5.4 Per-individual ledger
+For each known individual: familiarity, bond strength, co-reared flag, net gives (received minus given, recency-weighted), harm received from them, **signal reliability** (how often their signals proved accurate), and observed foraging success. Alibi: remembering who's dangerous or helpful matters even among strangers.
+
+### 5.5 Action primitives (closed list)
+Each is a single physical act. Adding one requires an alibi, and it must not be an institution in disguise (`GUARDRAILS.md` T2).
+
+| Primitive | Notes |
+|---|---|
+| move(direction, gait) | cost by gait, load, slope |
+| rest / sleep | |
+| pick up(object) / drop(object) | dropping at a place is how caches, offerings, and stockpiles could emerge |
+| consume(object) | |
+| carry | holding objects, including hides (insulation), burning sticks, infants |
+| strike(target, held object?) | targets objects (fracture), animals, agents |
+| manipulate(objectA, objectB) | strike or rub one object against another; physics decides the result |
+| give(object, agent) | |
+| take(object, from agent or ground) | succeeds unless the holder resists and wins a strength contest |
+| approach(entity) / avoid(entity) | |
+| touch(agent) | affiliative contact (grooming analog) |
+| follow(agent) | move toward where an agent is going |
+| attend(agent) | watch or listen; needed for copying and for receiving signals |
+| mate(agent) | requires mutual selection |
+| signal(tokens) | see §6 |
+
+No `trade`, `marry`, `pray`, `teach`, `lead`, `punish`, `propose`, or `worship`.
+
+### 5.6 Copying others (social learning)
+- **Observational learning:** watching an agent act gives vicarious action–outcome associations and a partial skill boost.
+- **Whom to copy** depends on heritable biases:
+  - `successBias`: copy those observed doing well
+  - `attendedModelBias`: copy those whom others are watching (a cheap proxy when success is hard to see)
+  - `conformityBias`: weight behaviors many others do
+- Alibi: learning edibility by trial and error can kill you. Cheap heuristics for picking whom to copy pay off even in a world without society. All three dials start centered on neutral.
+
+---
+
+## 6. Signals (Floor 1)
+
+### 6.1 Pointing (deixis)
+A signal can include **deictic tokens** for perceivable referents: an entity category, a specific individual, a place in view, an action primitive. If the referent is perceivable to the listener, decoding is reliable. Alibi: alarm and food calls plus gaze-following exist widely in social animals, and pointing at present things doesn't need invention.
+
+### 6.2 Coined tokens
+To refer to something **not currently perceivable** (an absent place, an absent individual, a hidden-cause node, a past event), a speaker must use a coined token from its own lexicon. If none exists for that internal node, it **coins one**: a new arbitrary ID from a huge space, bound to that node. Coining propensity is a heritable dial.
+
+### 6.3 Listener inference
+On hearing a coined token, the listener updates its own lexicon by **cross-situational association**: links between the token and (a) the deictic referents in the same message, (b) its own currently active internal nodes (what just happened, where we are, what's salient), and (c) the speaker's apparent focus. Repeated exposures sharpen the mapping. Shared vocabularies, dialects, and misunderstandings all emerge from this, or don't.
+
+### 6.4 Why agents signal
+Signaling is an action chosen by value like any other:
+- **Recruiting:** the speaker's world model predicts a better outcome if others act with it (large prey, a threat).
+- **Disclosure:** the heritable `disclosureTendency` dial makes emitting world-model content to attending others mildly rewarding, scaled by bond strength toward them. Alibi: information helps offspring and close kin survive. It can evolve to zero.
+- **Idle-time effect (not coded):** at night, foraging value collapses (perception), so signaling becomes relatively more valuable. Near a fire, others can be perceived, so it's possible. Night talk can emerge from that combination (§7.6).
+
+### 6.5 Belief transmission
+Decoded content updates the listener's world model with a **credibility weight**: the speaker's signal reliability from the ledger, the copying biases, and how many others have said the same thing (conformity). Content includes associations ("food at [coined place]"), hidden-cause associations ("[coined hidden cause] harms near river"), and entity-response claims.
+
+### 6.6 The swappable interface
+```ts
+interface SignalLayer {
+  encode(speaker: AgentView, intent: SignalIntent): Message;
+  decode(listener: AgentView, msg: Message, ctx: PerceptualContext): BeliefUpdate[];
+}
+```
+Floor 1 is one implementation. Floor 2 replaces it with learned signaling and no free deixis. Nothing above this interface may depend on Floor 1 internals.
+
+### 6.7 Known limit of Floor 1
+Unordered bags of tokens can't express who did what to whom, or why. Claims like "the hidden cause favors this individual" may not be expressible, which would block the legitimation chain (§7.12). If experiments hit this wall, that is the evidence for moving to a higher floor. Don't hack around it.
+
+---
+
+## 7. Causal chains for hoped-for phenomena
+
+Each chain lists the preconditions that must hold for the phenomenon to appear. The nudge protocol (`GUARDRAILS.md` §4) measures each link. None of these chains is coded as such; each link is an independent mechanism above.
+
+### 7.1 Learned foraging
+Drives → exploration → consumption outcomes (including delayed illness) → associations → foraging efficiency rises over a lifetime.
+
+### 7.2 Socially learned foraging
+§7.1, plus attend → observational learning with copying biases → offspring of skilled foragers outperform orphans; techniques spread through populations.
+
+### 7.3 Food flow to kin and the injured
+Attachment (§5.3) makes bonded others' distress aversive. Give reduces it. Co-rearing and proximity create bonds. So gives flow along bonds, which mostly track kin. Care for the injured follows the same path.
+
+### 7.4 Pair bonds
+Expensive, slow-maturing children (§3.6) + attachment + mutual gives → offspring of sustained dyads survive better → dispositions favoring sustained dyads spread. Prediction: pair-bond duration rises with child cost. Ablation: cheap children.
+
+### 7.5 Incest avoidance (Westermarck effect)
+Inbreeding depression (§3.7) + co-rearing marks (§5.2) + the `coRearedMateAversion` dial (starts centered at neutral) → selection pushes the dial up when inbreeding depression is on. **Control:** inbreeding depression off → the dial drifts. This is the first full emergence test (Phase 4).
+
+### 7.6 Night talk
+Darkness lowers foraging value. Fire light allows perception of others. Disclosure plus curiosity make signaling valuable. So the share of signals about absent referents rises at night near fires. Prediction (Wiessner's finding, tested rather than assumed): absent-referent content is concentrated in dark idle periods. Ablation: no darkness penalty.
+
+### 7.7 Superstition and offerings
+Hidden-cause inference (§4.4) on unexplained salient events → hidden-cause nodes with spurious associations → noisy action–outcome learning reinforces whatever preceded relief → superstitious action patterns. The generic entity-response model (§4.3) applied to hidden-cause nodes, plus coincidental relief after dropping food at a place → offering-like drops. Ablation: `hiddenCauseBias` = 0.
+
+### 7.8 Shared hidden-cause beliefs (proto-religion candidate)
+§7.7 + coined tokens for hidden-cause nodes (§6.2) + transmission (§6.5) + conformity → many agents' hidden-cause nodes bound to the same token with similar associations. **Strongest evidence:** the cluster persists in agents born after everyone who originated it has died. That shows cultural transmission, not repeated independent invention. Ablation: `hiddenCauseBias` = 0, or coining disabled for hidden-cause nodes.
+
+### 7.9 Ritual candidates
+§7.8 + copying of hidden-cause–associated actions + shared cues (a death, a storm, night by the fire) → synchronized, energetically costly actions with no measurable material return. If groups whose members do them have stronger bonds and more gives (costly signaling), they may outlast groups that don't.
+
+### 7.10 Following and leadership
+Recruiting signals (§6.4) → follow decisions based on the speaker's signal reliability → agents whose signals pay off accumulate followers (a centralized following network). **Crisis amplifier:** in conflicts, damage adds up and outnumbering wins, so converging quickly on one signaler pays. Prediction: centralization spikes during inter-group conflict.
+
+### 7.11 Hierarchy that persists (the ratchet)
+After a crisis, centralization decays unless something holds it. Candidate holders, each from independent mechanisms:
+- **Leveling** is the default: agents harmed by a frequent attacker or taker join attacks against them (coalitions of harmed individuals). Prediction: in open landscapes, high-take individuals get attacked or abandoned.
+- **Exit:** dissatisfied agents `avoid` and leave. If the map is **circumscribed** (Carneiro), exit is costly, so leveling by leaving fails.
+- **Appropriable surplus:** storable, visible, synchronously harvested plants allow stockpiles at places → `take` from stockpiles → those who defend or seize stockpiles accumulate. Tubers (low visibility, not stored) don't allow this.
+- Predictions: persistent hierarchy is more likely with circumscription (E3) and with storable crops (E4).
+
+### 7.12 Legitimation (divine-right candidate)
+A central signaler whose signals co-occur with tokens of widely shared hidden-cause beliefs gets followed more, controlling for signal reliability. That is, belief-based compliance is cheaper than force. **Floor risk:** Floor 1 may not be able to express this (§6.7).
+
+### 7.13 Cultivation
+Agents eat fruit near rest sites → seeds deposited (the dump-heap path) → plants grow near rest sites → place–food associations → repeated return → (maybe) learning that dropped seeds become plants. The long delay makes this hard, as it should be. Storable species feed into §7.11.
+
+### 7.14 Inter-group conflict
+Multiple founding populations in separate regions → range expansion and drought bring them into contact → competition at water and food → strikes against out-of-ledger individuals → raids as an analysis label for coordinated attacks plus takes. Nothing generates raids; they're other agents.
+
+---
+
+## 8. The anthropologist layer and evidence standards
+
+### 8.1 Rules
+- Lives in `src/analysis/`. Read-only snapshots. Never writes to sim state.
+- The only code allowed to use social-outcome words.
+- Labels are hypotheses: "candidate shared hidden-cause cluster," not "religion."
+- Can read the genealogy and ground truth (pathogen loads, etc.) that agents can't.
+
+### 8.2 Detectors (operational definitions written in full in each experiment's preregistration)
+
+| ID | Detector | Measures |
+|---|---|---|
+| D1 | Give network | directed weighted gives; reciprocity; kin bias (via genealogy); inflow concentration |
+| D2 | Sustained dyads | mutual proximity + mutual gives + shared offspring care; duration distribution |
+| D3 | Following network | who follows whose signals; centralization; persistence outside crises |
+| D4 | Asymmetric harm and take | attack and take flows; coalition attacks on high-take individuals |
+| D5 | Lexicon convergence | per coined token, agreement across agents on referent; dialect clusters |
+| D6 | Shared hidden-cause clusters | hidden-cause nodes across agents bound to the same token with similar associations; size; **persistence past originators' deaths** |
+| D7 | Costly synchrony | repeated actions by ≥ k agents in temporal sync, with energy cost and no attributable drive reduction; linked to hidden-cause tokens |
+| D8 | Offering-like drops | valuable items dropped at places linked to hidden-cause nodes |
+| D9 | Night/day content | share of signals with absent referents or hidden-cause tokens, by light condition |
+| D10 | Technique diffusion | spread curves and transmission chains of learned techniques |
+| D11 | Place attachment and accumulation | repeated return sites, stockpiles, seed-deposit plant clusters |
+| D12 | Group structure | clusters by lexicon + co-location + gives; inter-group harm rates |
+| D13 | Legitimation candidate | following rate vs. hidden-cause token use by signalers, controlling for reliability |
+
+### 8.3 Evidence standard
+No phenomenon is reported as emerged without:
+1. A **preregistration** in `experiments/` with detector definitions, thresholds, and predictions, written before the run.
+2. A **positive control:** the detector fires on a hand-built fixture in `tests/`.
+3. A **null model:** the same configuration with the enabling mechanism ablated (each chain in §7 names its ablation), plus permutation tests on network metrics.
+4. **Multiple seeds** with effect sizes and spread, not one run.
+
+---
+
+## 9. Calibration targets (plausibility, never social outcomes)
+
+Approximate values from the forager literature. **Verify each against its source before implementing**, since these were written from memory (see `RESEARCH.md`).
+
+| Quantity | Target (approximate) | Source to verify |
+|---|---|---|
+| Adult total daily energy expenditure | ~2,600 kcal (men), ~1,900 kcal (women) in Hadza | Pontzer et al. 2012 |
+| Daily travel while foraging | ~11 km (men), ~6 km (women) in Hadza | Pontzer et al. 2012 |
+| Activity costs | MET values (walking ~3–3.5, running ~8–10, load carriage higher) | Compendium of Physical Activities |
+| Survival to age 15 | roughly 50–70% | Gurven & Kaplan 2007 |
+| Modal adult age at death | late 60s to 70s | Gurven & Kaplan 2007 |
+| Interbirth interval | ~3–4 years | forager demography literature |
+| Net food production by children | negative until late adolescence | Kaplan et al. 2000 |
+| Survival without water | ~3 days in heat | physiology references |
+| Residential group size | ~25–50 | forager ethnography |
+
+Viability tuning (keeping founders from going extinct) is allowed and logged. Social metrics are never targets.
+
+---
+
+## 10. Player and viewer [open]
+
+The player's role is undecided (see `STATUS.md`). Default until decided: **observer** with time controls, map layers, an agent inspector (drives, ledger, world model, lexicon), and a "legends" view of detected events. No interventions.
+
+If a **god mode** is ever added, player interventions must enter the sim as physical events (rain, lightning, a plant appearing) without agent-state conditioning. Then agents who attribute those events to a hidden cause are *correct*, and the experiment changes meaning. That's a design decision for the owner, not a feature to slip in.
+
+---
+
+## 11. Open design questions
+Tracked in `STATUS.md`. Major ones:
+- Player role (§10).
+- Exact learning architecture for §4.5 (Phase 3 [F] design task).
+- Whether Floor 1's bag-of-tokens is enough for §7.12, or the floor rises earlier.
+- Whether minds need to be simplified for long evolutionary runs, and how to do that without breaking any causal chain.
