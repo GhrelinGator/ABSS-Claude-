@@ -15,7 +15,7 @@
     "experiment": "node src/harness/cli.ts run"
   },
   "devDependencies": {
-    "@types/node": "^22.18.0",
+    "@types/node": "^22",
     "typescript": "7.0.2"
   }
 }

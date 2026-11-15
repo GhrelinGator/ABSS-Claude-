@@ -237,7 +237,7 @@ export function loadBannedTerms(): BannedTerms {
   if (start < 0 || end < 0) throw new Error('Could not find the banned-term list in docs/GUARDRAILS.md §2.');
   const terms = new Set<string>();
   const categories: string[] = [];
-  for (const line of text.slice(start, end).split('\n')) {
+  for (const line of text.slice(start, end).split(/\r?\n/)) {
     const match = /^\*\*([^*]+):\*\*\s*(.+)$/.exec(line);
     if (!match) continue;
     categories.push(match[1]);

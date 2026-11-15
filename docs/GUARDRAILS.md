@@ -8,17 +8,22 @@ The core failure mode: **when a phenomenon doesn't appear, the fastest way to ma
 
 ## 1. The tests
 
-Each item here is a test or check, not a vibe. These get built in Phase 0, before any simulation logic.
+Each item here is a test, not a vibe. They were built in Phase 0, before any simulation logic. They live in `tests/guardrails/`, run with `npm run test:guardrails`, and run on GitHub on every push.
 
 | Test | What it enforces |
 |---|---|
-| `tests/guardrails/banned-terms.test.ts` | No social-outcome words in `src/sim/` (code, identifiers, comments, strings). See §2. |
-| `tests/guardrails/import-boundary.test.ts` | `src/sim/` imports nothing from `analysis/`, `harness/`, `viewer/`; `analysis/` never mutates sim state. |
-| `tests/guardrails/determinism.test.ts` | Same seed + config → identical state hash after N ticks, across two runs and after save/load. |
-| `tests/guardrails/blank-slate.test.ts` | Newly spawned agents (founders *and* newborns) have empty learned world models: no edibility knowledge, no hidden-cause nodes, no coined tokens, no social memories. |
-| `tests/guardrails/no-ambient-io.test.ts` | No `Math.random`, `Date.now`, `performance.now`, `fetch`, network, filesystem, or LLM client imports in `src/sim/`. |
-| `tests/guardrails/energy-audit.test.ts` | Calories in = calories spent + stored, within tolerance, for every agent over a long run. Same for water. |
-| `tests/guardrails/alibi.test.ts` | Every exported gene, drive, and action primitive in `src/sim/` has an `// ALIBI:` comment at its definition. |
+| `banned-terms.test.ts` | No social-outcome words in `src/sim/`: code, identifiers, comments, strings, file names. The list is parsed from §2 of this document, and the test fails if the list shrinks. |
+| `import-boundary.test.ts` | `src/sim/` imports only its own files: no packages, no Node built-ins, nothing from `analysis/`, `harness/`, or `viewer/`. `src/analysis/` reaches the sim only through `src/sim/readonly.ts`. Nothing in `src/` imports test or benchmark fixtures. |
+| `observer-isolation.test.ts` | A run with every observer attached ends in the same state hash as a run with none. |
+| `determinism.test.ts` | Same seed + config → identical state hash over 10,000 ticks, across two runs and across a save/load round trip. Runs against a fixture pipeline that stresses the kernel and against the real pipeline. No NaN or infinite values in state. |
+| `blank-slate.test.ts` | A newly assigned agent slot holds no learned content, a reused slot keeps nothing, and no system writes learned content for an agent during the tick it was spawned. That last check runs every tick, so founders and newborns are covered whatever code created them. Only the kernel's `spawnAgent` may assign slots. |
+| `no-ambient-io.test.ts` | Nothing in `src/sim/` reads a clock, the network, the environment, or a locale. Nothing is asynchronous. `Math.random` is banned, and so is arithmetic whose result differs between JavaScript engines (`Math.sin`, `exp`, `log`, `pow`, `**`, and the rest; see `DESIGN.md` §1.5). |
+| `energy-audit.test.ts` | For every conserved quantity, `stock = inflow − outflow` for every live entity over a long run. A body column that looks like energy or water but isn't tagged for the audit fails the test. The harness also runs the audit during every experiment run and aborts on a mismatch. |
+| `alibi.test.ts` | Every `defineSystem`, `defineDial`, `defineDrive`, and `definePrimitive` call in `src/sim/` sits directly under an `// ALIBI:` comment, and a pipeline accepts only systems made by `defineSystem`. |
+
+**Every checker has a positive control.** The same test file feeds it a deliberately broken sample (a banned identifier, a leaky energy system, a system that hands newborns knowledge, an observer that writes) and fails if the checker doesn't object. A guardrail that can't catch its own fault counts as broken.
+
+What the tests can't see: whether an alibi is *true*, whether a parameter was tuned toward an outcome, and whether a physical primitive is an institution in disguise. Those still depend on §3–§6.
 
 If a guardrail test is in the way, the test is not the problem.
 
@@ -26,7 +31,7 @@ If a guardrail test is in the way, the test is not the problem.
 
 ## 2. Banned terms in `src/sim/`
 
-Matching is whole-word and case-insensitive. Identifiers are split on camelCase, PascalCase, snake_case, and kebab-case, so `religionScore` and `LEADER_ID` both fail. Comments and string literals are scanned too, which means an alibi that mentions an outcome fails, as it should.
+Matching is whole-word and case-insensitive. Identifiers are split on camelCase, PascalCase, snake_case, and kebab-case, so `religionScore` and `LEADER_ID` both fail. Comments and string literals are scanned too, which means an alibi that mentions an outcome fails, as it should. Simple inflections are matched as well (plurals, `-ed`, `-ing`, `-er`), so `leaders`, `trading`, and `worshipped` fail.
 
 **Religion:** religion, religious, god, gods, deity, divine, spirit, spirits, supernatural, sacred, holy, worship, pray, prayer, priest, shaman, ritual, rite, myth, mythology, faith, church, temple, shrine, sacrifice, taboo, soul, afterlife, totem
 
@@ -51,6 +56,11 @@ Notes:
   - genetic "defect" → `deleteriousAllele`
   - "rank" in sorting → `order`, `position`
   - "law" in physics comments → `relation`, `equation`
+  - "command" buffer or queue → `pending`, `deferred`
+  - "custom" pipeline or setting → `alternate`, `other`
+  - "trade-off" → `tradeoff` (one word), or `balance`
+  - programming "language" → name it (`TypeScript`)
+  - "home" directory or position → `origin`, `anchor`
 - (`norm` and `magic` were left off the list on purpose because "vector norm" and "magic number" are too common in code.)
 - Changing this list requires a `DECISIONS.md` entry **approved by the owner**. Adding words is always fine. Removing one is suspicious.
 
