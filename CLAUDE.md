@@ -49,7 +49,7 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 
 ## Session workflow
 
-**Start:** run `gh pr list`. If an earlier session's pull request is still open, `main` is behind: tell the owner before building anything → read `STATUS.md` → re-read `GUARDRAILS.md` if touching sim → check the roadmap milestone → confirm the plan with the owner if the task is ambiguous or expensive → create a branch.
+**Start:** list open pull requests with `gh api "repos/GhrelinGator/ABSS-Claude-/pulls?state=open"` (plain `gh pr` commands don't work in cloud sessions; the REST API does). If an earlier session's pull request is still open, `main` is behind: tell the owner before building anything → read `STATUS.md` → re-read `GUARDRAILS.md` if touching sim → check the roadmap milestone → confirm the plan with the owner if the task is ambiguous or expensive → create a branch.
 
 **During:** keep changes inside the current milestone. If you discover design work that isn't in `DESIGN.md`, write it there before coding it. Run guardrail tests before every commit.
 
@@ -58,7 +58,8 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 - Append any design decision to `docs/DECISIONS.md` (append-only; supersede, never delete).
 - Append any parameter or mechanism change made for tuning reasons to `docs/TUNING_LOG.md`.
 - Run `npm test` and the type checks.
-- Commit with a message that says *why*, push the branch, and open a pull request for the owner to merge (D-017). Check that GitHub's run of the tests comes back green.
+- Commit with a message that says *why*, push the branch, and open a pull request for the owner to merge (D-017): `gh api repos/GhrelinGator/ABSS-Claude-/pulls -X POST -f title=... -f head=<branch> -f base=main -F body=@file`.
+- Check that GitHub's run of the tests comes back green: `gh api "repos/GhrelinGator/ABSS-Claude-/actions/runs?branch=<branch>&per_page=3"`. Report its result, not just the local one.
 
 I have no memory between sessions. These files are my memory. If it isn't written down, the next session won't know it.
 

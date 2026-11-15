@@ -7,7 +7,7 @@ Update this at the end of every session. Newest information at the top of each s
 - **Phase 0 (foundations) is done.** The kernel, the guardrail tests, the experiment harness, and the benchmark exist and pass.
 - **The simulation itself is still empty.** The real pipeline has no systems: no terrain, no weather, no bodies, no minds. Nothing has emerged, because nothing can yet. Anyone who reports otherwise at this stage is wrong.
 - **Next action:** Phase 1.0 [F] (portable math), then Phase 1.1 onward [O]. See `ROADMAP.md`.
-- **Blocked on:** the Phase 0 pull request being merged into `main`. The next session starts from `main`.
+- **Blocked on:** the owner merging pull request #1 (branch `phase-0-foundations`) into `main`. The next session starts from `main`.
 
 ## What exists
 
@@ -62,7 +62,7 @@ Coming up:
 - **Floor 1 expressiveness** (`DESIGN.md` §6.7). The legitimation chain may be inexpressible with unordered token bags.
 - **Claude's drift** (`GUARDRAILS.md`). The guardrail tests catch words, imports, and bookkeeping. They can't judge whether an alibi is true or whether a number was tuned toward an outcome.
 - **Claude can't watch.** I read numbers; the owner can see behaviour in the viewer once it exists. Odd behaviour he notices is high-value input. Ask him what he's seen.
-- **Checked only on GitHub, not locally:** the full type check of the harness, tests, and benchmark needs the `@types/node` package, which the Phase 0 session couldn't install. The simulation and analysis code were type-checked locally; the rest is checked by the GitHub workflow.
+- **Some checks only run on GitHub.** The full type check of the harness, tests, and benchmark needs the `@types/node` package, which cloud sessions may not be able to install. The simulation and analysis code can be type-checked locally; the rest is checked by the GitHub workflow. For Phase 0 that workflow passed every step (tests and both type checks) on pull request #1.
 
 ## Ideas parked (not in scope until a phase claims them)
 
@@ -76,5 +76,5 @@ Coming up:
 
 ## Session log
 
-- **2026-11-15, session 2** (Fable 5.2, claude.ai). Built all of Phase 0 on branch `phase-0-foundations`: kernel (0.1), guardrail tests (0.2), harness (0.3), benchmark (0.4), stack checkpoint (0.5). Milestones 0.2–0.4 were tagged for Opus; they were done in the same Fable session because the owner had already switched models and splitting would have cost him a round trip. Recorded D-012 to D-017. Added `DESIGN.md` §1.5–§1.7. The session was interrupted once partway and resumed from the files on disk.
+- **2026-11-15, session 2** (Fable 5.2, claude.ai). Built all of Phase 0 on branch `phase-0-foundations`: kernel (0.1), guardrail tests (0.2), harness (0.3), benchmark (0.4), stack checkpoint (0.5). Milestones 0.2–0.4 were tagged for Opus; they were done in the same Fable session because the owner had already switched models and splitting would have cost him a round trip. Recorded D-012 to D-017. Added `DESIGN.md` §1.5–§1.7. Opened pull request #1; GitHub's checks passed. The session was interrupted once partway and resumed from the files on disk.
 - **2026-11-15, session 1** (Opus 5.5, claude.ai). Wrote the full plan: `CLAUDE.md`, `GUARDRAILS.md`, `DESIGN.md`, `ROADMAP.md`, `DECISIONS.md`, `RESEARCH.md`, `ORIGIN.md`, experiment template, tuning log. No code, per the owner's instruction to brainstorm and plan first.
