@@ -68,6 +68,27 @@ Mind complexity × population × generations is the budget, and all three can't 
 ### 1.4 Determinism
 Seeded PRNG streams (separate streams for climate, ecology, each agent's decisions, so adding an agent doesn't reshuffle the weather). Fixed update order. State is serializable for snapshot and replay.
 
+### 1.5 Kernel architecture (added in Phase 0)
+The kernel is the substrate everything else runs on. It contains no mechanisms of its own.
+
+- **One write routine per piece of state.** All simulation state lives in registered parts (entity stores, the run-wide stream block, world layers). Each part has a single `write(sink)` routine. Snapshots and state hashes both come from that routine, through a byte sink or a hash sink, so what is saved and what is hashed can't drift apart.
+- **Snapshots are self-describing:** format version, the canonical config JSON, the pipeline's system names, the tick, then every part in registration order. Loading rebuilds the sim from the embedded config and refuses a snapshot whose pipeline or column layout doesn't match.
+- **Entity stores** are structure-of-arrays over typed arrays. Each column declares a **category**: `kernel`, `identity`, `body`, `genome`, or `learned`. A slot is zero-filled when it is assigned and again when it is released, so a reused slot can't inherit anything. Stores grow by doubling. **There is no population cap**, because a cap would be a hidden carrying capacity.
+- **Blank slate, enforced at run time.** No system may write learned content for an agent during the tick it was spawned. That makes "every agent spawned this tick holds no learned content" a checkable invariant for founders and newborns alike, whatever code path created them. The only code allowed to assign a slot is `spawnAgent` in the kernel.
+- **Conserved quantities.** Columns can be tagged as the stock, cumulative inflow, or cumulative outflow of a conserved quantity (energy, water). The audit checks `stock = inflow − outflow` for every live entity. A founder's starting reserve and a newborn's endowment are recorded as inflows, so the identity holds from the first tick.
+- **Pipeline.** A tick runs a fixed, ordered list of systems. Each system is created through `defineSystem` under an `// ALIBI:` comment, may run every N ticks, declares the columns it needs, and is bound to one sim instance. There is no module-level mutable state, so several sims can run in one process.
+- **Streams.** The generator is sfc32. Each consumer's stream is seeded by hashing (run seed, domain, id) into 96 bits through three independent lanes. Per-entity streams are keyed by the entity's id, which is never reused.
+- **Portable arithmetic.** `src/sim/` may use only operations whose results the standard fixes exactly: `+ − × ÷`, `Math.sqrt`, rounding, and integer and bit operations. Engine-provided transcendental functions (`Math.sin`, `exp`, `log`, `pow`, the `**` operator, and the rest) are implementation-defined, so they are banned. When the sim first needs one, it gets a pure-arithmetic implementation in `src/sim/core/dmath.ts`. The goal: a run the owner watches in a browser can be replayed bit-for-bit in Node. State never holds NaN or infinite values.
+- **Derived caches** (the spatial index, id-to-slot maps) are rebuilt from state and never serialized.
+- **Read-only analysis.** `src/analysis/` reaches the sim only through `src/sim/readonly.ts`. A guardrail test checks that a run with observers attached hashes identically to one without.
+- **No asynchrony.** The sim is synchronous: no promises, timers, or workers inside `src/sim/`. Parallelism happens across runs, in the harness.
+
+### 1.6 Simultaneous actions (design rule for Phases 3–4)
+Agents decide from the same tick-start state, and conflicts (two agents taking the same object) are resolved afterwards with seeded tie-breaks. No agent gets a standing first-mover advantage from where it sits in memory. The decide phase only reads shared state, which also leaves room to run it in parallel later.
+
+### 1.7 Compute budget (measured in Phase 0)
+The §1.3 target (500 agents, one generation per 10 real minutes, one core) works out to **about 6.9 microseconds per agent per tick** for everything: bodies, perception, minds. The arithmetic: a generation is taken as 25 simulated years × 48 days × 144 ticks = 172,800 ticks, so the target is 288 ticks per second at 500 agents. Measured kernel overhead and what it leaves for minds are in `STATUS.md` and `DECISIONS.md` D-016.
+
 ---
 
 ## 2. World

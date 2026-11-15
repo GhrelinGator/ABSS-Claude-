@@ -1,0 +1,21 @@
+{
+  "name": "abss",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent-based social simulation: society, hierarchy, and religion are meant to emerge, never be scripted.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "test:guardrails": "node --test \"tests/guardrails/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.pure.json && tsc -p tsconfig.json",
+    "bench": "node bench/bench.ts",
+    "experiment": "node src/harness/cli.ts run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "7.0.2"
+  }
+}
