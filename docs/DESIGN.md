@@ -562,6 +562,7 @@ The game has its own page (D-012), built from `src/viewer/` and served by GitHub
 - **Designed for a phone first:** the map fills the width, controls sit below it, and tapping a cell shows what is there.
 - **The address names a world and a moment:** `#seed=7&c=0.75&v=1&t=1546` opens seed 7, hemmed in 0.75, swings 1, at tick 1546. (Addresses work on the GitHub Pages site; the claude.ai preview ignores them.)
 - **Weather on the map** (Phase 1.2): a grey veil on wet days, a dark disc over an active storm, a flash for every lightning strike (the page steps one tick at a time so none is missed), and a soil-moisture layer redrawn daily.
+- **No flashing.** Two switches turn off the day-and-night shading and the weather effects; the page remembers them on that device. Above 1 simulated day per second both are off regardless, because night and rain would come and go several times a second (accessibility guidelines warn against flashing more than three times a second). Asked for by the owner after watching at year speed.
 
 ---
 

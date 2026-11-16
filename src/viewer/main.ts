@@ -31,6 +31,9 @@ const dateLine = element<HTMLDivElement>('date');
 const skyLine = element<HTMLDivElement>('sky');
 const weatherLine = element<HTMLDivElement>('weather');
 const varInput = element<HTMLInputElement>('var');
+const dayNightToggle = element<HTMLInputElement>('dayNight');
+const weatherToggle = element<HTMLInputElement>('weatherFx');
+const calmNote = element<HTMLParagraphElement>('calmNote');
 const varOut = element<HTMLOutputElement>('varOut');
 const playButton = element<HTMLButtonElement>('play');
 const speedSelect = element<HTMLSelectElement>('speed');
@@ -64,6 +67,49 @@ let paintedDay = -1;
 let openAt = -1;
 
 const F = climate.CLIMATE_FIELDS;
+
+/**
+ * Above 1 simulated day per real second, night and rain come and go several
+ * times a second: a flashing screen. Those effects are hidden at such speeds,
+ * whatever the switches say. (Flashing more than three times a second is
+ * what accessibility guidelines warn against.)
+ */
+const CALM_ABOVE_TICKS_PER_SECOND = 144;
+
+function fastSpeed(): boolean {
+  return ticksPerSecond > CALM_ABOVE_TICKS_PER_SECOND;
+}
+
+function showNight(): boolean {
+  return dayNightToggle.checked && !fastSpeed();
+}
+
+function showWeather(): boolean {
+  return weatherToggle.checked && !fastSpeed();
+}
+
+/** Remember the switches on this device; the page works the same if storage is unavailable. */
+function loadPreferences(): void {
+  try {
+    const saved = JSON.parse(localStorage.getItem('abss.display') ?? '{}');
+    if (typeof saved.dayNight === 'boolean') dayNightToggle.checked = saved.dayNight;
+    if (typeof saved.weather === 'boolean') weatherToggle.checked = saved.weather;
+  } catch {
+    // ignore
+  }
+}
+
+function savePreferences(): void {
+  try {
+    localStorage.setItem('abss.display', JSON.stringify({ dayNight: dayNightToggle.checked, weather: weatherToggle.checked }));
+  } catch {
+    // ignore
+  }
+}
+
+function updateCalmNote(): void {
+  calmNote.hidden = !(fastSpeed() && (dayNightToggle.checked || weatherToggle.checked));
+}
 const FLASH_MS = 700;
 /** Recent lightning strikes, for drawing flashes that fade. */
 const flashes: Array<{ cell: number; born: number }> = [];
@@ -221,7 +267,7 @@ function draw(now: number): void {
   if (tick === drawnTick && flashes.length === 0) return;
   drawnTick = tick;
   context.drawImage(offscreen, 0, 0);
-  const w = view?.readings(climate.CLIMATE_PARTS.weather);
+  const w = showWeather() ? view?.readings(climate.CLIMATE_PARTS.weather) : null;
   if (w && w[F.wetToday] === 1) {
     // A grey veil on wet days, heavier the more rain is falling.
     const veil = 0.08 + 0.17 * Math.min(1, w[F.rainTodayMm] / 12);
@@ -243,7 +289,7 @@ function draw(now: number): void {
   }
   // Night falls over the map: darker the less light there is.
   const ambient = light.ambientLight(sim.config, tick);
-  const darkness = 0.62 * (1 - Math.min(1, Math.sqrt(ambient)));
+  const darkness = showNight() ? 0.62 * (1 - Math.min(1, Math.sqrt(ambient))) : 0;
   if (darkness > 0.005) {
     context.fillStyle = `rgba(8, 12, 32, ${darkness.toFixed(3)})`;
     context.fillRect(0, 0, land.W, land.H);
@@ -274,7 +320,9 @@ function frame(now: number): void {
     const ticks = Math.floor(carry);
     carry -= ticks;
     // Step one tick at a time so no lightning strike goes unseen: strikes are kept only for the tick they happen in.
-    for (let t = 0; t < ticks; t++) {
+    const collect = showWeather();
+    if (!collect) stepSim(sim, ticks);
+    for (let t = 0; collect && t < ticks; t++) {
       stepSim(sim, 1);
       const strikes = view.readings(climate.CLIMATE_PARTS.strikes);
       if (!strikes) continue;
@@ -332,7 +380,18 @@ playButton.addEventListener('click', () => {
 });
 speedSelect.addEventListener('change', () => {
   ticksPerSecond = Number(speedSelect.value);
+  if (fastSpeed()) flashes.length = 0;
+  updateCalmNote();
+  drawnTick = -1;
 });
+for (const toggle of [dayNightToggle, weatherToggle]) {
+  toggle.addEventListener('change', () => {
+    if (!weatherToggle.checked) flashes.length = 0;
+    savePreferences();
+    updateCalmNote();
+    drawnTick = -1;
+  });
+}
 for (const button of layerButtons) {
   button.addEventListener('click', () => {
     mode = button.dataset.layer as LayerMode;
@@ -360,6 +419,8 @@ seedInput.value = String(initial.seed);
 circInput.value = String(initial.circumscription);
 circOut.textContent = initial.circumscription.toFixed(2);
 openAt = initial.tick;
+loadPreferences();
+updateCalmNote();
 varInput.value = String(initial.variability);
 varOut.textContent = initial.variability.toFixed(2);
 element<HTMLSpanElement>('build-info').textContent =
