@@ -82,6 +82,12 @@ export interface PlantSpecies {
   readonly rawDigestible: number;
   readonly processedDigestible: number;
   readonly toxin: Toxin | null;
+  /** Leaves and stems an animal can eat, standing at full cover, kg per hectare (§2.13). */
+  readonly forageKgHa: number;
+  /** Which forage it is: 'graze' (grass-like, eaten by grazers) or 'browse' (leaves and shoots). */
+  readonly forageKind: 'graze' | 'browse';
+  /** Woody plants survive being eaten bare; soft ones die back (overgrazing). */
+  readonly woody: boolean;
 }
 
 // The catalogue. Order is part of what a seed means: never reorder, only append.
@@ -107,6 +113,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.4,
     processedDigestible: 0.85,
     toxin: null,
+    forageKgHa: 300,
+    forageKind: 'graze',
+    woody: false,
   },
   {
     name: 'tuber',
@@ -129,6 +138,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.6,
     processedDigestible: 0.9,
     toxin: null,
+    forageKgHa: 40,
+    forageKind: 'browse',
+    woody: false,
   },
   {
     name: 'berry',
@@ -151,6 +163,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.9,
     processedDigestible: 0.9,
     toxin: null,
+    forageKgHa: 80,
+    forageKind: 'browse',
+    woody: true,
   },
   {
     name: 'nut',
@@ -173,6 +188,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.5,
     processedDigestible: 0.95,
     toxin: null,
+    forageKgHa: 120,
+    forageKind: 'browse',
+    woody: true,
   },
   {
     name: 'greens',
@@ -195,6 +213,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.7,
     processedDigestible: 0.8,
     toxin: null,
+    forageKgHa: 200,
+    forageKind: 'browse',
+    woody: false,
   },
   {
     name: 'bitterRoot',
@@ -217,6 +238,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.8,
     processedDigestible: 0.85,
     toxin: { dosePerKg: 1, delayHours: 4, removedByProcessing: true },
+    forageKgHa: 0,
+    forageKind: 'browse',
+    woody: false,
   },
   {
     name: 'nightshade',
@@ -239,6 +263,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.9,
     processedDigestible: 0.9,
     toxin: { dosePerKg: 2, delayHours: 3, removedByProcessing: false },
+    forageKgHa: 0,
+    forageKind: 'browse',
+    woody: false,
   },
   {
     name: 'reed',
@@ -261,6 +288,9 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     rawDigestible: 0.6,
     processedDigestible: 0.8,
     toxin: null,
+    forageKgHa: 250,
+    forageKind: 'graze',
+    woody: false,
   },
 ] satisfies PlantSpecies[]);
 
@@ -272,6 +302,13 @@ export function foodLayer(species: PlantSpecies): string {
   return `plants.${species.name}.food`;
 }
 
+/** Grass-like forage (grass, reed) grazers can eat, kg per cell (§2.13). Refills on real days. */
+export const FORAGE_LAYER = 'plants.forage';
+/** Leaves and shoots browsers can eat (greens, berry, nut, tuber leaves), kg per cell. Refills on real days. */
+export const BROWSE_LAYER = 'plants.browse';
+/** One bit per species (bit s for catalogue entry s): seeds that arrived since the cell last updated (§2.13). */
+export const SEED_RAIN_LAYER = 'plants.seedRain';
+
 export const PLANT_CONSTANTS = {
   /**
    * Each cell's cover and standing stocks update once every this many days, with that many
@@ -281,6 +318,16 @@ export const PLANT_CONSTANTS = {
   coverEveryDays: 4,
   /** Fruit or seed below this many kilograms in a cell counts as gone. */
   leastFoodKg: 0.001,
+  /** Share of the gap to full forage refilled per real year (365 days). An estimate; see T-004. */
+  forageRefillPerRealYear: 6,
+  /** Share of its full forage no animal can eat: the base of the plant, which it regrows from. */
+  ungrazableShare: 0.25,
+  /** Below this share of its full forage, a patch counts as overgrazed and its soft plants die back. */
+  overgrazedBelow: 0.3,
+  /** Daily dieback of an overgrazed species with 300 kg/ha of forage (scaled by its own forage). */
+  overgrazingDiebackPerDay: 0.01,
+  /** Cover a species starts with where its seed arrives and its habitat allows it. */
+  founderCover: 0.002,
   /** Starting cover as a share of each cell's capacity. */
   initialShare: 0.8,
   /** Warmth response rises from 0 to 1 over this many degrees above the species' minimum. */
@@ -366,6 +413,8 @@ function startPlants(sim: Sim): void {
   const areaHa = (sim.config.world.cellSizeM * sim.config.world.cellSizeM) / 10_000;
   const cover = PLANT_SPECIES.map((s) => world.layer<Float32Array>(coverLayer(s)));
   const food = PLANT_SPECIES.map((s) => world.layer<Float32Array>(foodLayer(s)));
+  const forage = world.layer<Float32Array>(FORAGE_LAYER);
+  const browse = world.layer<Float32Array>(BROWSE_LAYER);
   for (let k = 0; k < N; k++) {
     let total = 0;
     for (let s = 0; s < PLANT_SPECIES.length; s++) total += P.initialShare * K[s][k];
@@ -375,6 +424,8 @@ function startPlants(sim: Sim): void {
       cover[s][k] = c;
       const f = PLANT_SPECIES[s].food;
       food[s][k] = f.kind === 'stock' ? f.stockKgHa * c * areaHa : 0;
+      const pool = PLANT_SPECIES[s].forageKind === 'graze' ? forage : browse;
+      pool[k] += PLANT_SPECIES[s].forageKgHa * c * areaHa;
     }
   }
 }
@@ -388,6 +439,9 @@ export const plants: SystemDef = defineSystem({
       state.world.ensureLayer(coverLayer(species), 'f32');
       state.world.ensureLayer(foodLayer(species), 'f32');
     }
+    state.world.ensureLayer(FORAGE_LAYER, 'f32');
+    state.world.ensureLayer(BROWSE_LAYER, 'f32');
+    state.world.ensureLayer(SEED_RAIN_LAYER, 'u8');
     // Read from the landscape and the climate, which run first.
     state.world.ensureLayer(TERRAIN_LAYERS.elevation, 'f32');
     state.world.ensureLayer(TERRAIN_LAYERS.waterKind, 'u8');
@@ -407,6 +461,9 @@ export const plants: SystemDef = defineSystem({
     const moisture = world.layer<Float32Array>(MOISTURE_LAYER);
     const cover = PLANT_SPECIES.map((s) => world.layer<Float32Array>(coverLayer(s)));
     const food = PLANT_SPECIES.map((s) => world.layer<Float32Array>(foodLayer(s)));
+    const forage = world.layer<Float32Array>(FORAGE_LAYER);
+    const browse = world.layer<Float32Array>(BROWSE_LAYER);
+    const seedRain = world.layer<Uint8Array>(SEED_RAIN_LAYER);
     const weather = state.parts.find((p) => p.name === CLIMATE_PARTS.weather);
     if (!weather || !weather.readings) throw new Error('world.plants needs world.climate earlier in the pipeline.');
     const weatherValues = weather.readings();
@@ -434,10 +491,18 @@ export const plants: SystemDef = defineSystem({
     const rate = new Float64Array(S);
     /** Colonisation per unit of neighbouring cover, scaled so a cell's whole capacity counts as 1. */
     const reach = new Float64Array(S);
+    /** Forage per cell at full cover of each species, kg. */
+    const foragePerCover = new Float64Array(S);
+    const isBrowse = new Uint8Array(S);
+    const isWoody = new Uint8Array(S);
+    const forageRefill = P.forageRefillPerRealYear / 365;
     for (let s = 0; s < S; s++) {
       const species = PLANT_SPECIES[s];
       growth[s] = species.growthPerYear / daysPerYear;
       reach[s] = species.spread / species.maxCover / 4;
+      foragePerCover[s] = species.forageKgHa * areaHa;
+      isBrowse[s] = species.forageKind === 'browse' ? 1 : 0;
+      isWoody[s] = species.woody ? 1 : 0;
       mLo[s] = species.moisture.lo;
       mOptLo[s] = species.moisture.optLo;
       mOptHi[s] = species.moisture.optHi;
@@ -464,6 +529,11 @@ export const plants: SystemDef = defineSystem({
     // Whether a seasonal species may have fruit left anywhere. Only lets the loop skip
     // all-zero work, so it is safe to start at 1 after a snapshot is read.
     const holding = new Uint8Array(S).fill(1);
+
+    function refilled(now: number, target: number, growing: number): number {
+      if (now < target) return now + (target - now) * forageRefill * P.coverEveryDays * (growing / target);
+      return target;
+    }
 
     function moistureFit(s: number, m: number): number {
       if (m <= mLo[s] || m >= mHi[s]) return 0;
@@ -516,7 +586,29 @@ export const plants: SystemDef = defineSystem({
           const m = moisture[k];
           let total = 0;
           for (let s = 0; s < S; s++) total += cover[s][k];
+
+          // Seeds carried in since the last update start small patches where the habitat allows.
+          const arrived = seedRain[k];
+          if (arrived !== 0) {
+            seedRain[k] = 0;
+            for (let s = 0; s < S; s++) {
+              if ((arrived & (1 << s)) === 0 || K[s][k] <= 0) continue;
+              const c = cover[s][k];
+              if (c < P.founderCover && total + P.founderCover - c <= 1) {
+                total += P.founderCover - c;
+                cover[s][k] = P.founderCover;
+              }
+            }
+          }
           const room = 1 - total;
+          let fullGraze = 0;
+          let fullBrowse = 0;
+          for (let s = 0; s < S; s++) {
+            if (isBrowse[s] === 1) fullBrowse += cover[s][k] * foragePerCover[s];
+            else fullGraze += cover[s][k] * foragePerCover[s];
+          }
+          const grazedBare = fullGraze > 0 && forage[k] < P.overgrazedBelow * fullGraze;
+          const browsedBare = fullBrowse > 0 && browse[k] < P.overgrazedBelow * fullBrowse;
 
           // Growth and colonisation wanted by each species, shared fairly if they exceed the room.
           let wanted = 0;
@@ -555,6 +647,10 @@ export const plants: SystemDef = defineSystem({
             // Dieback in dry ground, in proportion to how far below the species' tolerance.
             const lo = mLo[s];
             if (m < lo && c > 0) c -= c * dieback[s] * days * ((lo - m) / lo);
+            // Dieback of soft plants where animals have eaten the patch bare.
+            if (c > 0 && foragePerCover[s] > 0 && isWoody[s] === 0 && (isBrowse[s] === 1 ? browsedBare : grazedBare)) {
+              c -= c * P.overgrazingDiebackPerDay * days * (PLANT_SPECIES[s].forageKgHa / 300);
+            }
             if (c < 1e-6) c = 0;
             cover[s][k] = c;
 
@@ -567,6 +663,26 @@ export const plants: SystemDef = defineSystem({
               food[s][k] = target + (held - target) * 0.7;
             }
           }
+
+          // Both kinds of forage refill toward what the cover can carry, as fast as the plants grow.
+          let grazeTarget = 0;
+          let grazeGrowing = 0;
+          let browseTarget = 0;
+          let browseGrowing = 0;
+          for (let s = 0; s < S; s++) {
+            const f = cover[s][k] * foragePerCover[s];
+            if (f <= 0) continue;
+            const g = f * warmthOf(s, temperature) * moistureFit(s, m);
+            if (isBrowse[s] === 1) {
+              browseTarget += f;
+              browseGrowing += g;
+            } else {
+              grazeTarget += f;
+              grazeGrowing += g;
+            }
+          }
+          forage[k] = refilled(forage[k], grazeTarget, grazeGrowing);
+          browse[k] = refilled(browse[k], browseTarget, browseGrowing);
         }
       }
     }

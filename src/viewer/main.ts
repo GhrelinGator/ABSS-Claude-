@@ -8,6 +8,7 @@ import {
   clock,
   createStandardSim,
   defaultConfig,
+  animals,
   light,
   plants,
   stepSim,
@@ -16,7 +17,7 @@ import {
 } from '../sim/index.ts';
 import type { Sim, SimConfig, SimView } from '../sim/index.ts';
 import { BUILD } from './build-info.ts';
-import { PLANT_NAMES, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
+import { ANIMAL_DOT_COLORS, PLANT_NAMES, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
 import type { Landscape, LayerMode } from './render.ts';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -254,7 +255,7 @@ function updateClock(): void {
 function draw(now: number): void {
   if (!sim || !land) return;
   const day = clock.dayIndex(sim.config, sim.state.tick);
-  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe';
+  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe' || mode === 'animals';
   if (drawnMode !== mode || (daily && day !== paintedDay)) {
     paintedDay = day;
     const image = offscreenContext.createImageData(land.W, land.H);
@@ -296,6 +297,7 @@ function draw(now: number): void {
     context.fillStyle = `rgba(8, 12, 32, ${darkness.toFixed(3)})`;
     context.fillRect(0, 0, land.W, land.H);
   }
+  drawAnimals();
   for (const flash of flashes) {
     const age = (now - flash.born) / FLASH_MS;
     const i = (flash.cell % land.W) + 0.5;
@@ -337,6 +339,48 @@ function frame(now: number): void {
 }
 
 // ---------------------------------------------------------------- inspecting a cell
+
+/** Every animal group as a dot, coloured by kind, bigger for bigger groups. */
+function drawAnimals(): void {
+  if (!view || !land) return;
+  const store = view.store(animals.ANIMAL_STORE);
+  const alive = store.column('alive');
+  const kind = store.column('kind');
+  const count = store.column('count');
+  const x = store.column('x');
+  const y = store.column('y');
+  const cs = land.cellSizeM;
+  for (let s = 0; s < store.highWater; s++) {
+    if (alive[s] !== 1) continue;
+    const color = ANIMAL_DOT_COLORS[kind[s]] ?? [255, 0, 255];
+    const r = kind[s] === animals.AnimalKind.CAT ? 1.6 : 1 + Math.min(1.5, count[s] / 12);
+    context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    context.beginPath();
+    context.arc(x[s] / cs, y[s] / cs, r, 0, Math.PI * 2);
+    context.fill();
+  }
+}
+
+/** Animal groups within `radius` metres of a point, described in words. */
+function animalsNear(px: number, py: number, radius: number): string[] {
+  if (!view) return [];
+  const store = view.store(animals.ANIMAL_STORE);
+  const alive = store.column('alive');
+  const kind = store.column('kind');
+  const count = store.column('count');
+  const mode = store.column('mode');
+  const x = store.column('x');
+  const y = store.column('y');
+  const names: Record<number, [string, string]> = { 1: ['deer', 'deer'], 2: ['aurochs', 'aurochs'], 3: ['wolf', 'wolves'], 4: ['big cat', 'big cats'] };
+  const doing = ['resting', 'moving', 'running', 'hunting', 'feeding', 'waiting in ambush'];
+  const found: string[] = [];
+  for (let s = 0; s < store.highWater; s++) {
+    if (alive[s] !== 1 || Math.hypot(x[s] - px, y[s] - py) > radius) continue;
+    const [one, many] = names[kind[s]] ?? ['animal', 'animals'];
+    found.push(`${count[s]} ${count[s] === 1 ? one : many} (${doing[mode[s]] ?? 'idle'})`);
+  }
+  return found;
+}
 
 function inspect(event: MouseEvent): void {
   if (!land) return;
@@ -380,6 +424,13 @@ function inspect(event: MouseEvent): void {
     rows.push(['Plants', growing.length > 0 ? growing.join(', ') : 'bare']);
     rows.push(['Food here', food.length > 0 ? food.join(', ') : 'none']);
   }
+  if (kind === 0) {
+    const perKm2 = land.hare[k] * (1e6 / (land.cellSizeM * land.cellSizeM));
+    rows.push(['Hares', `about ${Math.round(perKm2)} per km² here`]);
+    if (land.carcass[k] >= 0.5) rows.push(['Carcass', `${Math.round(land.carcass[k])} kg of meat`]);
+  }
+  const near = animalsNear((i + 0.5) * land.cellSizeM, (j + 0.5) * land.cellSizeM, 500);
+  rows.push(['Animals within 500 m', near.length > 0 ? near.join(', ') : 'none']);
   const w = view?.readings(climate.CLIMATE_PARTS.weather);
   if (sim && w) rows.push(['Air now', `${climate.airTemperatureC(sim.config, sim.state.tick, w, land.elevation[k]).toFixed(1)} °C`]);
   inspectPanel.innerHTML = `<dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;

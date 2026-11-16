@@ -4,9 +4,9 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants, except seed dispersal by animals and agents), and a viewer (1.9) that shows all of it.
-- **The world has weather and plants; no animals or people.** The real pipeline has three systems: the landscape (built before tick 0), the climate, and the plants. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 1.5 [O], animals, including seeds that animals carry and drop (moved from 1.4). Grazers should eat plant cover and food from the layers in `plants.ts`. Then hidden causes (1.6), materials (1.7), and fire (1.8), which reads lightning strikes, dryness, and plant cover as fuel.
+- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants), 1.5 (animals, with grazing, browsing, and seeds carried by animals), and a viewer (1.9) that shows all of it.
+- **The world has weather, plants and animals; no people.** The real pipeline has four systems: the landscape (built before tick 0), the climate, the plants, and the animals. Nothing has emerged, because nothing can yet.
+- **Next action:** Phase 1.6 [O], real hidden causes: pathogen load in stagnant water and in carcasses (`animals.carcass` holds the meat; 1.6 needs to add how old it is). One milestone per run. Then materials (1.7) and fire (1.8: lightning strikes, dryness and plant cover as fuel, and predators keeping away from fire), then the ecology review (1.10 [F]), which waits for a Fable session.
 - **Blocked on:** nothing. #1–#6 are merged. From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, and a nightly scheduled run does one milestone at a time (D-025, `CLAUDE.md`).
 
 ## What exists
@@ -16,14 +16,15 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/core/` | random streams, state hash, snapshot encoding, entity stores, grid layers, spatial index, calendar, mechanism registry, run-time audits |
 | `src/sim/core/dmath.ts`, `selfcheck.ts` | portable `exp`, `log`, `pow`, `sinTurn`, `cosTurn`; the arithmetic self-check |
 | `src/sim/sim.ts` | state container, tick loop, save/load, `spawnAgent` |
-| `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants |
+| `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants, the animals |
 | `src/sim/readonly.ts` | the only door the analysis layer may use |
 | `src/sim/world/terrain.ts`, `noise.ts` | the map generator (`DESIGN.md` §2.10) |
 | `src/sim/world/light.ts` | sun, moon, and starlight (`DESIGN.md` §2.4) |
 | `src/sim/world/climate.ts` | weather, storms, lightning, soil moisture (`DESIGN.md` §2.11) |
-| `src/sim/world/plants.ts` | eight plant species: cover, fruit and seed seasons, roots, drought dieback, spreading (`DESIGN.md` §2.12) |
+| `src/sim/world/plants.ts` | eight plant species: cover, fruit and seed seasons, roots, drought dieback, spreading, forage for grazing and browsing, seed rain (`DESIGN.md` §2.12) |
+| `src/sim/world/animals.ts` | deer, aurochs, wolf packs, big cats, hares, vultures, carcasses (`DESIGN.md` §2.13) |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
-| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing) |
+| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths) |
 | `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
 | `src/harness/` | experiment specs, batch runner on worker threads, manifests, JSONL metrics, command line |
 | `bench/` | speed benchmark with a scripted stand-in load; timing of the math functions |
@@ -41,7 +42,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 | # | Question | Needed by |
 |---|---|---|
 | Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
-| Q8 | Does the page keep up on your phone at "1 year per second" now that plants grow? If it stutters, I can make the page skip ahead in bigger steps or cap the speed on phones. | Whenever |
+| Q8 | Plants kept up on the owner's phone at "1 year per second" (answered 2026-11-16). With animals a day costs about four times as much; does it still keep up? If not, the page could skip ahead in bigger steps or cap the speed. | Whenever |
 | Q7 | *Answered 2026-11-16:* a Windows desktop, Intel Core i5-4670 (4 cores, 4 threads, 3.4 GHz, 2013), 32 GB of memory, an RTX 3080 graphics card. That means 3–4 runs side by side, and overnight batches for big experiments. The graphics card can't run the simulation: results must be bit-identical on every machine. Nothing is installed yet; in Phase 3, install Node and link the Claude desktop app so a session can run batches there, and stop the PC sleeping during runs. | Phase 3 |
 | Q1 | Player role, if observer-only turns out not to be what he wants (D-011). | Phase 9 |
 
@@ -60,6 +61,8 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 - Hashing the whole state or saving a snapshot took well under a millisecond at these sizes (no world layers yet).
 - Full reasoning and what it demands of Phase 3: `DECISIONS.md` D-016.
 
+**2026-11-16, Phase 1.5.** A day on the full map now takes about 63 ms: animals about 38, plants about 21 (forage added a little), climate 2. Building a world takes about 0.45 s.
+
 **2026-11-15, Phase 1.4 (world systems, same sandbox).** On the 512 × 512 map: a day of plants takes about 16 ms, of climate about 2 ms. That averages 0.13 ms per tick, small next to the agent budget, but at "1 year per second" the page computes 48 days a second: about 0.8 s of work per second on this machine, more on a phone. Building a world takes about 0.4 s. Snapshots grow by 16 MiB (two layers per species).
 
 ## Known risks
@@ -70,6 +73,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 - **Floor 1 expressiveness** (`DESIGN.md` §6.7). The legitimation chain may be inexpressible with unordered token bags.
 - **Claude's drift** (`GUARDRAILS.md`). The guardrail tests catch words, imports, and bookkeeping. They can't judge whether an alibi is true or whether a number was tuned toward an outcome.
 - **Long-run plant balance** (for 1.10). In 20 seeds × 100 years on small maps, no species died out and none grew without bound, but greens and reeds fell to about a fifth of their starting cover in runs with large year-to-year swings: riverbank soil dries in a drought like any other, because the soil-moisture model has no water table (`DESIGN.md` §2.12). Animals will add grazing pressure on top.
+- **Animal balance** (for 1.10). Predators die out on a small, hemmed-in map with large climate swings; deer gather in tight clusters on the best browse; most animal numbers are estimates (`RESEARCH.md`). Eleven rounds of correction went into the current balance (T-004), so it should be reviewed by fresh eyes, not just extended.
 - **Root refilling rates are estimates** (T-003). Real tuber turnover hasn't been looked up yet; Phase 3's foraging-return calibration will test it.
 - **Claude can't watch.** I read numbers; the owner can see behaviour in the viewer once it exists. Odd behaviour he notices is high-value input. Ask him what he's seen.
 - **Some checks only run on GitHub.** The full type check of the harness, tests, and benchmark needs the `@types/node` package, which cloud sessions may not be able to install. The simulation and analysis code can be type-checked locally; the rest is checked by the GitHub workflow. For Phase 0 that workflow passed every step (tests and both type checks) on pull request #1.
@@ -86,6 +90,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 
 ## Session log
 
+- **2026-11-16, session 9** (Opus 5.5, claude.ai; same chat). Built Phase 1.5: animals (`DESIGN.md` §2.13, D-026), grazing and browsing stocks and seed rain in the plants, the `fauna` observer, animals on the page, and `spawnEntity` in the kernel. Took eleven rounds of correction (T-004); persistence over 100 compressed years checked on five maps. Merged its own pull request (D-025).
 - **2026-11-16, session 8** (Opus 5.5, claude.ai; same chat). No code. Measured what a milestone costs: Phase 1.4 took 86 requests and about 3.1 million tokens of usage, 60% of it Claude's fixed instructions re-read on every step, so cost follows the number of steps. Estimated 150–250 million more through Phase 6. The owner answered Q7 and gave Claude broad autonomy (D-025): Claude now merges its own pull requests (merged #6), and a nightly scheduled task does one milestone at a time from the night of 2026-11-18. Ideas from the owner's side, for later: another AI as an outside skeptic of emergence claims, an anthropology professor's view on the detector definitions (Phase 6), and paywalled papers through his university library.
 - **2026-11-15, session 7** (Opus 5.5, claude.ai; same chat). Owner merged #4 and #5. Built Phase 1.4: eight plant species (`DESIGN.md` §2.12, D-024), the `vegetation` observer, and Plants and Ripe layers on the page. Mistakes caught on the way: the habitat map was first built before the landscape existed, so everything died (rule added to `DESIGN.md` §1.5); a division by zero put NaN in plant cover (the non-finite guardrail now runs a full year and was shown to catch it); and I misreported the old root-refilling version's food at 1.6 million kcal per km² per day, an artifact of my probe (corrected in D-024 and T-003). Moved root refilling to real days (T-003). Made the plant update 5× faster by staggering slow work. Lengthened the Node-vs-Bun comparison to a full year. Opened pull request #6.
 - **2026-11-15, session 6** (Opus 5.5, claude.ai; same chat). Owner switched the Pages source to GitHub Actions; the live site now shows the viewer (redeployed by hand once). At the owner's request, added switches for day-and-night and weather effects, off automatically above 1 day per second so the map can't flash. Pull request #5.

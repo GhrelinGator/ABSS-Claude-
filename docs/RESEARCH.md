@@ -75,3 +75,10 @@ Grouped by the part of the design they inform. **✓** means checked against a s
 - Lazaridou, Peysakhovich & Baroni (2017), "Multi-agent cooperation and the emergence of (natural) language," ICLR.
 - Mordatch & Abbeel (2018), "Emergence of grounded compositional language in multi-agent populations," AAAI.
 - Hockett (1960), "The origin of speech," *Scientific American*. Design features of language, including displacement (§0.4).
+
+## Animals (✓ checked 2026-11-16 by web search)
+
+- **Wolf kill rates, red-deer system:** in Białowieża Primeval Forest (Poland), hunting groups averaged 4.4 wolves and killed 0.513 prey per pack per day; per capita 0.116 ungulates per wolf per day, eating 5.58 kg per wolf per day; 63% of prey were red deer, at winter densities of 3–6 deer per km² (Jędrzejewski et al. 2002, *Ecology*, via an abstract on peeref.com). The mean mass of ungulates killed there was 55 kg, and wolves removed 57–105 red deer per 100 km² per year in 1991–96 (Jędrzejewski et al. 2000, *Journal of Mammalogy* 81:197).
+- **Wolf kill rates, large prey:** in the Southern Lakes, Yukon, winter kill rates were 0.018 ungulates per wolf per day (moose and caribou) and consumption 3.49 kg per wolf per day (Yukon government wolf programme summary, 2023).
+- **Wolf minimum need:** about 3.7 kg per wolf per day (Metz et al. 2011, cited by the Yellowstone Wolf Project).
+- **Not yet checked (estimates in `animals.ts`):** densities of aurochs, hares, big cats and vultures; birth and death rates; forage stocks and regrowth; carcass rotting rates. The ecology review (1.10) should look these up.
