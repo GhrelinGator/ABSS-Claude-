@@ -4,28 +4,30 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Phase 0 (foundations) is done.** The kernel, the guardrail tests, the experiment harness, and the benchmark exist and pass.
+- **Phase 0 (foundations) and Phase 1.0 (portable math) are done.** The kernel, the guardrail tests, the experiment harness, the benchmark, and the math functions the world will need all exist and pass.
 - **The simulation itself is still empty.** The real pipeline has no systems: no terrain, no weather, no bodies, no minds. Nothing has emerged, because nothing can yet. Anyone who reports otherwise at this stage is wrong.
-- **Next action:** Phase 1.0 [F] (portable math), then Phase 1.1 onward [O]. See `ROADMAP.md`.
-- **Blocked on:** the owner merging pull request #1 (branch `phase-0-foundations`) into `main`. The next session starts from `main`.
+- **Next action:** Phase 1.1 [O] (map generator) and onward. See `ROADMAP.md`. Consider doing the viewer (1.9) early, so the owner has something to look at.
+- **Blocked on:** the owner merging the open pull requests into `main`. #1 (`phase-0-foundations`) is Phase 0. #2 (`phase-1.0-portable-math`) is built on top of #1 and contains both, so merging #2 alone is enough. The next session starts from `main`.
 
 ## What exists
 
 | Where | What |
 |---|---|
 | `src/sim/core/` | random streams, state hash, snapshot encoding, entity stores, grid layers, spatial index, calendar, mechanism registry, run-time audits |
+| `src/sim/core/dmath.ts`, `selfcheck.ts` | portable `exp`, `log`, `pow`, `sinTurn`, `cosTurn`; the arithmetic self-check |
 | `src/sim/sim.ts` | state container, tick loop, save/load, `spawnAgent` |
 | `src/sim/pipeline.ts` | the real update order. **Empty.** |
 | `src/sim/readonly.ts` | the only door the analysis layer may use |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
 | `src/analysis/` | observer interface and one observer (`census`, a head count) |
 | `src/harness/` | experiment specs, batch runner on worker threads, manifests, JSONL metrics, command line |
-| `bench/` | speed benchmark with a scripted stand-in load |
-| `tests/guardrails/` | the eight guardrail tests (`GUARDRAILS.md` §1) |
+| `bench/` | speed benchmark with a scripted stand-in load; timing of the math functions |
+| `tests/guardrails/` | the nine guardrail tests (`GUARDRAILS.md` §1) |
+| `tests/cross-engine/` | prints digests so two JavaScript engines can be compared |
 | `tests/unit/`, `tests/harness/` | tests of the kernel pieces and the harness |
 | `experiments/C0-smoke/` | a plumbing check for the harness, not an experiment |
 
-About 4,900 lines including tests (1,900 in `src/sim/`, 2,100 of tests). The roadmap guessed 1,500–2,500 for this phase, so **treat the roadmap's size estimates as low by roughly half.**
+About 6,000 lines including tests after Phase 1.0 (Phase 0 alone was about 4,900: 1,900 in `src/sim/`, 2,100 of tests). The roadmap guessed 1,500–2,500 for this phase, so **treat the roadmap's size estimates as low by roughly half.**
 
 ## Decisions needed from the owner
 
@@ -57,7 +59,7 @@ Coming up:
 ## Known risks
 
 - **Compute budget** (`DECISIONS.md` D-016). About 6 microseconds per agent per tick is left for bodies and minds. That is tight. Phase 3.1 has to design for it and measure a prototype before building on.
-- **Portable math** (D-014). The sim may not use the engine's `sin`, `exp`, `log`. Phase 1 needs a seasonal cycle and Phase 2 needs normally distributed draws, so Phase 1.0 has to supply pure-arithmetic versions or formulations that avoid them.
+- **Portable math is in place** (D-014, D-018), and measurement showed it was needed: two engines' built-in `exp` disagreed on 10% of inputs. What remains a risk is discipline: a system that needs a function `dmath.ts` lacks (`atan2`, say) has to add it properly, with tests and a digest, not reach for the built-in. The guardrail test blocks the built-ins.
 - **Founder viability.** Blank-slate founders may die before learning enough. Viability tuning is allowed (logged), but if it takes heavy tuning, the floor may need rethinking. That's a conversation with the owner, not a quiet fix.
 - **Floor 1 expressiveness** (`DESIGN.md` §6.7). The legitimation chain may be inexpressible with unordered token bags.
 - **Claude's drift** (`GUARDRAILS.md`). The guardrail tests catch words, imports, and bookkeeping. They can't judge whether an alibi is true or whether a number was tuned toward an outcome.
@@ -76,5 +78,6 @@ Coming up:
 
 ## Session log
 
+- **2026-11-15, session 3** (Fable 5.2, claude.ai; same chat as session 2). Phase 1.0, portable math, on branch `phase-1.0-portable-math`, built on the unmerged Phase 0 branch because pull request #1 was still open. Added `dmath.ts`, `selfcheck.ts`, normal and exponential draws, accuracy tests against an arbitrary-precision reference, recorded digests, a second-engine comparison (Bun) locally and on GitHub, and `DESIGN.md` §1.8. Recorded D-018. Opened pull request #2.
 - **2026-11-15, session 2** (Fable 5.2, claude.ai). Built all of Phase 0 on branch `phase-0-foundations`: kernel (0.1), guardrail tests (0.2), harness (0.3), benchmark (0.4), stack checkpoint (0.5). Milestones 0.2–0.4 were tagged for Opus; they were done in the same Fable session because the owner had already switched models and splitting would have cost him a round trip. Recorded D-012 to D-017. Added `DESIGN.md` §1.5–§1.7. Opened pull request #1; GitHub's checks passed. The session was interrupted once partway and resumed from the files on disk.
 - **2026-11-15, session 1** (Opus 5.5, claude.ai). Wrote the full plan: `CLAUDE.md`, `GUARDRAILS.md`, `DESIGN.md`, `ROADMAP.md`, `DECISIONS.md`, `RESEARCH.md`, `ORIGIN.md`, experiment template, tuning log. No code, per the owner's instruction to brainstorm and plan first.

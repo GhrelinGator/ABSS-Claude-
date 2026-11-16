@@ -443,11 +443,11 @@ export function checkAmbient(file: string, text: string): string[] {
     if (m[2] === undefined) report(m.index, 'uses the Math object other than as Math.<member>');
     else if (m[2] === 'random') report(m.index, 'uses Math.random (draw from a seeded stream instead)');
     else if (!EXACT_MATH.has(m[2])) {
-      report(m.index, `uses Math.${m[2]}, whose result is implementation-defined (see docs/DESIGN.md §1.5)`);
+      report(m.index, `uses Math.${m[2]}, whose result differs between engines; use src/sim/core/dmath.ts (docs/DESIGN.md §1.8)`);
     }
   }
   for (const m of code.matchAll(/\*\*/g)) {
-    report(m.index, 'uses the ** operator, whose result is implementation-defined (multiply instead)');
+    report(m.index, 'uses the ** operator, whose result differs between engines; multiply, or use pow from src/sim/core/dmath.ts');
   }
   return problems;
 }

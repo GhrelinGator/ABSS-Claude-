@@ -81,14 +81,15 @@ If the session's model doesn't match the tag, proceed anyway, but say so at the 
 
 TypeScript, strict mode, erasable syntax only (no enums, namespaces, or parameter properties). Node 22.18+ runs the `.ts` files directly: there is no build step and nothing to install. Tests use Node's built-in runner. Hot loops are data-oriented (typed arrays) so they can be ported to Rust/WASM if a benchmark demands it.
 
-Inside `src/sim/`: seeded streams only (`Math.random` is banned), and only arithmetic that is bit-identical on every JavaScript engine (no `Math.sin`, `exp`, `log`, `pow`, or `**`; see `DESIGN.md` §1.5).
+Inside `src/sim/`: seeded streams only (`Math.random` is banned), and only arithmetic that is bit-identical on every JavaScript engine. That means no `Math.sin`, `exp`, `log`, `pow`, or `**`: use `src/sim/core/dmath.ts` instead, with angles in turns and directions as unit vectors (`DESIGN.md` §1.8).
 
 ```
 npm test                   all tests
 npm run test:guardrails    guardrail tests only
 npm run typecheck          full type check (needs `npm install` once)
 tsc -p tsconfig.pure.json  type check of sim + analysis alone; works without `npm install` if tsc is on the PATH
-npm run bench              speed benchmark
+npm run bench              speed benchmark (`node bench/math.ts` times the math functions)
+node tests/cross-engine/print-digests.ts    run with `bun` too and diff: two engines must print the same
 npm run experiment -- experiments/<id>/spec.json
 ```
 

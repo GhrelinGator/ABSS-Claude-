@@ -127,3 +127,39 @@ Format: ID, date, status, decision, why, alternatives considered.
 - **Decision:** Each session works on a branch and opens a pull request into `main`. A GitHub Actions workflow runs the tests and type checks on every push. The owner merges.
 - **Why:** The owner can't review TypeScript line by line, but he can see a green or red check and read a summary. The check runs on GitHub's machines, so it doesn't depend on Claude reporting its own results honestly.
 - **Consequence:** A session must start from an up-to-date `main`. If the previous session's pull request is still open, say so before doing anything else.
+
+### D-018: Portable math: what was built, how good it is, and proof it was needed
+- **Date:** 2026-11-15 · **Status:** Accepted (carries out D-014)
+- **Decision:** `src/sim/core/dmath.ts` provides `exp`, `log`, `pow`, `sinTurn`, and `cosTurn`, written with exactly-specified operations only. `rng.ts` gains `nextNormal` and `nextExponential`. Angles are measured in turns, directions are unit vectors, and there is no `atan2`. `DESIGN.md` §1.8 says how each arithmetic need of Phases 1 and 2 is met.
+- **Proof the ban was needed.** The engines' own functions were compared on 200,000 random inputs each, Node 22.23 (V8) against Bun 1.4.4 (JavaScriptCore, the engine in Safari). Share of results that differed in at least one bit:
+
+  | Built-in | Differed |
+  |---|---|
+  | `Math.atan2` | 18% |
+  | `Math.exp`, `Math.pow`, `**` | 10% |
+  | `Math.cbrt` | 8% |
+  | `Math.hypot` | 5% |
+  | `Math.sin`, `Math.cos` | 3% |
+  | `Math.log` | 0.02% |
+  | `Math.sqrt` | never |
+
+  A simulation using any of these would give a different history in the owner's browser than in Node, from the same seed.
+- **Proof the replacement works.** The same two engines produced identical digests for about 350,000 results of the portable functions and random streams, and identical state hashes for a 2,000-tick run of the kernel's test fixture. GitHub now repeats this comparison on every push.
+- **Accuracy**, against a reference computed with arbitrary-precision integers (about 8,000 inputs per function, concentrated on awkward regions):
+
+  | Function | Correctly rounded | Worst case |
+  |---|---|---|
+  | `exp` | 92.6% | 1 representable number off |
+  | `log` | 99.75% | 1 off |
+  | `sinTurn`, `cosTurn` | about 80% | 2 off (5 cases in 17,600) |
+  | `pow`, fractional exponent | not measured this way | agrees with the engine's to 13 significant digits |
+
+  `exp` and `log` also matched V8's built-ins bit for bit on 400,000 random inputs each, which is expected: both descend from the same published algorithm (fdlibm).
+- **Speed** (cloud sandbox, nanoseconds per call, portable against built-in): `exp` 16 against 14; `log` 32 against 13; `pow` with a fractional exponent 69 against 48; `sinTurn` and `cosTurn` 32 against 25; a uniform draw 11; a normal draw 55; an exponential draw 36. `pow` with a whole-number exponent takes 9, faster than the built-in.
+- **Choices made along the way:**
+  - *Turns, not radians.* Reducing an angle modulo a full circle is the hard part of sine and cosine. In turns it is exact, which also gives exact zeros and exact periodicity. Everything periodic in the sim is a fraction of a cycle anyway.
+  - *Normal draws by the polar method.* It is exact and needs only `log` and a square root. The alternative, an inverse-distribution formula, would be faster and would use one uniform draw per result, but it rests on some twenty constants and is only approximately normal. If a hot loop ever needs cheaper noise, that is the upgrade to consider.
+  - *`pow` as `exp(y·log x)`.* A correctly rounded `pow` is a large piece of work and nothing here needs one. Whole-number exponents are done by repeated multiplication, so `pow(x, 2)` is exactly `x·x`.
+  - *Not built:* `tan`, `atan2`, hyperbolic functions, `log2`, `log10`. Add one when a system needs it, with the same tests and a new digest.
+- **Safeguards that came with it:** the recorded digests live in two places (`src/sim/core/selfcheck.ts` and the guardrail test), so the arithmetic can't change by accident; the harness runs the self-check before every batch and refuses to start if this machine's arithmetic differs; the viewer should run it in the browser (Phase 1.9).
+- **Licence note:** the `exp`, `log`, sine, and cosine code is ported from fdlibm (Sun Microsystems, 1993), which allows free use provided its notice is kept. The notice is at the top of `dmath.ts`.

@@ -24,7 +24,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 
 ## Phase 1: World and ecology (~3–5k lines, 4–8 sessions)
 
-- **1.0 [F]** Portable math (D-014). List the functions Phases 1 and 2 actually need: a seasonal cycle, growth and decay curves, normally distributed draws. For each one, either write a pure-arithmetic version in `src/sim/core/dmath.ts` with accuracy tests, or pick a formulation that avoids it. Decide before any system uses one.
+- **1.0 [F]** *Done 2026-11-15 (`DESIGN.md` §1.8, `DECISIONS.md` D-018).* Portable math (D-014). List the functions Phases 1 and 2 actually need: a seasonal cycle, growth and decay curves, normally distributed draws. For each one, either write a pure-arithmetic version in `src/sim/core/dmath.ts` with accuracy tests, or pick a formulation that avoids it. Decide before any system uses one.
 - **1.1 [O]** Map generator: elevation, soil, rivers, lakes, springs, barriers. One parameter sweeps from open to circumscribed.
 - **1.2 [O]** Climate: seasons, multi-year variability process (variance as a config knob), storms, lightning.
 - **1.3 [O]** Light: day/night, moon phase, fire light radius.
@@ -33,7 +33,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 - **1.6 [O]** Real hidden causes: pathogen load in stagnant water and carcasses.
 - **1.7 [O]** Materials and objects: attributes, fracture on strike, sparks, natural shelter, accumulation shelter.
 - **1.8 [O]** Fire: ignition, spread, fuel, burnout, carriable burning sticks.
-- **1.9 [O]** **Debug viewer v0** (browser): map layers, animals, fire, time controls. It gets **its own page, served from this repository** (D-012), which needs a build step from `.ts` to `.js` and a GitHub Pages deployment. The owner should be able to *watch* from this point on, because I can't (`STATUS.md` explains why that matters). Consider moving this earlier in the phase: a viewer that shows only terrain and weather is already useful.
+- **1.9 [O]** **Debug viewer v0** (browser): map layers, animals, fire, time controls. It gets **its own page, served from this repository** (D-012), which needs a build step from `.ts` to `.js` and a GitHub Pages deployment. The owner should be able to *watch* from this point on, because I can't (`STATUS.md` explains why that matters). Consider moving this earlier in the phase: a viewer that shows only terrain and weather is already useful. On load, the viewer should run the arithmetic self-check (`src/sim/core/selfcheck.ts`) in the owner's own browser and say so plainly if it fails.
 - **1.10 [F]** Ecology balance review.
 
 **Exit:** the ecosystem without agents persists 100 simulated years across 20 seeds (no extinction cascades, no unbounded growth); fire behaves plausibly; both landscape types generate; the viewer runs.

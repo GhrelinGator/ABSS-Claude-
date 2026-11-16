@@ -26,6 +26,8 @@ export interface RunJob extends Job {
   readonly outDir: string;
   readonly saveFinalSnapshot: boolean;
   readonly repo: RepoInfo;
+  /** True if this machine's arithmetic was checked against the recorded digests before the batch started. */
+  readonly arithmeticVerified: boolean;
 }
 
 export interface RunSummary {
@@ -65,6 +67,7 @@ export function runOne(job: RunJob): RunSummary {
     snapshotFormat: SNAPSHOT_FORMAT,
     commit: job.repo.commit,
     uncommittedChanges: job.repo.dirty,
+    arithmeticVerified: job.arithmeticVerified,
     machine: getMachineInfo(),
     startedAt,
   };

@@ -11,6 +11,8 @@
 // three independent lanes. Streams share no state, so adding or removing one
 // consumer cannot shift the draws of any other.
 
+import { log } from './dmath.ts';
+
 export const STREAM_WORDS = 4;
 
 /**
@@ -108,4 +110,26 @@ export function nextInt(s: Uint32Array, o: number, n: number): number {
 /** True with probability p. */
 export function nextChance(s: Uint32Array, o: number, p: number): boolean {
   return nextFloat(s, o) < p;
+}
+
+/**
+ * Standard normal draw (mean 0, variance 1), by the polar method. It takes a
+ * varying number of draws from the stream, which is fine: the count depends
+ * only on the stream itself.
+ */
+export function nextNormal(s: Uint32Array, o: number): number {
+  let u: number;
+  let q: number;
+  do {
+    u = nextFloat(s, o) * 2 - 1;
+    const v = nextFloat(s, o) * 2 - 1;
+    q = u * u + v * v;
+  } while (q >= 1 || q === 0);
+  return u * Math.sqrt((-2 * log(q)) / q);
+}
+
+/** Exponential draw with mean 1: the waiting time until the next event of a process with rate 1. */
+export function nextExponential(s: Uint32Array, o: number): number {
+  const v = log(1 - nextFloat(s, o));
+  return v === 0 ? 0 : -v;
 }

@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
+import { arithmeticProblems } from '../sim/index.ts';
 import { getRepoInfo } from './manifest.ts';
 import { runOne } from './run.ts';
 import type { RunJob, RunSummary } from './run.ts';
@@ -25,6 +26,15 @@ export interface BatchOptions {
 type WorkerReply = { ok: true; index: number; summary: RunSummary } | { ok: false; index: number; error: string };
 
 export async function runBatch(spec: ExperimentSpec, options: BatchOptions): Promise<RunSummary[]> {
+  // Refuse to produce results on a machine whose arithmetic differs from everyone else's:
+  // they could never be reproduced or compared (docs/DECISIONS.md D-014).
+  const mismatches = arithmeticProblems();
+  if (mismatches.length > 0) {
+    throw new Error(
+      `This machine's arithmetic does not match the recorded digests, so runs made here could not be reproduced elsewhere:\n  ${mismatches.join('\n  ')}`,
+    );
+  }
+
   const experimentDir = join(options.outRoot, spec.name);
   if (existsSync(experimentDir) && !options.overwrite) {
     throw new Error(`"${experimentDir}" already exists. Results are never overwritten unless you ask for it.`);
@@ -38,6 +48,7 @@ export async function runBatch(spec: ExperimentSpec, options: BatchOptions): Pro
     outDir: join(experimentDir, job.condition, `seed-${job.seed}`),
     saveFinalSnapshot: options.saveFinalSnapshot ?? false,
     repo,
+    arithmeticVerified: true,
   }));
   const total = jobs.length;
 

@@ -69,6 +69,7 @@ test('a batch writes manifests and metrics, and reproduces an in-process run', a
 
       const manifest = JSON.parse(readFileSync(join(summary.outDir, 'manifest.json'), 'utf8'));
       assert.equal(manifest.outcome, 'completed');
+      assert.equal(manifest.arithmeticVerified, true);
       assert.equal(manifest.seed, summary.seed);
       assert.equal(manifest.condition, summary.condition);
       assert.equal(manifest.finalStateHash, summary.finalStateHash);

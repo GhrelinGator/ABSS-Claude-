@@ -89,6 +89,47 @@ Agents decide from the same tick-start state, and conflicts (two agents taking t
 ### 1.7 Compute budget (measured in Phase 0)
 The §1.3 target (500 agents, one generation per 10 real minutes, one core) works out to **about 6.9 microseconds per agent per tick** for everything: bodies, perception, minds. The arithmetic: a generation is taken as 25 simulated years × 48 days × 144 ticks = 172,800 ticks, so the target is 288 ticks per second at 500 agents. Measured kernel overhead and what it leaves for minds are in `STATUS.md` and `DECISIONS.md` D-016.
 
+### 1.8 Portable math (Phase 1.0)
+`src/sim/` may not call the engine's `Math.sin`, `exp`, `log`, or `pow` (§1.5), so the kernel supplies its own. They use only exactly-specified operations, so they return the same bits on every engine. They live in `src/sim/core/dmath.ts`:
+
+| Function | What it is | Notes |
+|---|---|---|
+| `exp(x)`, `log(x)` | natural exponential and logarithm | the classic fdlibm algorithms |
+| `pow(x, y)` | x to the y | repeated multiplication for whole-number y; `exp(y·log x)` otherwise, which is good to about 13 significant digits |
+| `sinTurn(t)`, `cosTurn(t)` | sine and cosine of an angle given in **turns** (1 turn = one full cycle) | exact at quarter turns; exactly periodic |
+| `nextNormal`, `nextExponential` (in `rng.ts`) | normally and exponentially distributed draws from a stream | polar method; `−log(1 − u)` |
+
+Square roots need nothing special: the standard makes `Math.sqrt` exact.
+
+Accuracy, measured against an arbitrary-precision reference: `exp` and `log` are never more than one representable number away from the correctly rounded result, and `sinTurn` and `cosTurn` never more than two. Agreement between engines has been checked too: Node (the V8 engine) and Bun (JavaScriptCore, the engine in Safari) produce identical results, and GitHub repeats that comparison on every push.
+
+**Rules for using them**
+1. **Angles are in turns, never radians.** Everything periodic in the sim is naturally a fraction of a cycle (time of day, time of year, moon phase). Reducing an angle given in turns is exact; reducing one given in radians is not.
+2. **Directions are unit vectors, never angles.** Draw a direction by rejection from the unit disc; turn it by adding a perturbation and renormalising with `Math.sqrt`. There is no `atan2` and no need for one.
+3. **Call them at setup, not in hot loops, wherever the model allows.** A call costs 15 to 70 nanoseconds on the Phase 0 benchmark machine (1.2 to 2.5 times the engine's built-ins), and the whole budget is 6.9 microseconds per agent per tick (§1.7). A decay with a half-life becomes a constant factor computed once in a system's `create`; the per-agent, per-tick loop only multiplies.
+4. **Changing `dmath.ts` changes every run.** A guardrail test (`portable-math.test.ts`) pins its results to recorded digests, which are kept in two places so they can't be changed by accident. Any change needs a `DECISIONS.md` entry.
+5. **A machine has to pass the same check before it may produce results.** `src/sim/core/selfcheck.ts` recomputes the digests; the harness runs it before every batch and refuses to start on a mismatch. The viewer should run it in the browser too.
+
+**How the needs of Phases 1 and 2 are met.** This table is about arithmetic only. Whether a mechanism should exist, and in what form, is decided in its own section and phase.
+
+| If a system needs… | Do it this way | Uses |
+|---|---|---|
+| a seasonal or daily cycle, or moon phase | `cosTurn` / `sinTurn` of the year or day fraction from the calendar | dmath |
+| a direction (wind, a step, seed dispersal) | unit vector by rejection; perturb and renormalise | exact operations |
+| terrain noise | noise on hashed lattice points with polynomial blending | exact operations |
+| growth or decay per step (regrowth, spoilage, fatigue, forgetting) | multiply by a constant factor each step; get the factor from the half-life with `exp`, once, at setup | dmath at setup |
+| events at a rate (storms, lightning) | a per-tick probability, `1 − exp(−rate·dt)`, computed once at setup | dmath at setup |
+| a hazard that grows exponentially with age | multiply the hazard by a constant factor per year | exact operations |
+| normally distributed variation (mutation, developmental noise, climate anomalies) | `nextNormal` on the consumer's own stream | dmath |
+| waiting times, dispersal distances | `nextExponential` | dmath |
+| scaling with body size (rate ∝ mass^0.75) | `Math.sqrt(Math.sqrt(m·m·m))`, or `pow` | exact operations, or dmath |
+| a temperature response that doubles every N degrees | `exp` of a linear function of temperature | dmath |
+| diminishing returns from practice | `pow(n, −b)`, or an incremental update | dmath |
+| a saturating response | `x / (1 + x)`, or `1 / (1 + exp(−x))` | exact operations, or dmath |
+| softmax choice (Phase 3) | `exp`; its cost goes into the Phase 3.1 measurement | dmath |
+
+Measured accuracy and speed are in `DECISIONS.md` D-018.
+
 ---
 
 ## 2. World
