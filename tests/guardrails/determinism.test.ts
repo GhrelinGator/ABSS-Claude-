@@ -93,10 +93,14 @@ for (const { label, pipeline, setup } of PIPELINES) {
     assert.equal(hashSim(a), hashSim(b));
   });
 
-  test(`${label}: state never holds NaN or infinite values`, () => {
+  test(`${label}: state never holds NaN or infinite values over ${TICKS} ticks`, () => {
+    // Long enough for a full compressed year: rare cases (a cell's plant cover rounding
+    // past 1, say) take weeks of simulated time to turn up.
     const sim = fresh(11);
-    stepSim(sim, 2_000);
-    assert.deepEqual(nonFiniteProblems(sim.state), []);
+    for (let t = 0; t < TICKS; t += CHECK_EVERY) {
+      stepSim(sim, CHECK_EVERY);
+      assert.deepEqual(nonFiniteProblems(sim.state), [], `at tick ${sim.state.tick}`);
+    }
   });
 }
 

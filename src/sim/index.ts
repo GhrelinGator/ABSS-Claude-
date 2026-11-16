@@ -12,6 +12,7 @@ export * as clock from './core/clock.ts';
 export * as dmath from './core/dmath.ts';
 export * as light from './world/light.ts';
 export * as climate from './world/climate.ts';
+export * as plants from './world/plants.ts';
 export { Soil, TERRAIN_LAYERS, Water } from './world/terrain.ts';
 export { defineDial, defineDrive, definePrimitive, defineSystem } from './core/registry.ts';
 export type { DialDef, DriveDef, PrimitiveDef, SystemDef, SystemSpec } from './core/registry.ts';
