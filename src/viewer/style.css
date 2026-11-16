@@ -84,6 +84,11 @@ button:disabled { opacity: 0.5; }
 input[type="number"] { width: 9.5em; }
 label.inline { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 
+.toggles { gap: 6px 18px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--muted); }
+.toggle input { width: 22px; height: 22px; accent-color: var(--accent); margin: 0; }
+.calm-note { margin: 6px 0 0; font-size: 0.82rem; color: var(--warn); }
+.calm-note[hidden] { display: none; }
 .layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .layers button { min-width: 0; padding: 6px 2px; font-size: 0.92rem; }
 .layers button.on { background: #3a4150; border-color: #7a8699; color: #fff; }

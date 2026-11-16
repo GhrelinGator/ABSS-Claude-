@@ -39,7 +39,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 
 | # | Question | Needed by |
 |---|---|---|
-| Q6 | **Pages source:** Pages is on, but its source is "Deploy from a branch", so GitHub's own README build overwrites the viewer seconds after the workflow deploys it (seen in the deployment records on 2026-11-16). Fix: Settings → Pages → Build and deployment → Source: **"GitHub Actions"**. Claude can't reach that setting. Meanwhile the claude.ai preview is current. | now |
+| Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
 | Q7 | Can the owner's computer run Node 22.18 or newer for long batches, and how many cores does it have? Cloud sessions stop background work a few minutes after a reply. | Phase 3 |
 | Q1 | Player role, if observer-only turns out not to be what he wants (D-011). | Phase 9 |
 
@@ -80,6 +80,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 
 ## Session log
 
+- **2026-11-15, session 6** (Opus 5.5, claude.ai; same chat). Owner switched the Pages source to GitHub Actions; the live site now shows the viewer (redeployed by hand once). At the owner's request, added switches for day-and-night and weather effects, off automatically above 1 day per second so the map can't flash. Pull request #5.
 - **2026-11-15, session 5** (Opus 5.5, claude.ai; same chat). Owner merged #1–#3 and switched Pages on, but with the branch source (see Q6). Built Phase 1.2: climate, storms, lightning, soil moisture, the `weather` observer, and weather in the viewer, plus opening the page at a moment named in its address. Caught and fixed a confound: the variability knob was raising average rain (D-023). Republished the preview to the same artifact. Opened pull request #4.
 - **2026-11-15, session 4** (Opus 5.5, claude.ai; same chat). Phase 1.1 map generator, sun and moon (1.3), and viewer v0 (1.9), on branch `phase-1.1-terrain-viewer`, stacked on #2 because #1 and #2 were still unmerged. Iterated on the generator five times from rendered maps (D-020). Added the kernel's setup step (D-019), the `landscape` observer, the page build and its Pages workflow, and a test that the built page runs the same simulation as the source. Published a preview of the page as a private claude.ai artifact: https://claude.ai/artifact/NuwgaZCS8EtX3qTfnz6bFJ (slug `b1744980-a2ab-4b1a-a42e-66a75f44dcfd`). Later sessions should republish to that slug (`npm run build:site`, then publish every file under `dist/site/`) rather than create a new one. Opened pull request #3; GitHub's checks passed.
 - **2026-11-15, session 3** (Fable 5.2, claude.ai; same chat as session 2). Phase 1.0, portable math, on branch `phase-1.0-portable-math`, built on the unmerged Phase 0 branch because pull request #1 was still open. Added `dmath.ts`, `selfcheck.ts`, normal and exponential draws, accuracy tests against an arbitrary-precision reference, recorded digests, a second-engine comparison (Bun) locally and on GitHub, and `DESIGN.md` §1.8. Recorded D-018. Opened pull request #2.
