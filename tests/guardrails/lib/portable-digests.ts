@@ -20,13 +20,16 @@ export function fixtureRunHashes(): string[] {
   return hashes;
 }
 
-/** Hashes of freshly generated landscapes: the real pipeline, at three circumscription settings, on a 192-cell map. */
+/** Hashes of the real pipeline after ten days (landscape and weather), at three circumscription settings, on a 192-cell map. */
 export function worldHashes(): string[] {
   return [0, 0.6, 1].map((circumscription) => {
     const raw = JSON.parse(JSON.stringify(defaultConfig(41)));
     raw.world.widthCells = 192;
     raw.world.heightCells = 192;
     raw.world.circumscription = circumscription;
-    return hashSim(createSim(validateConfig(raw), SIM_PIPELINE));
+    const sim = createSim(validateConfig(raw), SIM_PIPELINE);
+    // Ten days, so the weather, storms, and soil moisture are compared too.
+    stepSim(sim, 1440);
+    return hashSim(sim);
   });
 }

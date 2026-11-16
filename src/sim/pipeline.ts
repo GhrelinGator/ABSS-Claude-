@@ -3,9 +3,12 @@
 // are added only by the roadmap phase that introduces them.
 
 import type { SystemDef } from './core/registry.ts';
+import { climate } from './world/climate.ts';
 import { terrain } from './world/terrain.ts';
 
 export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   // Phase 1.1: the landscape, built once before tick 0.
   terrain,
+  // Phase 1.2: weather, storms, lightning, soil moisture.
+  climate,
 ]);

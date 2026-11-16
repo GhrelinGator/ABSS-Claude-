@@ -9,6 +9,8 @@ import type { EntityStore } from './core/store.ts';
 import type { Sim } from './sim.ts';
 
 export type { SimConfig } from './config.ts';
+// Pure functions and constants for reading the weather; none of them can change the simulation.
+export { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, stormActive } from './world/climate.ts';
 
 /** A numeric array that can be read but not written. */
 export interface RoArray {
@@ -39,6 +41,8 @@ export interface SimView {
   layerNames(): string[];
   /** Current values of a grid layer: one per cell, row by row, cell (i, j) at index j * widthCells + i. */
   layer(name: string): RoArray;
+  /** Current readings of a state part that offers them (such as the weather), or null. */
+  readings(name: string): RoArray | null;
 }
 
 function storeView(store: EntityStore): StoreView {
@@ -74,5 +78,9 @@ export function viewOf(sim: Sim): SimView {
     },
     layerNames: () => state.world.layerNames(),
     layer: (name) => state.world.layer(name),
+    readings: (name) => {
+      const part = state.parts.find((candidate) => candidate.name === name);
+      return part && part.readings ? part.readings() : null;
+    },
   };
 }

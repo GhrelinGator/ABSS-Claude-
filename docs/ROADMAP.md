@@ -26,7 +26,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 
 - **1.0 [F]** *Done 2026-11-15 (`DESIGN.md` §1.8, `DECISIONS.md` D-018).* Portable math (D-014). List the functions Phases 1 and 2 actually need: a seasonal cycle, growth and decay curves, normally distributed draws. For each one, either write a pure-arithmetic version in `src/sim/core/dmath.ts` with accuracy tests, or pick a formulation that avoids it. Decide before any system uses one.
 - **1.1 [O]** *Done 2026-11-15 (`DESIGN.md` §2.10, D-019, D-020).* Map generator: elevation, soil, rivers, lakes, springs, barriers. One parameter sweeps from open to circumscribed.
-- **1.2 [O]** Climate: seasons, multi-year variability process (variance as a config knob), storms, lightning.
+- **1.2 [O]** *Done 2026-11-15 (`DESIGN.md` §2.11, D-023), plus a daily soil-moisture layer for plants and fire to read.* Climate: seasons, multi-year variability process (variance as a config knob), storms, lightning.
 - **1.3 [O]** *Sun and moon done 2026-11-15 (`DESIGN.md` §2.4, D-021); fire light waits for 1.8.* Light: day/night, moon phase, fire light radius.
 - **1.4 [O]** Plants: species attributes from `DESIGN.md` §2.5, including delayed toxicity, processing needs, storability, synchrony, visibility, and seed dispersal.
 - **1.5 [O]** Animals: prey types, pursuit and ambush predators, scavengers, migration, fire avoidance, population dynamics.

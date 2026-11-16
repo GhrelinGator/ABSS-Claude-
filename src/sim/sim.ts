@@ -28,6 +28,8 @@ export interface StatePart {
   readonly holdsLearned: boolean;
   /** Required when holdsLearned is true: does the part hold nothing for this agent slot? */
   learnedEmptyFor?(agentSlot: number): boolean;
+  /** Optional numeric readings for observers and the viewer, read through src/sim/readonly.ts. */
+  readings?(): ArrayLike<number>;
   write(sink: Sink): void;
   read(source: Source): void;
 }

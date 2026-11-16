@@ -9,5 +9,5 @@
     "default": {},
     "long-year": { "time": { "daysPerYear": 60 } }
   },
-  "observers": ["census"]
+  "observers": ["census", "landscape", "weather"]
 }

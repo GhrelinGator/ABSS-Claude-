@@ -2,7 +2,7 @@
 
 A simulation where society, hierarchy, and religion are meant to **emerge**, not be scripted. Agents start knowing nothing. They have bodies that burn calories, get hurt, age, and reproduce; minds that learn from experience and from each other; and the ability to point and to invent signals. Everything social, from food sharing and pair bonds to leaders and gods, has to grow out of that, or it doesn't happen.
 
-**Status:** the landscape exists (rivers, lakes, soil, deserts, day and night), and a viewer page shows it. Nothing lives in it yet: no plants, animals, bodies, or minds. See [`docs/STATUS.md`](docs/STATUS.md).
+**Status:** the landscape and its weather exist (rivers, lakes, soil, deserts, seasons, droughts, storms, lightning, day and night), and a viewer page shows them. Nothing lives in it yet: no plants, animals, bodies, or minds. See [`docs/STATUS.md`](docs/STATUS.md).
 
 ## The one rule
 
