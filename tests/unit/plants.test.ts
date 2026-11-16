@@ -186,7 +186,8 @@ test('fruit and seeds ripen only in their season; nuts keep long after theirs, b
 });
 
 test('every species persists for fifty years and no cell is ever over-full', () => {
-  const sim = makeSim(3, 64);
+  // Plants alone: browsing animals legitimately thin some species, which the animal tests cover.
+  const sim = makeSim(3, 64, [terrain, climate, plants]);
   const start = PLANT_SPECIES.map((s) => sum(cover(sim, s)));
   for (let year = 0; year < 50; year++) stepDays(sim, sim.config.time.daysPerYear);
   const N = cover(sim, PLANT_SPECIES[0]).length;

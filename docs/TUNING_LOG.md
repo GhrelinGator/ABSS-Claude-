@@ -46,3 +46,21 @@ Append-only. Every parameter or mechanism change made for tuning reasons goes he
 - **Plausibility target:** daily food that a real stand could supply; principle as in D-024 (the edible part is daily physiology). The roots' real turnover rates are my estimate, not checked against a source; `RESEARCH.md` has no measured tuber regrowth rate yet, and Phase 3's calibration of foraging return rates will test them.
 - **Withdrawn figure:** I first wrote that the old version gave 1.6 million. The probe behind that number counted the one-time harvest of the whole standing stock. The figures above are from the corrected probe, and the test in `tests/unit/plants.test.ts` measures the same way.
 - **Social metrics involved:** none; no agents exist yet.
+
+### T-004: Animals: eleven corrections while building Phase 1.5
+- **Date / session model:** 2026-11-16, Opus 5.5.
+- **Process note:** logged at the end of the session, again. That's three milestones in a row; the habit isn't fixing itself. Next session that tunes anything: write the entry first, even a one-line one.
+- **Social metrics involved:** none. No agents exist. Every target is an ecological one: animals not starving beside food, kill rates in the published range, populations persisting and staying bounded.
+- **Rounds** (symptom → classification → change):
+  1. About 2,700 hunger deaths in three years with forage plentiful. Grazers aimed at the centre of a lake cell, couldn't enter it, stopped one cell short of drinking, and grazed their spot bare. **(a) bug.** Thirsty animals follow the shortest land path to the shore and step sideways along lake edges.
+  2. Big cats all starved: they left their kill to rest in cover and never came back. **(a)** A cat stays with its kill until the meat is gone.
+  3. No hare was ever caught: hares are fractions of an animal per cell, and the code needed one whole hare in one cell. **(a)** One hare is taken across the nine cells around.
+  4. Hares were set to breed at four times their death rate with nothing but starvation to stop them. **(b)** Births 6 → 4 per real year, deaths 1.5 → 1, plus a crowding death rate (disease and stress rise with density).
+  5. Herbivores starved suddenly rather than gradually; births ignored body condition. **(b)** Births scale with condition above 0.4; hunger deaths rise gradually below 0.3.
+  6. Predators placed in desert never reached prey. **(b)** Predators start where forage is, and a predator's range anchor drifts a fifth of the way toward each kill.
+  7. Cats waited in ambush 226 m from deer that never came closer. **(a)** Hungry cats stalk to within striking range, using the tallest cover; strikes from open ground succeed a quarter as often.
+  8. Cats killed 0.28 deer a day, about double a real leopard-sized cat: fed animals kept eating 2 kg an hour into a full stomach. **(a)** Every meal is capped at what the animal can hold (wolves and grazers too).
+  9. Forage ran down under grazing because it regrew too slowly. **(b)** Forage refill 2.5 → 6 per real year (an estimate; still about 3 kg per hectare per day at full grass cover, under real grassland growth).
+  10. Over 100 years, wolves overshot to about 50 on a small map and prey went extinct. **(b)** One litter per pack (2.5 surviving pups per real year) instead of births per wolf; packs at most 8; pack anchors at least 15 km apart (was 12, first 8); wolves sense prey within 3 km (was 5). Deer births 0.4 → 0.45; aurochs 0.3 → 0.25 births, 0.06 → 0.08 deaths.
+  11. Deer stripped soft plants and then out-competed aurochs for grass; overgrazing killed nut woods. **(b)** Two forage stocks (grass-like and browse); deer browse first and take at most 30% grass; no animal can eat the last quarter of a plant's forage; only soft plants die back from overgrazing, below 30% of full (was 20%), at half the rate.
+- **Null-model re-run:** not applicable; nothing here is a hoped-for social phenomenon.

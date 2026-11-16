@@ -29,7 +29,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 - **1.2 [O]** *Done 2026-11-15 (`DESIGN.md` §2.11, D-023), plus a daily soil-moisture layer for plants and fire to read.* Climate: seasons, multi-year variability process (variance as a config knob), storms, lightning.
 - **1.3 [O]** *Sun and moon done 2026-11-15 (`DESIGN.md` §2.4, D-021); fire light waits for 1.8.* Light: day/night, moon phase, fire light radius.
 - **1.4 [O]** *Done 2026-11-15 (`DESIGN.md` §2.12, D-024, T-003), except seed dispersal by animals (moved to 1.5) and by agents (§7.13, once agents eat). Nutrients other than calories wait until a body needs one.* Plants: species attributes from `DESIGN.md` §2.5, including delayed toxicity, processing needs, storability, synchrony, visibility, and seed dispersal.
-- **1.5 [O]** Animals: prey types, pursuit and ambush predators, scavengers, migration, fire avoidance, population dynamics. Also, from 1.4: grazing and browsing on plant cover, and seeds that animals carry and drop.
+- **1.5 [O]** *Done 2026-11-16 (`DESIGN.md` §2.13, D-026, T-004), except fire avoidance (waits for 1.8).* Animals: prey types, pursuit and ambush predators, scavengers, migration, fire avoidance, population dynamics. Also, from 1.4: grazing and browsing on plant cover, and seeds that animals carry and drop.
 - **1.6 [O]** Real hidden causes: pathogen load in stagnant water and carcasses.
 - **1.7 [O]** Materials and objects: attributes, fracture on strike, sparks, natural shelter, accumulation shelter.
 - **1.8 [O]** Fire: ignition, spread, fuel, burnout, carriable burning sticks.

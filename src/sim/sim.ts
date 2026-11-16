@@ -172,6 +172,15 @@ export function spawnAgent(sim: Sim, x: number, y: number): number {
   return slot;
 }
 
+/**
+ * Create an entity that is not an agent (an animal group, say) and return its slot.
+ * Agents are created only through spawnAgent; this refuses the agents store.
+ */
+export function spawnEntity(state: SimState, store: EntityStore): number {
+  if (store === state.agents) throw new Error('spawnEntity: create agents through spawnAgent.');
+  return store.spawn();
+}
+
 /** Advance the simulation. Each tick runs every due system in pipeline order, then moves the clock. */
 export function stepSim(sim: Sim, ticks = 1, probe?: StepProbe): void {
   const { pipeline, runners, state } = sim;

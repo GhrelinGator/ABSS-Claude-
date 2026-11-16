@@ -2,9 +2,9 @@
 // any arithmetic, because nothing here feeds back into the simulation.
 
 import type { RoArray, SimView } from '../sim/index.ts';
-import { plants } from '../sim/index.ts';
+import { animals, plants } from '../sim/index.ts';
 
-export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe';
+export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe' | 'animals';
 
 /** Display names and colours of the plant species, in catalogue order. */
 export const PLANT_NAMES: Readonly<Record<string, string>> = {
@@ -28,6 +28,20 @@ export const PLANT_COLORS: Readonly<Record<string, [number, number, number]>> = 
   reed: [60, 150, 140],
 };
 const BARE: [number, number, number] = [176, 156, 120];
+
+/** Dot colours for animal groups, drawn on every layer, by kind number. */
+export const ANIMAL_DOT_COLORS: Readonly<Record<number, [number, number, number]>> = {
+  1: [150, 92, 40],
+  2: [20, 18, 16],
+  3: [215, 215, 225],
+  4: [235, 140, 30],
+};
+const ANIMAL_DOTS: ReadonlyArray<[string, [number, number, number]]> = [
+  ['Deer', ANIMAL_DOT_COLORS[1]],
+  ['Aurochs', ANIMAL_DOT_COLORS[2]],
+  ['Wolves', ANIMAL_DOT_COLORS[3]],
+  ['Big cat', ANIMAL_DOT_COLORS[4]],
+];
 
 export const SOIL_COLORS: ReadonlyArray<[number, number, number]> = [
   [132, 126, 118], // rock
@@ -60,6 +74,9 @@ export interface Landscape {
   plantCover: RoArray[];
   /** Kilograms of each species' edible part in each cell, in catalogue order. */
   plantFood: RoArray[];
+  /** Hares per cell, and kilograms of carcass meat per cell. */
+  hare: RoArray;
+  carcass: RoArray;
   /** 0 (shadow) to 1 (lit), from light falling from the north-west. */
   shade: Float32Array;
   minElevation: number;
@@ -103,6 +120,8 @@ export function readLandscape(view: SimView): Landscape {
     moisture: view.layer('water.soilMoisture'),
     plantCover: plants.PLANT_SPECIES.map((s) => view.layer(plants.coverLayer(s))),
     plantFood: plants.PLANT_SPECIES.map((s) => view.layer(plants.foodLayer(s))),
+    hare: view.layer(animals.HARE_LAYER),
+    carcass: view.layer(animals.CARCASS_LAYER),
     shade,
     minElevation,
     maxElevation,
@@ -196,6 +215,18 @@ export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray):
         c = [c[0] * light, c[1] * light, c[2] * light];
         break;
       }
+      case 'animals': {
+        // Hares per km² on a log scale from 1 to 100, carcasses in red.
+        if (land.carcass[k] > 5) {
+          c = [200, 40, 40];
+        } else {
+          const perKm2 = land.hare[k] * (1e6 / (land.cellSizeM * land.cellSizeM));
+          const t = perKm2 <= 1 ? 0 : Math.min(1, Math.log10(perKm2) / 2);
+          c = mix([46, 44, 40], [190, 170, 120], t);
+          c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
+        }
+        break;
+      }
       case 'ripe': {
         let kcal = 0;
         for (let s = 0; s < species.length; s++) if (ripe[s] > 0) kcal += plantFood[s][k] * ripe[s];
@@ -241,6 +272,8 @@ export function legendFor(mode: LayerMode, land: Landscape): string {
       return '<span>Parched<span class="ramp" style="background:linear-gradient(90deg,rgb(176,112,60),rgb(206,196,120),rgb(52,122,92))"></span>Soaked (water in the soil, updated daily)</span>';
     case 'plants':
       return '<span>Colour of the plant covering most of each patch:</span>' + plants.PLANT_SPECIES.map((s) => swatch(PLANT_COLORS[s.name] ?? [255, 0, 255], PLANT_NAMES[s.name] ?? s.name)).join('') + swatch(BARE, 'Bare ground') + water;
+    case 'animals':
+      return '<span>Hares: few<span class="ramp" style="background:linear-gradient(90deg,rgb(46,44,40),rgb(190,170,120))"></span>100 per km²</span>' + swatch([200, 40, 40], 'Carcass') + ANIMAL_DOTS.map(([name, color]) => swatch(color, name)).join('') + water;
     case 'ripe':
       return '<span>None<span class="ramp" style="background:linear-gradient(90deg,rgb(40,38,34),rgb(70,60,40),rgb(214,150,50),rgb(255,236,150))"></span>10 million kcal per hectare (from 1,000)</span><span>Fruit, seeds and nuts waiting to be picked (not roots underground, not nightshade)</span>' + water;
   }

@@ -53,6 +53,7 @@ Agents use small, structured learners whose content is learned. An LLM brings al
 - **Calendar compression:** a simulated year is shorter than 365 days (default 48 days, so 12 days per season). Lifespans, maturity, and gestation are expressed in years and scale with it. **Ratios are preserved**: the fraction of life spent as a dependent child, interbirth interval relative to lifespan, and so on. This is the main lever for getting enough generations.
 - Sleeping agents update coarsely (once per hour), since little happens while asleep.
 - The environment updates on its own slower clock: plants daily, climate per season.
+- **Exception for food (D-024, D-026):** anything agents could eat runs on real days, so food per km² per day, and with it how many people the land can feed, is realistic: the edible parts of plants, and animals' eating, hunting, births and deaths. Only the timing (fruiting windows, birth seasons) follows the compressed calendar.
 
 ### 1.2 Space [provisional]
 - Environment grid: 512 × 512 cells, 100 m per cell (about 51 km per side), so several populations can start out of contact.
@@ -316,6 +317,41 @@ The rule: **the plant is life history, its edible part is daily physiology.**
 **Not in this version:** grazing and browsing (Phase 1.5); seeds carried and dropped by animals (1.5) and by agents (§7.13, once agents eat); fire (1.8); plants as building material (1.7); individual trees; and nutrients other than calories, because bodies (§3) account only energy and water so far. If a body ever needs a nutrient, each species gains a column for it then. Riverbank soil also dries in a drought exactly like any other soil, because §2.11 has no water table; in long runs with large swings, reeds and greens can fall to about a fifth of their starting cover (a question for the ecology review, 1.10).
 
 ---
+
+### 2.13 Animals (Phase 1.5)
+Animals are environment: simple drives, no learning. They respond to food, water, warmth, and each other, and (from Phase 3) to agents only as large moving bodies. Implemented in `src/sim/world/animals.ts` as one system, `world.animals`, running after the plants.
+
+**Which clock (extends D-024).** A whole animal is food, so everything that sets how much meat and danger a square kilometre holds per day runs on **real days**: eating, drinking, hunting, kill rates, births, deaths, and rotting. Only the *timing* of births follows the compressed calendar: births fall in a short spring window each 48-day year, sized so that births per real day match the real annual rate (a wolf pack's five pups a real year become about 0.66 per compressed year). The price: animal populations rise and fall on real-year timescales, so an area hunted out recovers over many compressed years. Individual animals are not aged; death is a daily hazard, so no animal outlives a human generation in any visible way.
+
+**Kinds.**
+
+| kind | stands for | how represented | edible meat | notes |
+|---|---|---|---|---|
+| hare | small, fast prey | a density layer, `animals.hare` (animals per cell) | 2.5 kg | breeds spring to midsummer, wanders slowly between neighbouring cells |
+| deer | herd prey that migrates with the seasons | groups (typically 8, at most 30) | 55 kg | flees predators it detects; seeks cooler ground in summer and warmer in winter, which moves herds up and down the valleys |
+| aurochs | large, strong prey | groups (typically 12, at most 25) | 350 kg | stands its ground; only a wolf pack of four or more can bring one down, and then rarely |
+| wolf | pursuit predator | packs (typically 5, at most 8) around a range anchor | 15 kg | one litter a year per pack, however big the pack; hunts when hungry, by day or night, sensing prey within 3 km; chases end in a kill with a fixed chance per chase |
+| big cat | ambush predator | one animal around a range anchor | 20 kg | rests by day; hunts at night from tall cover (reeds, nut woods, tall late-summer grass) |
+| vulture | scavenger | one number for the whole map | — | eats from every carcass each day; breeds when well fed. Birds range far, so the map shares one pool |
+
+**Groups** live in their own entity store, `animals` (columns: kind, position, count, condition, target, mode, hours since drinking, range anchor, a cooldown, the id of the group being hunted, and the seeds being carried). Positions are continuous metres. Each tick every group moves toward its target; lakes block movement, rivers don't. Each group decides once an hour, on a tick set by its slot so the work is spread out:
+- **Herbivores** eat from the plants' forage in their cell, drink when within a cell of open water, and head for water when they haven't drunk for 18 hours, following the shortest way over land (a distance field built on the first run) and stepping sideways along lake shores. Otherwise they compare five nearby spots by forage and warmth and move if one is clearly better. Deer that detect a wolf pack (300 m by day, 120 m at night) run 1.5 km away.
+- **Wolves** below 70% condition hunt: they head for the nearest deer group within 3 km (an aurochs group only if the pack has four or more and no deer are near), and a chase starts when they come within 300 m. Fed wolves stay by their kill or drift back toward their anchor.
+- **Big cats** below 70% condition, at night, stalk the nearest deer group within 3 km, creeping to the tallest cover within striking range (200 m) and waiting there; a deer group within 200 m of a waiting cat is struck. The strike succeeds far more often from tall cover (a quarter as often from open ground). A cat stays with its kill until the meat is gone.
+- **Hares** update a quarter of the map each day with four days of change, like the plants; they breed in spring and summer, die faster when crowded, and wander to neighbouring cells. They are caught incidentally by hunting predators, in proportion to the hares nearby.
+- **Condition** (0 to 1) stands for fat reserves: it falls by one day's need each day and rises with food eaten. At zero, animals start dying of hunger.
+
+**Carcasses** are meat in a layer, `animals.carcass` (kg per cell), from kills and from every death. Predators eat from the carcass in their cell, vultures take a share of every carcass each day, and the rest rots, faster in warm weather.
+
+**Daily**, each group breeds (in the spring window, if in fair condition) and loses animals to its daily death hazard plus hunger; each death leaves meat. Groups above their maximum split; tiny deer groups join a nearby group. Wolf packs above eight send three wolves to found a pack 10–20 km away where no other pack's anchor is within 15 km; if they find no room, they don't survive. A big cat's young likewise need a spot with no other cat within 4 km.
+
+**Grazing and browsing (in the plants system, §2.12).** Each species carries a standing stock of leaves and stems animals can eat, refilling on real days like roots do. Grass and reeds make `plants.forage` (grass-like, kg per cell); greens, berries, nuts and tuber leaves make `plants.browse`. Aurochs and hares graze grass only; deer browse first and take at most 30% of their food as grass, as real intermediate feeders do, which keeps the two big grazers from competing head-on. No animal can eat the last quarter of a plant's forage (the base it regrows from). Grazed down below 30% of full, a patch's soft plants die back (overgrazing makes bare ground); woody plants (berry bushes, nut trees) survive being stripped.
+
+**Seeds carried by animals (moved here from 1.4).** A herbivore group picks up the seeds of grass, greens, berries, and nuts where it grazes and drops them where it goes, by setting bits in `plants.seedRain`. When a cell's plants next update, any species whose seed arrived, and whose habitat allows it, starts a small patch there. Agents can do the same later (§7.13).
+
+**Starting numbers** (estimates; the ecology review, 1.10, judges them): deer 5 per km², aurochs 0.5, hares 30, wolves 2 per 100 km², big cats 1.5 per 100 km², placed where forage is good (predators too, since that is where their prey is), with predators spread out. A predator's range anchor drifts a fifth of the way toward each of its kills, so ranges follow the prey. Calibration sources are in `RESEARCH.md`; tested bands are deliberately wide.
+
+**Not in this version:** fire avoidance (1.8 adds it: predators keep away from fire), disease in carcasses (1.6), animals noticing agents (Phase 3), injuries to predators, snow, and fish.
 
 ## 3. Bodies
 
@@ -610,6 +646,7 @@ The game has its own page (D-012), built from `src/viewer/` and served by GitHub
 - **Weather on the map** (Phase 1.2): a grey veil on wet days, a dark disc over an active storm, a flash for every lightning strike (the page steps one tick at a time so none is missed), and a soil-moisture layer redrawn daily.
 - **No flashing.** Two switches turn off the day-and-night shading and the weather effects; the page remembers them on that device. Above 1 simulated day per second both are off regardless, because night and rain would come and go several times a second (accessibility guidelines warn against flashing more than three times a second). Asked for by the owner after watching at year speed.
 - **Plants on the map** (Phase 1.4): a Plants layer colours each patch by the species covering most of it, fading to bare ground where cover is thin; a Ripe layer shows the fruit, seeds and nuts waiting to be picked, on a log scale, so the seasons pulse across the map. Both redraw daily. Tapping a cell lists its plants and the food in it, including food underground. At 1 year per second the plants cost about 0.8 s of computing per second on a desktop, so a phone may run slower than the chosen speed.
+- **Animals on the map** (Phase 1.5): every group is a dot on every layer (brown deer, black aurochs, white wolves, orange big cats; bigger dots for bigger groups). An Animals layer shows hares as a shade and carcasses in red. Tapping a cell lists the hares, any carcass, and every group within 500 m with what it is doing. With animals, a day on the full map costs about 63 ms, so the page runs slower than chosen at 1 year per second.
 
 ---
 
