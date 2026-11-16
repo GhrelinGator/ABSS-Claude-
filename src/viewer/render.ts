@@ -2,8 +2,32 @@
 // any arithmetic, because nothing here feeds back into the simulation.
 
 import type { RoArray, SimView } from '../sim/index.ts';
+import { plants } from '../sim/index.ts';
 
-export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture';
+export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe';
+
+/** Display names and colours of the plant species, in catalogue order. */
+export const PLANT_NAMES: Readonly<Record<string, string>> = {
+  grass: 'Grass',
+  tuber: 'Tuber',
+  berry: 'Berry bush',
+  nut: 'Nut tree',
+  greens: 'Greens',
+  bitterRoot: 'Bitter root',
+  nightshade: 'Nightshade',
+  reed: 'Reed',
+};
+export const PLANT_COLORS: Readonly<Record<string, [number, number, number]>> = {
+  grass: [196, 188, 92],
+  tuber: [150, 112, 70],
+  berry: [170, 60, 100],
+  nut: [38, 92, 46],
+  greens: [110, 190, 80],
+  bitterRoot: [200, 140, 60],
+  nightshade: [96, 50, 120],
+  reed: [60, 150, 140],
+};
+const BARE: [number, number, number] = [176, 156, 120];
 
 export const SOIL_COLORS: ReadonlyArray<[number, number, number]> = [
   [132, 126, 118], // rock
@@ -32,6 +56,10 @@ export interface Landscape {
   flow: RoArray;
   /** Soil moisture, 0 to 1. Changes once a day. */
   moisture: RoArray;
+  /** Share of each cell each plant species covers, in catalogue order. Changes once a day. */
+  plantCover: RoArray[];
+  /** Kilograms of each species' edible part in each cell, in catalogue order. */
+  plantFood: RoArray[];
   /** 0 (shadow) to 1 (lit), from light falling from the north-west. */
   shade: Float32Array;
   minElevation: number;
@@ -73,6 +101,8 @@ export function readLandscape(view: SimView): Landscape {
     depth: view.layer('water.depth'),
     flow: view.layer('water.flow'),
     moisture: view.layer('water.soilMoisture'),
+    plantCover: plants.PLANT_SPECIES.map((s) => view.layer(plants.coverLayer(s))),
+    plantFood: plants.PLANT_SPECIES.map((s) => view.layer(plants.foodLayer(s))),
     shade,
     minElevation,
     maxElevation,
@@ -85,7 +115,11 @@ function mix(a: [number, number, number], b: [number, number, number], t: number
 
 /** Colour every cell of the landscape for the chosen layer, into an RGBA buffer. */
 export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray): void {
-  const { W, H, elevation, rainfall, soil, kind, flow, moisture, shade, minElevation, maxElevation } = land;
+  const { W, H, elevation, rainfall, soil, kind, flow, moisture, shade, minElevation, maxElevation, plantCover, plantFood } = land;
+  const species = plants.PLANT_SPECIES;
+  const colors = species.map((s) => PLANT_COLORS[s.name] ?? [255, 0, 255]);
+  // Ripe food: the seasonal kinds a body can eat, in kcal.
+  const ripe = species.map((s) => (s.food.kind === 'seasonal' && !(s.toxin && !s.toxin.removedByProcessing) ? s.kcalPerKg : 0));
   const span = Math.max(1, maxElevation - minElevation);
   const N = W * H;
 
@@ -145,6 +179,33 @@ export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray):
         c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
         break;
       }
+      case 'plants': {
+        // The colour of whichever species covers most of the cell, fading to bare ground where cover is thin.
+        let total = 0;
+        let top = -1;
+        let topShare = 0;
+        for (let s = 0; s < species.length; s++) {
+          const share = plantCover[s][k];
+          total += share;
+          if (share > topShare) {
+            topShare = share;
+            top = s;
+          }
+        }
+        c = top < 0 ? BARE : mix(BARE, colors[top], Math.min(1, total * 1.25));
+        c = [c[0] * light, c[1] * light, c[2] * light];
+        break;
+      }
+      case 'ripe': {
+        let kcal = 0;
+        for (let s = 0; s < species.length; s++) if (ripe[s] > 0) kcal += plantFood[s][k] * ripe[s];
+        // Per hectare, on a log scale from 1,000 to 10 million kcal.
+        const perHa = kcal / ((land.cellSizeM * land.cellSizeM) / 10_000);
+        const t = perHa <= 1e3 ? 0 : Math.min(1, Math.log10(perHa / 1e3) / 4);
+        c = t === 0 ? [40, 38, 34] : t < 0.5 ? mix([70, 60, 40], [214, 150, 50], t * 2) : mix([214, 150, 50], [255, 236, 150], (t - 0.5) * 2);
+        c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
+        break;
+      }
     }
     if (mode !== 'flow' && mode !== 'rain' && mode !== 'moisture') {
       if (kind[k] === 3) c = LAKE;
@@ -178,5 +239,9 @@ export function legendFor(mode: LayerMode, land: Landscape): string {
       return '<span>Little<span class="ramp" style="background:linear-gradient(90deg,rgb(22,24,30),rgb(120,200,255))"></span>A lot of water flowing through</span>';
     case 'moisture':
       return '<span>Parched<span class="ramp" style="background:linear-gradient(90deg,rgb(176,112,60),rgb(206,196,120),rgb(52,122,92))"></span>Soaked (water in the soil, updated daily)</span>';
+    case 'plants':
+      return '<span>Colour of the plant covering most of each patch:</span>' + plants.PLANT_SPECIES.map((s) => swatch(PLANT_COLORS[s.name] ?? [255, 0, 255], PLANT_NAMES[s.name] ?? s.name)).join('') + swatch(BARE, 'Bare ground') + water;
+    case 'ripe':
+      return '<span>None<span class="ramp" style="background:linear-gradient(90deg,rgb(40,38,34),rgb(70,60,40),rgb(214,150,50),rgb(255,236,150))"></span>10 million kcal per hectare (from 1,000)</span><span>Fruit, seeds and nuts waiting to be picked (not roots underground, not nightshade)</span>' + water;
   }
 }

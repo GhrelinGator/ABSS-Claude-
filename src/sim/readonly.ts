@@ -11,6 +11,8 @@ import type { Sim } from './sim.ts';
 export type { SimConfig } from './config.ts';
 // Pure functions and constants for reading the weather; none of them can change the simulation.
 export { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, stormActive } from './world/climate.ts';
+export { PLANT_SPECIES, coverLayer, foodLayer } from './world/plants.ts';
+export { Soil, TERRAIN_LAYERS, Water } from './world/terrain.ts';
 
 /** A numeric array that can be read but not written. */
 export interface RoArray {

@@ -61,6 +61,14 @@ Grouped by the part of the design they inform. **✓** means checked against a s
 - Gabbett (2016), "The training–injury prevention paradox," *British Journal of Sports Medicine*. Acute-vs-chronic workload and injury (§3.4).
 - Wrangham (2009), *Catching Fire*. Cooking and human evolution (§2.9).
 
+## Plants and foraging (✓ checked 2026-11-15 by web search)
+
+- ✓ Einkorn yields: about 1–2 t/ha (2000m2.eu crop profile); about 832 lb/acre (≈ 930 kg/ha) in low-input Wyoming trials (University of Wyoming Extension, via sciencesocieties.org). Wild stands are put below these (§2.12).
+- ✓ Preece et al. (2017/2018), "Cereal progenitors differ in stand harvest characteristics from related wild grasses," *Journal of Ecology* 106(3):1286–1297. Progenitors have a higher harvest index, but stands don't out-yield related wild grasses per area.
+- ✓ Crittenden et al. (2009), "Foraging strategies and diet composition of Hadza children," *American Journal of Physical Anthropology*. Baobab 346, berries 320, figs 365 kcal per 100 g dry matter.
+- ✓ Pretelli et al. (2022), *Science Advances*. Mikea children average 656 net kcal per hour on ovy tubers; a Hadza 6-year-old produced 7,000 kcal in a day of fig collecting; tubers and game need more skill than fruit. (Phase 3 calibration.)
+- ✓ Forager population densities: from about 1 person per 10–50 square miles in harsh environments to 10–30 per square mile in rich ones (Palomar College anthropology notes); Ache 0.04 per km² (as compiled by Marlowe 2005, in a table at pmc.ncbi.nlm.nih.gov/articles/PMC2999363). Zhu et al. (2021), *Nature Ecology & Evolution*: short growing seasons limit forager density.
+
 ## Emergent communication (Floor 2+)
 
 - Lewis (1969), *Convention*; Skyrms (2010), *Signals*. Signaling games.

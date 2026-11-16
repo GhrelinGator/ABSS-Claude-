@@ -80,7 +80,7 @@ The kernel is the substrate everything else runs on. It contains no mechanisms o
 - **Streams.** The generator is sfc32. Each consumer's stream is seeded by hashing (run seed, domain, id) into 96 bits through three independent lanes. Per-entity streams are keyed by the entity's id, which is never reused.
 - **Portable arithmetic.** `src/sim/` may use only operations whose results the standard fixes exactly: `+ − × ÷`, `Math.sqrt`, rounding, and integer and bit operations. Engine-provided transcendental functions (`Math.sin`, `exp`, `log`, `pow`, the `**` operator, and the rest) are implementation-defined, so they are banned. When the sim first needs one, it gets a pure-arithmetic implementation in `src/sim/core/dmath.ts`. The goal: a run the owner watches in a browser can be replayed bit-for-bit in Node. State never holds NaN or infinite values.
 - **Derived caches** (the spatial index, id-to-slot maps) are rebuilt from state and never serialized.
-- **World setup happens before tick 0** (added in Phase 1.1). A system may have an `init(sim)` step that builds what exists before anything happens, such as the landscape. It runs once, in pipeline order, when a sim is created fresh, and never when a sim is loaded from a snapshot, because the snapshot already holds the result. Setup draws only from the `WORLD_GEN` stream or from hashes of the seed, and must not spawn agents.
+- **World setup happens before tick 0** (added in Phase 1.1). A system may have an `init(sim)` step that builds what exists before anything happens, such as the landscape. It runs once, in pipeline order, when a sim is created fresh, and never when a sim is loaded from a snapshot, because the snapshot already holds the result. Setup draws only from the `WORLD_GEN` stream or from hashes of the seed, and must not spawn agents. A system's `create` runs before any setup step and before a snapshot is read, so world layers are still blank inside `create`: a cache derived from them (such as the plants' habitat map) is built on the system's first run, never in `create` itself (added in Phase 1.4, after exactly that mistake).
 - **Read-only analysis.** `src/analysis/` reaches the sim only through `src/sim/readonly.ts`. A guardrail test checks that a run with observers attached hashes identically to one without.
 - **No asynchrony.** The sim is synchronous: no promises, timers, or workers inside `src/sim/`. Parallelism happens across runs, in the harness.
 
@@ -165,6 +165,7 @@ Each species has attributes:
 - **processing requirements**: some species are only safe or calorie-rich after pounding, soaking, or cooking
 - seed dispersal (including seeds passing through or discarded by animals and agents)
 - **storability** (decay rate once harvested), **harvest synchrony** (ripens all at once or trickles), **visibility** (above ground vs. underground). These three matter for the appropriability hypothesis (§7.11, E4).
+- How it is built: §2.12.
 
 ### 2.6 Animals
 Animals are environment. Simple drive-based behavior is fine.
@@ -268,6 +269,51 @@ One system, `world.climate`, keeps the weather. It draws only from the `CLIMATE`
 - This is the "dryness" plants (1.4) and fire (1.8) will read. Long-term river flow (§2.10) is static for now; rivers that shrink in droughts are a known gap.
 
 **What gets stored** (all part of the state hash and snapshots): the four anomalies, today's wet flag and rain factor, the active storm (centre, radius, end tick, extra rain), the strikes of the current tick, a count of all strikes so far, and the soil moisture layer. Temperature is computed, not stored.
+
+### 2.12 Plants (Phase 1.4)
+One system, `world.plants`, grows eight species over the whole map. Plants are part of the environment: they never respond to agents except through physical removal (eating, digging, trampling, burning), which later phases add.
+
+**Representation.** For every species and every cell: `plants.<species>.cover`, the share of the cell the species occupies (0 to 1), and `plants.<species>.food`, the kilograms of its edible part standing in the cell. All species in a cell share it: total cover never exceeds 1. Species are perceivable categories (§4.1); what they are *for* is something agents learn.
+
+**The catalogue** (`PLANT_SPECIES` in `src/sim/world/plants.ts`). Each species exists to give the world a distinct ecological niche and a distinct problem for a forager to learn. Names describe the plant, not its use.
+
+| Species | Habitat | Edible part | When | What makes it different |
+|---|---|---|---|---|
+| grass | loam and alluvium, moist to middling ground | small seeds, 3,400 kcal/kg | a short window in early summer; seeds drop within days | ripens **all at once**, seeds keep for years once gathered, very **visible**: the appropriable kind (E4). Raw seeds are poorly digested; pounding and cooking roughly double the yield |
+| tuber | loam and sand, tolerates dry ground | underground storage organ, 1,000 kcal/kg | all year, regrowing over months | **invisible** and spread out; must be dug; rots within weeks once dug up |
+| berry | most soils, moist ground, sunny | fruit, 600 kcal/kg | mid to late summer, ripening a little at a time | edible raw; rots within days on the bush and once picked |
+| nut | trees on loam and thin soil, not too high | nuts in shell, 3,000 kcal/kg | a burst in autumn | keeps for many months; the shell must be cracked |
+| greens | wet loam and alluvium | leaves, 300 kcal/kg | spring through summer | everywhere and safe, but few calories per hour of picking |
+| bitter root | sand and thin soil, dry tolerant | root, 1,500 kcal/kg | all year | rich in calories but **toxic raw, with a delayed effect** (illness hours later); soaking or cooking removes the toxin |
+| nightshade | disturbed ground near water and on loam | berries, 400 kcal/kg | late summer, alongside the edible berries | **toxic, delayed**, no safe preparation |
+| reed | at the water's edge: within reach of rivers, lakes, springs | rhizomes, 900 kcal/kg | all year | grows only where the ground stays wet |
+
+Toxin and processing values are stored now and used by bodies (Phase 2) and minds (Phase 3).
+
+**What compresses with the year and what doesn't** (§1.1):
+The rule: **the plant is life history, its edible part is daily physiology.**
+- **Compressed (per year):** how fast cover grows, spreads, and recovers after drought. These are life-history timescales, and they keep their ratio to agent lifespans.
+- **Not compressed (per real day):** how fast fruit and seeds ripen during their window, how fast they rot on the plant, how fast a root or rhizome refills its store of starch, and how long food keeps once picked. These are chemistry and daily physiology. Fruiting windows are fractions of the year, so a berry season is a few days long, but the *daily* amount of food in season matches real stands. Food per real day, averaged over the year, is therefore realistic, and so is the number of people a square kilometre can feed. The yearly total is 48/365 of a real year's. That's expected, never a target.
+- **The price:** a tuber patch dug bare refills on a time constant of about a real year, which is about 7.6 compressed years, so depletion lasts longer relative to a lifetime than it does in reality. The first version compressed refilling instead. Roots then refilled 7.6 times faster per real day than real ones and supplied about 60% of all plant food; the total sat near the top of the sanity band below (790,000–960,000 kcal per km² per day on two seeds, against 280,000–350,000 now). Daily food sets carrying capacity, which the circumscription experiment (E3) depends on, so it wins (D-024, T-003).
+
+**The update**, for each species in each cell:
+1. **Habitat** (fixed for the run, computed on the system's first run, §1.5): soil fit × mean-rainfall fit × height fit × a species-specific patchiness noise field, giving a carrying capacity *K*. A species with a water-edge limit (reed) has *K* = 0 farther than its reach from open water.
+2. **Conditions:** a moisture response (a trapezoid over the species' preferred soil-moisture range from §2.11) and a warmth response (0 below the species' minimum daily mean temperature, rising to 1 over 8 °C).
+3. **Growth and spread:** cover grows logistically toward *K*, × moisture × warmth, and seeds from the four neighbouring cells colonise unclaimed space in proportion to the neighbours' cover and the habitat here (that is how bare ground fills back in, but only where the ground is moister than the species' tolerance). If all species together want more than the unclaimed space, each gets the same share of what it wanted.
+4. **Dieback:** when soil moisture falls below the species' tolerance, cover shrinks in proportion to how far below. Cover above *K* shrinks back toward it.
+5. **Standing stocks** refill toward stock × cover at the species' real-year rate × warmth × moisture response.
+6. **Fruit and seeds** accumulate during their window at the species' daily yield × cover × moisture response, then drop or rot at the species' daily rate.
+
+**Schedule.** Step 6 runs every day for every cell. Steps 2 to 5 are slow, so each cell takes them once every 4 days, with 4 days' worth of change; a different quarter of the cells goes each day, so the cost is even. The quarters are a 2 × 2 pattern, so no two neighbouring cells update on the same day, and a cell's neighbours are fixed while it updates: the result doesn't depend on the order cells are visited in. This cut the cost of a day on the full map from 86 ms to 16 ms.
+
+**At setup** each species starts at 80% of its capacity (which already varies with its patchiness field), scaled down in proportion where the species together would cover more than the whole cell, with standing stocks full and no fruit.
+
+**Calibration** (`docs/RESEARCH.md`, *Plants*):
+- Wild seed stands: domesticated einkorn yields about 0.9–2 t/ha with little input; wild stands are put at 500 kg/ha, well below that.
+- Wild fruit runs about 3.2–3.7 kcal per gram of dry matter (Hadza data); fresh fruit, mostly water, is put at 0.6 kcal/g.
+- Sanity band, tested: averaged over a year on land, the most edible plant food that could be taken each day (everything ripe or stored, gathered daily, toxic-and-unprocessable species excluded) comes to 50,000–1,000,000 kcal per km² per day. That is hundreds of times what foragers at real densities eat (roughly 0.04–10 people per km², about 2,000–2,600 kcal each), as it should be: most plant food is never reachable at the right time, and animals take much of it. Real foraging return rates are a Phase 3 calibration target.
+
+**Not in this version:** grazing and browsing (Phase 1.5); seeds carried and dropped by animals (1.5) and by agents (§7.13, once agents eat); fire (1.8); plants as building material (1.7); individual trees; and nutrients other than calories, because bodies (§3) account only energy and water so far. If a body ever needs a nutrient, each species gains a column for it then. Riverbank soil also dries in a drought exactly like any other soil, because §2.11 has no water table; in long runs with large swings, reeds and greens can fall to about a fifth of their starting cover (a question for the ecology review, 1.10).
 
 ---
 
@@ -563,6 +609,7 @@ The game has its own page (D-012), built from `src/viewer/` and served by GitHub
 - **The address names a world and a moment:** `#seed=7&c=0.75&v=1&t=1546` opens seed 7, hemmed in 0.75, swings 1, at tick 1546. (Addresses work on the GitHub Pages site; the claude.ai preview ignores them.)
 - **Weather on the map** (Phase 1.2): a grey veil on wet days, a dark disc over an active storm, a flash for every lightning strike (the page steps one tick at a time so none is missed), and a soil-moisture layer redrawn daily.
 - **No flashing.** Two switches turn off the day-and-night shading and the weather effects; the page remembers them on that device. Above 1 simulated day per second both are off regardless, because night and rain would come and go several times a second (accessibility guidelines warn against flashing more than three times a second). Asked for by the owner after watching at year speed.
+- **Plants on the map** (Phase 1.4): a Plants layer colours each patch by the species covering most of it, fading to bare ground where cover is thin; a Ripe layer shows the fruit, seeds and nuts waiting to be picked, on a log scale, so the seasons pulse across the map. Both redraw daily. Tapping a cell lists its plants and the food in it, including food underground. At 1 year per second the plants cost about 0.8 s of computing per second on a desktop, so a phone may run slower than the chosen speed.
 
 ---
 

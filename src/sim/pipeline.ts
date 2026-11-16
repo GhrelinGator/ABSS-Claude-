@@ -4,6 +4,7 @@
 
 import type { SystemDef } from './core/registry.ts';
 import { climate } from './world/climate.ts';
+import { plants } from './world/plants.ts';
 import { terrain } from './world/terrain.ts';
 
 export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
@@ -11,4 +12,6 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   terrain,
   // Phase 1.2: weather, storms, lightning, soil moisture.
   climate,
+  // Phase 1.4: eight plant species growing, fruiting, spreading, dying back.
+  plants,
 ]);

@@ -9,13 +9,14 @@ import {
   createStandardSim,
   defaultConfig,
   light,
+  plants,
   stepSim,
   validateConfig,
   viewOf,
 } from '../sim/index.ts';
 import type { Sim, SimConfig, SimView } from '../sim/index.ts';
 import { BUILD } from './build-info.ts';
-import { SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
+import { PLANT_NAMES, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
 import type { Landscape, LayerMode } from './render.ts';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -253,7 +254,8 @@ function updateClock(): void {
 function draw(now: number): void {
   if (!sim || !land) return;
   const day = clock.dayIndex(sim.config, sim.state.tick);
-  if (drawnMode !== mode || (mode === 'moisture' && day !== paintedDay)) {
+  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe';
+  if (drawnMode !== mode || (daily && day !== paintedDay)) {
     paintedDay = day;
     const image = offscreenContext.createImageData(land.W, land.H);
     paint(land, mode, image.data);
@@ -366,6 +368,18 @@ function inspect(event: MouseEvent): void {
     ['Drains', `${land.flow[k].toFixed(land.flow[k] < 10 ? 2 : 0)} km² of runoff through here`],
     ['Soil moisture', `${Math.round(land.moisture[k] * 100)}% of what it can hold`],
   ];
+  const growing: string[] = [];
+  const food: string[] = [];
+  plants.PLANT_SPECIES.forEach((s, n) => {
+    const share = land!.plantCover[n][k];
+    if (share >= 0.005) growing.push(`${PLANT_NAMES[s.name] ?? s.name} ${Math.round(share * 100)}%`);
+    const kg = land!.plantFood[n][k];
+    if (kg >= 0.5) food.push(`${kg < 10 ? kg.toFixed(1) : Math.round(kg)} kg ${PLANT_NAMES[s.name] ?? s.name}${s.visible ? '' : ' (underground)'}`);
+  });
+  if (kind === 0) {
+    rows.push(['Plants', growing.length > 0 ? growing.join(', ') : 'bare']);
+    rows.push(['Food here', food.length > 0 ? food.join(', ') : 'none']);
+  }
   const w = view?.readings(climate.CLIMATE_PARTS.weather);
   if (sim && w) rows.push(['Air now', `${climate.airTemperatureC(sim.config, sim.state.tick, w, land.elevation[k]).toFixed(1)} °C`]);
   inspectPanel.innerHTML = `<dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;
