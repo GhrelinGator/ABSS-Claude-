@@ -123,7 +123,7 @@ Format: ID, date, status, decision, why, alternatives considered.
 - **The owner's machine will differ.** `npm run bench` prints the same table there.
 
 ### D-017: Work lands through pull requests, checked by GitHub
-- **Date:** 2026-11-15 · **Status:** Accepted
+- **Date:** 2026-11-15 · **Status:** Accepted; who merges superseded by D-025
 - **Decision:** Each session works on a branch and opens a pull request into `main`. A GitHub Actions workflow runs the tests and type checks on every push. The owner merges.
 - **Why:** The owner can't review TypeScript line by line, but he can see a green or red check and read a summary. The check runs on GitHub's machines, so it doesn't depend on Claude reporting its own results honestly.
 - **Consequence:** A session must start from an up-to-date `main`. If the previous session's pull request is still open, say so before doing anything else.
@@ -213,3 +213,11 @@ Format: ID, date, status, decision, why, alternatives considered.
 - **Two kernel lessons:** (1) a system's `create` runs before setup and before a snapshot is read, so world layers are still blank there; anything derived from them is built on the first run (now in `DESIGN.md` §1.5). The first version built its habitat map in `create`, from a blank landscape, and every plant died within two years. (2) Slow work can be staggered: each cell's cover updates every 4 days, a quarter of the map per day, in a 2 × 2 pattern so no two neighbours update together. A day on the full map went from 86 ms to 16 ms.
 - **Checked:** setup limits, reeds only near water, desert sparse (a tenth of the cover of wet land), fruit only in season, nuts keeping long after their season while berries rot, all eight species alive after 50 years, a forced drought halving greens while bitter root holds and greens regrowing to 96% within four years, a snapshot taken before the first plant update resuming identically, and the food sanity band. A year of plants gives the same state hash in Node and Bun on three landscapes. Outside the tests, 20 seeds × 100 years on small maps (sweeping both knobs) lost no species and grew none without bound.
 - **Not done here:** seed dispersal by animals (moves to 1.5) and by agents (§7.13, once agents eat); nutrients other than calories, which nothing consumes yet.
+
+### D-025: More autonomy: Claude merges its own work, and nightly unattended runs
+- **Date:** 2026-11-16 · **Status:** Accepted
+- **The owner's words:** "I think you should decide really as much as you want as long as it's inline with the primary goal. If the merging is a matter of permission, you have permission."
+- **Decision:** Claude merges its own pull requests once GitHub's checks pass, and decides questions inside a milestone without asking, recording them here. A scheduled task runs one milestone a night (`CLAUDE.md`, "Unattended nightly runs"), starting the night of 2026-11-18, after the owner's weekly usage resets. Supersedes D-017's "the owner merges"; the rest of D-017 stands.
+- **What still waits for the owner:** nudge-protocol changes classified (c) or ambiguous, new drives, and merging any work that reports a social phenomenon emerged. These are the points where drift toward pre-coded outcomes is most likely, and the guardrails already require his approval for the first two.
+- **Why:** The owner doesn't read code, so his merge was a checkpoint rather than a review, and it made every milestone wait for him. GitHub's checks still run on its machines, independent of what Claude reports. The owner sees each night's result as a notification and can stop the schedule at any time.
+- **Checked:** merging through the REST API works with this project's GitHub access (pull request #6 was merged that way).

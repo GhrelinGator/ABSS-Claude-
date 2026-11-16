@@ -7,7 +7,7 @@ Update this at the end of every session. Newest information at the top of each s
 - **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants, except seed dispersal by animals and agents), and a viewer (1.9) that shows all of it.
 - **The world has weather and plants; no animals or people.** The real pipeline has three systems: the landscape (built before tick 0), the climate, and the plants. Nothing has emerged, because nothing can yet.
 - **Next action:** Phase 1.5 [O], animals, including seeds that animals carry and drop (moved from 1.4). Grazers should eat plant cover and food from the layers in `plants.ts`. Then hidden causes (1.6), materials (1.7), and fire (1.8), which reads lightning strikes, dryness, and plant cover as fuel.
-- **Blocked on:** the owner merging pull request #6 (`phase-1.4-plants`). #1–#5 are merged.
+- **Blocked on:** nothing. #1–#6 are merged. From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, and a nightly scheduled run does one milestone at a time (D-025, `CLAUDE.md`).
 
 ## What exists
 
@@ -42,7 +42,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 |---|---|---|
 | Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
 | Q8 | Does the page keep up on your phone at "1 year per second" now that plants grow? If it stutters, I can make the page skip ahead in bigger steps or cap the speed on phones. | Whenever |
-| Q7 | Can the owner's computer run Node 22.18 or newer for long batches, and how many cores does it have? Cloud sessions stop background work a few minutes after a reply. | Phase 3 |
+| Q7 | *Answered 2026-11-16:* a Windows desktop, Intel Core i5-4670 (4 cores, 4 threads, 3.4 GHz, 2013), 32 GB of memory, an RTX 3080 graphics card. That means 3–4 runs side by side, and overnight batches for big experiments. The graphics card can't run the simulation: results must be bit-identical on every machine. Nothing is installed yet; in Phase 3, install Node and link the Claude desktop app so a session can run batches there, and stop the PC sleeping during runs. | Phase 3 |
 | Q1 | Player role, if observer-only turns out not to be what he wants (D-011). | Phase 9 |
 
 ## Benchmarks
@@ -86,6 +86,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 
 ## Session log
 
+- **2026-11-16, session 8** (Opus 5.5, claude.ai; same chat). No code. Measured what a milestone costs: Phase 1.4 took 86 requests and about 3.1 million tokens of usage, 60% of it Claude's fixed instructions re-read on every step, so cost follows the number of steps. Estimated 150–250 million more through Phase 6. The owner answered Q7 and gave Claude broad autonomy (D-025): Claude now merges its own pull requests (merged #6), and a nightly scheduled task does one milestone at a time from the night of 2026-11-18. Ideas from the owner's side, for later: another AI as an outside skeptic of emergence claims, an anthropology professor's view on the detector definitions (Phase 6), and paywalled papers through his university library.
 - **2026-11-15, session 7** (Opus 5.5, claude.ai; same chat). Owner merged #4 and #5. Built Phase 1.4: eight plant species (`DESIGN.md` §2.12, D-024), the `vegetation` observer, and Plants and Ripe layers on the page. Mistakes caught on the way: the habitat map was first built before the landscape existed, so everything died (rule added to `DESIGN.md` §1.5); a division by zero put NaN in plant cover (the non-finite guardrail now runs a full year and was shown to catch it); and I misreported the old root-refilling version's food at 1.6 million kcal per km² per day, an artifact of my probe (corrected in D-024 and T-003). Moved root refilling to real days (T-003). Made the plant update 5× faster by staggering slow work. Lengthened the Node-vs-Bun comparison to a full year. Opened pull request #6.
 - **2026-11-15, session 6** (Opus 5.5, claude.ai; same chat). Owner switched the Pages source to GitHub Actions; the live site now shows the viewer (redeployed by hand once). At the owner's request, added switches for day-and-night and weather effects, off automatically above 1 day per second so the map can't flash. Pull request #5.
 - **2026-11-15, session 5** (Opus 5.5, claude.ai; same chat). Owner merged #1–#3 and switched Pages on, but with the branch source (see Q6). Built Phase 1.2: climate, storms, lightning, soil moisture, the `weather` observer, and weather in the viewer, plus opening the page at a moment named in its address. Caught and fixed a confound: the variability knob was raising average rain (D-023). Republished the preview to the same artifact. Opened pull request #4.
