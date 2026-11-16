@@ -146,6 +146,7 @@ Rivers, lakes, springs. **Stagnant water carries pathogen load** that rises with
 - **Multi-year variability** as a stochastic process (drought runs, cold snaps). Variance is a first-class experiment knob (E1).
 - Storms with **lightning**, which can ignite dry vegetation and occasionally strikes animals or agents. These are salient events with no visible cause (§4.4).
 - Weather is never conditioned on agent state (`GUARDRAILS.md` T8).
+- How it is built: §2.11.
 
 ### 2.4 Light
 Daylight and night. Moonlight varies by phase. Perception range drops sharply in the dark (§4.1). **Fire emits light** in a radius, so agents near a fire can see each other at night.
@@ -230,6 +231,43 @@ Measured over seeds 1, 2, 3, 7 and 8 on the default 512-cell map:
 | 1 | 32–39% | 92–94% (one walled valley) |
 
 A test (`tests/unit/terrain.test.ts`) holds the generator to this: habitable land never grows as the knob rises, is at least 90% at 0 and at most 45% at 1, and at 1 lies at least 85% in one region with walls and a river.
+
+### 2.11 Climate and weather (Phase 1.2)
+One system, `world.climate`, keeps the weather. It draws only from the `CLIMATE` stream and reads only the landscape and the clock. Nothing an agent does can change it (`GUARDRAILS.md` T8).
+
+**Calibrated per real day.** Days are real and years are compressed (§1.1), so every rate here is a rate per real day: rain in mm per day, warming in degrees per hour. The compressed year only sets how fast the seasons turn. A "year" therefore holds 48 days of weather, not 365; sums over a year are not comparable to real annual totals and are never used as targets.
+
+**Temperature** (°C, a pure function of the stored anomalies, the clock, and the cell's height):
+- Yearly mean 12 °C, with a seasonal swing of ±9 °C peaking at midsummer (season fraction 0.25, §2.4).
+- A daily swing of ±5 °C, warmest at 15:00, coldest at 03:00.
+- 6.5 °C colder per 1,000 m above 400 m.
+- Plus a **daily anomaly**: an AR(1) process stepped once a day, persistence 0.75, spread 2.5 °C.
+- Plus a **year-scale anomaly**: an AR(1) process stepped once a season (12 days), persistence 0.7, spread 1.2 °C × variability. These are the warm years and the cold snaps.
+
+**Rain** (mm on a cell on a given day):
+- Each day is wet or dry, by a two-state Markov chain: a wet day follows a wet day with probability 0.6 and a dry day with probability 0.25 (a long-run wet fraction of about 38%), both scaled by the season.
+- A wet day's rain is exponentially distributed with mean 6 mm, times the cell's mean rainfall (`terrain.rainfall`), times the seasonal and wetness factors. At mean rainfall 1 that averages about 2.5 mm per day, typical of temperate climates.
+- **Seasonality**: ±25% around the mean, wettest in late spring (season fraction 0.15).
+- **Wetness anomaly** (droughts and wet spells): an AR(1) process *w* stepped once a season, persistence 0.75, spread σ = 0.45 × variability. It scales each wet day's rain by exp(*w* − σ²/2). The −σ²/2 makes the long-run average factor exactly 1, so the knob changes how unequal seasons are without changing how wet the climate is on average. A run of low values is a multi-season drought. (A first version also scaled the chance of rain and had no correction: raising the knob from 0 to 2 nearly doubled average rainfall, which would have confounded E1. See D-023.)
+- Rain falls on the whole map at once, more where the land is wetter. Moving rain bands are a known simplification.
+
+**The experiment knob: `climate.variability`** (default 1, at least 0). It scales the year-scale temperature and wetness anomalies only. At 0 every year has the same average climate and only day-to-day weather varies; at 2 droughts and cold years are twice as large. This is E1's independent variable: does a *variable* environment, rather than a harsh one, favour learning from others (the essay's harshness claim in `ORIGIN.md`; Potts 1998)? Daily weather is the same at every setting.
+
+**Storms and lightning:**
+- On a wet day, the chance of a thunderstorm rises with warmth: 0 at a daily mean of 8 °C or less, up to 0.3 at 23 °C or more.
+- A storm starts at a random time between 12:00 and 20:00 and lasts 1 to 3 hours. It covers a disc of radius 4–12 km centred anywhere on the map (centre and radius drawn from the stream), and adds 5–25 mm of rain inside the disc that day, times each cell's mean rainfall, so storms drop less on dry land.
+- While a storm is active, cloud-to-ground strikes arrive at a Poisson rate of about 12 per 10-minute tick (roughly one a minute, a moderate thunderstorm). Each hits a uniformly random cell inside the disc.
+- The cells struck during the current tick are stored, so later systems can read them: fire ignition (Phase 1.8) and injuries (Phase 2). From an agent's point of view a strike has no visible cause (§4.4).
+
+**Soil moisture** (`water.soilMoisture`, a fraction from 0 to 1 of what the ground can hold), a bucket updated once a day for every cell:
+- Holding capacity by soil: rock 15 mm, thin 50 mm, loam 120 mm, alluvium 160 mm, sand 60 mm.
+- Water in: that day's rain on the cell (including any storm). Whatever overflows the bucket runs off and is not tracked.
+- Water out: potential evaporation, 0.2 mm × (daily mean temperature + 3 °C), never negative and at most 7 mm per day, scaled by how full the bucket is.
+- River, lake, and spring cells stay at 1.
+- At setup, each cell starts at 60% of its mean rainfall factor, capped at 1; the first weeks of a run settle it toward its own climate.
+- This is the "dryness" plants (1.4) and fire (1.8) will read. Long-term river flow (§2.10) is static for now; rivers that shrink in droughts are a known gap.
+
+**What gets stored** (all part of the state hash and snapshots): the four anomalies, today's wet flag and rain factor, the active storm (centre, radius, end tick, extra rain), the strikes of the current tick, a count of all strikes so far, and the soil moisture layer. Temperature is computed, not stored.
 
 ---
 
@@ -522,6 +560,8 @@ The game has its own page (D-012), built from `src/viewer/` and served by GitHub
 - **The viewer only reads.** It reaches the sim through the read-only view (`src/sim/readonly.ts`) plus the stepping and creation functions. It never writes to sim state, so a run watched in the browser is the same run the same seed gives anywhere.
 - **Build without installing anything:** `node scripts/build-site.ts` strips the TypeScript types with Node's built-in `module.stripTypeScriptTypes`, rewrites `.ts` imports to `.js`, and writes plain ES modules to `dist/site/`. Browsers load them directly; there is no bundler. Only files reachable from `src/viewer/main.ts` are copied.
 - **Designed for a phone first:** the map fills the width, controls sit below it, and tapping a cell shows what is there.
+- **The address names a world and a moment:** `#seed=7&c=0.75&v=1&t=1546` opens seed 7, hemmed in 0.75, swings 1, at tick 1546. (Addresses work on the GitHub Pages site; the claude.ai preview ignores them.)
+- **Weather on the map** (Phase 1.2): a grey veil on wet days, a dark disc over an active storm, a flash for every lightning strike (the page steps one tick at a time so none is missed), and a soil-moisture layer redrawn daily.
 
 ---
 

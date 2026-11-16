@@ -55,7 +55,7 @@ canvas {
   margin: 10px 2px 6px;
   font-variant-numeric: tabular-nums;
 }
-.date { font-weight: 600; }
+.date { font-weight: 600; flex-basis: 100%; }
 .sky { color: var(--muted); }
 
 section.controls, section.inspect, section.world {
@@ -84,8 +84,8 @@ button:disabled { opacity: 0.5; }
 input[type="number"] { width: 9.5em; }
 label.inline { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 
-.layers { flex-wrap: nowrap; gap: 6px; }
-.layers button { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 0.92rem; }
+.layers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.layers button { min-width: 0; padding: 6px 2px; font-size: 0.92rem; }
 .layers button.on { background: #3a4150; border-color: #7a8699; color: #fff; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.85rem; color: var(--muted); }

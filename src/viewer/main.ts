@@ -4,6 +4,7 @@
 import { summarizeLandscape } from '../analysis/index.ts';
 import {
   arithmeticProblems,
+  climate,
   clock,
   createStandardSim,
   defaultConfig,
@@ -28,6 +29,9 @@ const context = canvas.getContext('2d') as CanvasRenderingContext2D;
 const busy = element<HTMLDivElement>('busy');
 const dateLine = element<HTMLDivElement>('date');
 const skyLine = element<HTMLDivElement>('sky');
+const weatherLine = element<HTMLDivElement>('weather');
+const varInput = element<HTMLInputElement>('var');
+const varOut = element<HTMLOutputElement>('varOut');
 const playButton = element<HTMLButtonElement>('play');
 const speedSelect = element<HTMLSelectElement>('speed');
 const legend = element<HTMLDivElement>('legend');
@@ -55,22 +59,36 @@ let lastFrame = 0;
 let drawnTick = -1;
 let drawnMode: LayerMode | null = null;
 let inspected = -1;
+let paintedDay = -1;
+/** Tick to open the first world at; later worlds open at noon on day one. */
+let openAt = -1;
+
+const F = climate.CLIMATE_FIELDS;
+const FLASH_MS = 700;
+/** Recent lightning strikes, for drawing flashes that fade. */
+const flashes: Array<{ cell: number; born: number }> = [];
 
 // ---------------------------------------------------------------- world
 
-function readHash(): { seed: number; circumscription: number } {
+function readHash(): { seed: number; circumscription: number; variability: number; tick: number } {
   const params = new URLSearchParams(location.hash.slice(1));
   const seed = Number(params.get('seed'));
   const c = Number(params.get('c'));
+  const v = Number(params.get('v'));
+  const t = Number(params.get('t'));
   return {
     seed: Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff && params.has('seed') ? seed : 7,
     circumscription: params.has('c') && Number.isFinite(c) && c >= 0 && c <= 1 ? c : 0.75,
+    variability: params.has('v') && Number.isFinite(v) && v >= 0 && v <= 3 ? v : 1,
+    // A moment to open at, in ticks from the start (noon on day one unless given).
+    tick: params.has('t') && Number.isInteger(t) && t >= 0 && t <= 10_000_000 ? t : -1,
   };
 }
 
-function configFor(seed: number, circumscription: number): SimConfig {
+function configFor(seed: number, circumscription: number, variability: number): SimConfig {
   const raw = JSON.parse(JSON.stringify(defaultConfig(seed)));
   raw.world.circumscription = circumscription;
+  raw.climate.variability = variability;
   return validateConfig(raw);
 }
 
@@ -83,15 +101,18 @@ function buildWorld(): void {
   }
   seedInput.setCustomValidity('');
   const circumscription = Number(circInput.value);
+  const variability = Number(varInput.value);
   busy.hidden = false;
   buildButton.disabled = true;
   // Let the "building" notice paint before the work starts.
   setTimeout(() => {
     const started = performance.now();
-    sim = createStandardSim(configFor(seed, circumscription));
-    // Every run starts at midnight. Open the page at noon on the first day instead, so the
-    // first thing seen is the land in daylight. This only advances the clock, as playing would.
-    stepSim(sim, sim.config.time.ticksPerDay / 2);
+    sim = createStandardSim(configFor(seed, circumscription, variability));
+    // Every run starts at midnight. Open the page at noon on the first day instead (or at the
+    // moment named in the address), so the first thing seen is the land in daylight. This only
+    // advances the run, exactly as playing would.
+    stepSim(sim, openAt >= 0 ? openAt : sim.config.time.ticksPerDay / 2);
+    openAt = -1;
     view = viewOf(sim);
     land = readLandscape(view);
     offscreen.width = land.W;
@@ -101,17 +122,19 @@ function buildWorld(): void {
     drawnMode = null;
     drawnTick = -1;
     inspected = -1;
+    paintedDay = -1;
+    flashes.length = 0;
     inspectPanel.innerHTML = '<p class="hint">Tap the map to see what is there.</p>';
     try {
       // Lets a world be shared by its address. Some hosts don't allow it; the page works without it.
-      history.replaceState(null, '', `#seed=${seed}&c=${circumscription}`);
+      history.replaceState(null, '', `#seed=${seed}&c=${circumscription}&v=${variability}`);
     } catch {
       // ignore
     }
     showStats(performance.now() - started);
     busy.hidden = true;
     buildButton.disabled = false;
-    draw();
+    draw(performance.now());
   }, 30);
 }
 
@@ -161,11 +184,31 @@ function updateClock(): void {
   const moon = MOONS[Math.floor((light.moonPhase(config, tick) + 1 / 16) * 8) % 8];
   const sky = sun >= 0.5 ? 'Daylight' : sun > 0.08 ? 'Low sun' : sun > 0 ? 'Twilight' : 'Night';
   skyLine.textContent = `${sky}, ${moon} · light ${ambient < 0.01 ? (ambient * 100).toFixed(1) : Math.round(ambient * 100)}%`;
+
+  const w = view?.readings(climate.CLIMATE_PARTS.weather);
+  if (!w) return;
+  const temperature = climate.airTemperatureC(config, tick, w, 400);
+  const rain = w[F.rainTodayMm];
+  const today = climate.stormActive(w, tick)
+    ? 'thunderstorm'
+    : w[F.stormStart] > tick
+      ? 'storm brewing'
+      : w[F.wetToday] === 1
+        ? rain < 2
+          ? `drizzle (${rain.toFixed(1)} mm today)`
+          : rain < 10
+            ? `rain (${rain.toFixed(0)} mm today)`
+            : `heavy rain (${rain.toFixed(0)} mm today)`
+        : 'dry';
+  const spell = w[F.wetness] < -0.4 ? ' · in a dry spell' : w[F.wetness] > 0.4 ? ' · in a wet spell' : '';
+  weatherLine.textContent = `${Math.round(temperature)} °C at 400 m, ${today}${spell} · ${w[F.strikesTotal]} lightning strikes so far`;
 }
 
-function draw(): void {
+function draw(now: number): void {
   if (!sim || !land) return;
-  if (drawnMode !== mode) {
+  const day = clock.dayIndex(sim.config, sim.state.tick);
+  if (drawnMode !== mode || (mode === 'moisture' && day !== paintedDay)) {
+    paintedDay = day;
     const image = offscreenContext.createImageData(land.W, land.H);
     paint(land, mode, image.data);
     offscreenContext.putImageData(image, 0, 0);
@@ -174,15 +217,45 @@ function draw(): void {
     drawnTick = -1;
   }
   const tick = sim.state.tick;
-  if (tick === drawnTick) return;
+  while (flashes.length > 0 && now - flashes[0].born > FLASH_MS) flashes.shift();
+  if (tick === drawnTick && flashes.length === 0) return;
   drawnTick = tick;
   context.drawImage(offscreen, 0, 0);
+  const w = view?.readings(climate.CLIMATE_PARTS.weather);
+  if (w && w[F.wetToday] === 1) {
+    // A grey veil on wet days, heavier the more rain is falling.
+    const veil = 0.08 + 0.17 * Math.min(1, w[F.rainTodayMm] / 12);
+    context.fillStyle = `rgba(96, 112, 140, ${veil.toFixed(3)})`;
+    context.fillRect(0, 0, land.W, land.H);
+  }
+  if (w && climate.stormActive(w, tick)) {
+    const x = w[F.stormX] / land.cellSizeM;
+    const y = w[F.stormY] / land.cellSizeM;
+    const r = w[F.stormRadiusM] / land.cellSizeM;
+    const cloud = context.createRadialGradient(x, y, 0, x, y, r);
+    cloud.addColorStop(0, 'rgba(18, 20, 34, 0.55)');
+    cloud.addColorStop(0.75, 'rgba(18, 20, 34, 0.4)');
+    cloud.addColorStop(1, 'rgba(18, 20, 34, 0)');
+    context.fillStyle = cloud;
+    context.beginPath();
+    context.arc(x, y, r, 0, Math.PI * 2);
+    context.fill();
+  }
   // Night falls over the map: darker the less light there is.
   const ambient = light.ambientLight(sim.config, tick);
   const darkness = 0.62 * (1 - Math.min(1, Math.sqrt(ambient)));
   if (darkness > 0.005) {
     context.fillStyle = `rgba(8, 12, 32, ${darkness.toFixed(3)})`;
     context.fillRect(0, 0, land.W, land.H);
+  }
+  for (const flash of flashes) {
+    const age = (now - flash.born) / FLASH_MS;
+    const i = (flash.cell % land.W) + 0.5;
+    const j = Math.floor(flash.cell / land.W) + 0.5;
+    context.fillStyle = `rgba(255, 252, 214, ${(1 - age).toFixed(3)})`;
+    context.beginPath();
+    context.arc(i, j, 3.5 - 1.5 * age, 0, Math.PI * 2);
+    context.fill();
   }
   if (inspected >= 0) {
     const i = inspected % land.W;
@@ -195,17 +268,21 @@ function draw(): void {
 }
 
 function frame(now: number): void {
-  if (playing && sim) {
+  if (playing && sim && view) {
     const elapsed = lastFrame === 0 ? 0 : Math.min(0.25, (now - lastFrame) / 1000);
     carry += elapsed * ticksPerSecond;
     const ticks = Math.floor(carry);
-    if (ticks > 0) {
-      carry -= ticks;
-      stepSim(sim, ticks);
+    carry -= ticks;
+    // Step one tick at a time so no lightning strike goes unseen: strikes are kept only for the tick they happen in.
+    for (let t = 0; t < ticks; t++) {
+      stepSim(sim, 1);
+      const strikes = view.readings(climate.CLIMATE_PARTS.strikes);
+      if (!strikes) continue;
+      for (let n = 0; n < strikes.length && flashes.length < 600; n++) flashes.push({ cell: strikes[n], born: now });
     }
   }
   lastFrame = now;
-  draw();
+  draw(now);
   requestAnimationFrame(frame);
 }
 
@@ -239,7 +316,10 @@ function inspect(event: MouseEvent): void {
     ['Ground', SOIL_NAMES[land.soil[k]] ?? '?'],
     ['Water', WATER_NAMES[kind] + (kind === 3 ? `, ${land.depth[k].toFixed(1)} m deep` : '')],
     ['Drains', `${land.flow[k].toFixed(land.flow[k] < 10 ? 2 : 0)} km² of runoff through here`],
+    ['Soil moisture', `${Math.round(land.moisture[k] * 100)}% of what it can hold`],
   ];
+  const w = view?.readings(climate.CLIMATE_PARTS.weather);
+  if (sim && w) rows.push(['Air now', `${climate.airTemperatureC(sim.config, sim.state.tick, w, land.elevation[k]).toFixed(1)} °C`]);
   inspectPanel.innerHTML = `<dl>${rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl>`;
 }
 
@@ -257,11 +337,14 @@ for (const button of layerButtons) {
   button.addEventListener('click', () => {
     mode = button.dataset.layer as LayerMode;
     for (const other of layerButtons) other.classList.toggle('on', other === button);
-    draw();
+    draw(performance.now());
   });
 }
 circInput.addEventListener('input', () => {
   circOut.textContent = Number(circInput.value).toFixed(2);
+});
+varInput.addEventListener('input', () => {
+  varOut.textContent = Number(varInput.value).toFixed(2);
 });
 randomButton.addEventListener('click', () => {
   seedInput.value = String(Math.floor(Math.random() * 4294967296));
@@ -276,6 +359,9 @@ const initial = readHash();
 seedInput.value = String(initial.seed);
 circInput.value = String(initial.circumscription);
 circOut.textContent = initial.circumscription.toFixed(2);
+openAt = initial.tick;
+varInput.value = String(initial.variability);
+varOut.textContent = initial.variability.toFixed(2);
 element<HTMLSpanElement>('build-info').textContent =
   BUILD.commit === 'development' ? 'development build' : `built from ${BUILD.commit.slice(0, 7)}${BUILD.builtAt ? ` on ${BUILD.builtAt}` : ''}`;
 buildWorld();

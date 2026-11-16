@@ -29,3 +29,10 @@ Append-only. Every parameter or mechanism change made for tuning reasons goes he
   5. Parallel straight streams on the graded valley floor. **(b)**. Change: valley floor slopes toward its centre line (12 m per km × knob); relief inside the valley reduced up to 85%. Target: valley floors drain to one trunk river.
 - **Social metrics involved:** none. The only measured targets were lake cover, the presence of desert rivers, channel shape, and the habitable-land yardstick that defines the E3 manipulation.
 - **Null-model re-run:** not applicable; nothing here is a hoped-for social phenomenon.
+
+### T-002: Climate corrections (two)
+- **Date / session model:** 2026-11-15, Opus 5.5.
+- **Process note:** both were found by the first statistics run and fixed before any test was committed; logged at the end of the session, not before each change.
+- **1. Variability knob raised average rain.** Symptom: over 30 years, mean rain was 2.6, 3.75, and 5.0 mm per day at variability 0, 1, and 2. Cause: the wetness anomaly entered as exp(anomaly) on both the chance and the amount of rain, and the average of exp(x) grows with x's spread. Classification: **(a) bug in the design of the manipulation**, since E1 must vary spread without changing the mean. Change: the anomaly scales only the amount, as exp(anomaly − spread²/2), with spread raised 0.35 → 0.45 so droughts are still felt. Check: the average stays within 20% across settings (tested); the spread of season-mean rain grows (tested).
+- **2. Storms soaked the desert.** Symptom: desert soil moisture was about half that of wet land; real deserts are far drier. Cause: storm rain was added at full strength regardless of local climate. Classification: **(b) ecological miscalibration.** Change: storm rain is scaled by the cell's mean rainfall, like ordinary rain. Target: desert soils well under half as moist as temperate ones (tested).
+- **Social metrics involved:** none.

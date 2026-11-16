@@ -23,6 +23,7 @@
     <section class="clock" aria-live="polite">
       <div id="date" class="date">Year 1, day 1, 00:00</div>
       <div id="sky" class="sky"></div>
+      <div id="weather" class="sky"></div>
     </section>
 
     <section class="controls">
@@ -41,9 +42,10 @@
       <div class="row layers" role="group" aria-label="Map layer">
         <button type="button" data-layer="land" class="on">Land</button>
         <button type="button" data-layer="height">Height</button>
-        <button type="button" data-layer="rain">Rain</button>
         <button type="button" data-layer="soil">Soil</button>
-        <button type="button" data-layer="flow">Water</button>
+        <button type="button" data-layer="rain">Rainfall</button>
+        <button type="button" data-layer="moisture">Damp</button>
+        <button type="button" data-layer="flow">Rivers</button>
       </div>
       <div id="legend" class="legend"></div>
     </section>
@@ -62,8 +64,12 @@
         <input id="circ" type="range" min="0" max="1" step="0.05" value="0.75">
         <span class="scale"><span>open country</span><span>walled valley</span></span>
       </label>
+      <label class="slider">Year-to-year swings: <output id="varOut">1.00</output>
+        <input id="var" type="range" min="0" max="3" step="0.25" value="1">
+        <span class="scale"><span>every year alike</span><span>big droughts and cold years</span></span>
+      </label>
       <button id="build" class="primary" type="button">Build this world</button>
-      <p class="note">"Hemmed in" is the setting experiment E3 will vary: at 0 there is land to spare in every direction; at 1 a river valley is walled in by dry uplands.</p>
+      <p class="note">These are the settings two experiments will vary. "Hemmed in" (E3): at 0 there is land to spare in every direction; at 1 a river valley is walled in by dry uplands. "Year-to-year swings" (E1): how much one season's rain and warmth can differ from the next, without changing the average.</p>
       <div id="stats" class="stats"></div>
     </section>
   </main>

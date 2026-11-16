@@ -3,7 +3,7 @@
 
 import type { RoArray, SimView } from '../sim/index.ts';
 
-export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow';
+export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture';
 
 export const SOIL_COLORS: ReadonlyArray<[number, number, number]> = [
   [132, 126, 118], // rock
@@ -30,6 +30,8 @@ export interface Landscape {
   kind: RoArray;
   depth: RoArray;
   flow: RoArray;
+  /** Soil moisture, 0 to 1. Changes once a day. */
+  moisture: RoArray;
   /** 0 (shadow) to 1 (lit), from light falling from the north-west. */
   shade: Float32Array;
   minElevation: number;
@@ -70,6 +72,7 @@ export function readLandscape(view: SimView): Landscape {
     kind: view.layer('water.kind'),
     depth: view.layer('water.depth'),
     flow: view.layer('water.flow'),
+    moisture: view.layer('water.soilMoisture'),
     shade,
     minElevation,
     maxElevation,
@@ -82,7 +85,7 @@ function mix(a: [number, number, number], b: [number, number, number], t: number
 
 /** Colour every cell of the landscape for the chosen layer, into an RGBA buffer. */
 export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray): void {
-  const { W, H, elevation, rainfall, soil, kind, flow, shade, minElevation, maxElevation } = land;
+  const { W, H, elevation, rainfall, soil, kind, flow, moisture, shade, minElevation, maxElevation } = land;
   const span = Math.max(1, maxElevation - minElevation);
   const N = W * H;
 
@@ -136,8 +139,14 @@ export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray):
         c = mix([22, 24, 30], [120, 200, 255], t);
         break;
       }
+      case 'moisture': {
+        const t = moisture[k];
+        c = t < 0.5 ? mix([176, 112, 60], [206, 196, 120], t * 2) : mix([206, 196, 120], [52, 122, 92], (t - 0.5) * 2);
+        c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
+        break;
+      }
     }
-    if (mode !== 'flow' && mode !== 'rain') {
+    if (mode !== 'flow' && mode !== 'rain' && mode !== 'moisture') {
       if (kind[k] === 3) c = LAKE;
       else if (kind[k] === 1) c = SPRING;
       else if (wide[k] === 1) c = BIG_RIVER;
@@ -167,5 +176,7 @@ export function legendFor(mode: LayerMode, land: Landscape): string {
       return SOIL_COLORS.map((rgb, i) => swatch(rgb, SOIL_NAMES[i])).join('') + water;
     case 'flow':
       return '<span>Little<span class="ramp" style="background:linear-gradient(90deg,rgb(22,24,30),rgb(120,200,255))"></span>A lot of water flowing through</span>';
+    case 'moisture':
+      return '<span>Parched<span class="ramp" style="background:linear-gradient(90deg,rgb(176,112,60),rgb(206,196,120),rgb(52,122,92))"></span>Soaked (water in the soil, updated daily)</span>';
   }
 }
