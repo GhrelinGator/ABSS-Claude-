@@ -41,5 +41,11 @@ jobs:
       - name: Type check, simulation and analysis (no Node or browser APIs allowed)
         run: npx tsc -p tsconfig.pure.json
 
-      - name: Type check, everything
+      - name: Type check, the viewer (browser APIs)
+        run: npx tsc -p tsconfig.viewer.json
+
+      - name: Type check, everything else
         run: npx tsc -p tsconfig.json
+
+      - name: Build the viewer page
+        run: node --no-warnings scripts/build-site.ts
