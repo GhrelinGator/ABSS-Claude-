@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#121418">
+  <title>ABSS: the world</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23567d3e'/%3E%3Cpath d='M2 12 Q6 6 9 9 T14 4' stroke='%2340a0e0' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header>
+    <h1>ABSS</h1>
+    <p class="tagline">A simulation where society has to grow on its own. Nothing lives here yet: this is the world it will grow in.</p>
+  </header>
+
+  <main>
+    <section class="map-wrap">
+      <canvas id="map" width="512" height="512" aria-label="Map of the simulated world"></canvas>
+      <div id="busy" class="busy" hidden>Building the world…</div>
+    </section>
+
+    <section class="clock" aria-live="polite">
+      <div id="date" class="date">Year 1, day 1, 00:00</div>
+      <div id="sky" class="sky"></div>
+    </section>
+
+    <section class="controls">
+      <div class="row">
+        <button id="play" class="primary" type="button">▶ Play</button>
+        <label class="inline">Speed
+          <select id="speed">
+            <option value="6">1 hour per second</option>
+            <option value="144" selected>1 day per second</option>
+            <option value="1008">1 week per second</option>
+            <option value="6912">1 year per second</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="row layers" role="group" aria-label="Map layer">
+        <button type="button" data-layer="land" class="on">Land</button>
+        <button type="button" data-layer="height">Height</button>
+        <button type="button" data-layer="rain">Rain</button>
+        <button type="button" data-layer="soil">Soil</button>
+        <button type="button" data-layer="flow">Water</button>
+      </div>
+      <div id="legend" class="legend"></div>
+    </section>
+
+    <section id="inspect" class="inspect">
+      <p class="hint">Tap the map to see what is there.</p>
+    </section>
+
+    <section class="world">
+      <h2>World</h2>
+      <div class="row">
+        <label class="inline">Seed <input id="seed" type="number" min="0" max="4294967295" step="1" inputmode="numeric"></label>
+        <button id="random" type="button">Random</button>
+      </div>
+      <label class="slider">Hemmed in: <output id="circOut">0.75</output>
+        <input id="circ" type="range" min="0" max="1" step="0.05" value="0.75">
+        <span class="scale"><span>open country</span><span>walled valley</span></span>
+      </label>
+      <button id="build" class="primary" type="button">Build this world</button>
+      <p class="note">"Hemmed in" is the setting experiment E3 will vary: at 0 there is land to spare in every direction; at 1 a river valley is walled in by dry uplands.</p>
+      <div id="stats" class="stats"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p id="selfcheck" class="selfcheck">Checking this browser's arithmetic…</p>
+    <p class="small"><span id="build-info"></span> · <a href="https://github.com/GhrelinGator/ABSS-Claude-">source</a></p>
+  </footer>
+
+  <script type="module" src="./src/viewer/main.js"></script>
+</body>
+</html>

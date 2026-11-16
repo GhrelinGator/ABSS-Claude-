@@ -1,0 +1,13 @@
+{
+  "name": "C0-smoke",
+  "description": "Phase 0 plumbing check, not an experiment: the empty world advances for four days under two calendar settings. It exists so the harness, manifests, and metrics output can be exercised end to end.",
+  "ticks": 576,
+  "metricsEveryTicks": 144,
+  "seeds": { "from": 1, "count": 3 },
+  "base": {},
+  "conditions": {
+    "default": {},
+    "long-year": { "time": { "daysPerYear": 60 } }
+  },
+  "observers": ["census"]
+}

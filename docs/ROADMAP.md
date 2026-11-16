@@ -8,6 +8,8 @@ Size estimates are rough (lines include tests). Phases 0–6 (everything through
 
 ## Phase 0: Foundations (~1.5–2.5k lines, 2–4 sessions)
 
+**Status: done, 2026-11-15.** It came to about 4,900 lines including tests, roughly double the estimate above, so read the later estimates as low. Results: `STATUS.md`; checkpoint: `DECISIONS.md` D-016.
+
 Nothing interesting happens in this phase. It builds the rails that keep everything after it honest.
 
 - **0.1 [F]** Architecture skeleton: module layout per `CLAUDE.md`, core types (world, agent, entity, object), tick loop with fixed update order, seeded PRNG streams (§1.4), state serialization and hashing, `SignalLayer` interface stub.
@@ -22,15 +24,16 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 
 ## Phase 1: World and ecology (~3–5k lines, 4–8 sessions)
 
-- **1.1 [O]** Map generator: elevation, soil, rivers, lakes, springs, barriers. One parameter sweeps from open to circumscribed.
+- **1.0 [F]** *Done 2026-11-15 (`DESIGN.md` §1.8, `DECISIONS.md` D-018).* Portable math (D-014). List the functions Phases 1 and 2 actually need: a seasonal cycle, growth and decay curves, normally distributed draws. For each one, either write a pure-arithmetic version in `src/sim/core/dmath.ts` with accuracy tests, or pick a formulation that avoids it. Decide before any system uses one.
+- **1.1 [O]** *Done 2026-11-15 (`DESIGN.md` §2.10, D-019, D-020).* Map generator: elevation, soil, rivers, lakes, springs, barriers. One parameter sweeps from open to circumscribed.
 - **1.2 [O]** Climate: seasons, multi-year variability process (variance as a config knob), storms, lightning.
-- **1.3 [O]** Light: day/night, moon phase, fire light radius.
+- **1.3 [O]** *Sun and moon done 2026-11-15 (`DESIGN.md` §2.4, D-021); fire light waits for 1.8.* Light: day/night, moon phase, fire light radius.
 - **1.4 [O]** Plants: species attributes from `DESIGN.md` §2.5, including delayed toxicity, processing needs, storability, synchrony, visibility, and seed dispersal.
 - **1.5 [O]** Animals: prey types, pursuit and ambush predators, scavengers, migration, fire avoidance, population dynamics.
 - **1.6 [O]** Real hidden causes: pathogen load in stagnant water and carcasses.
 - **1.7 [O]** Materials and objects: attributes, fracture on strike, sparks, natural shelter, accumulation shelter.
 - **1.8 [O]** Fire: ignition, spread, fuel, burnout, carriable burning sticks.
-- **1.9 [O]** **Debug viewer v0** (browser): map layers, animals, fire, time controls. The owner should be able to *watch* from this point on, because I can't (`STATUS.md` explains why that matters).
+- **1.9 [O]** *First version done 2026-11-15 (`DESIGN.md` §10.1, D-022): terrain layers, day and night, time controls, cell inspector, in-browser self-check. Grows as later milestones add things to see.* **Debug viewer v0** (browser): map layers, animals, fire, time controls. It gets **its own page, served from this repository** (D-012), which needs a build step from `.ts` to `.js` and a GitHub Pages deployment. The owner should be able to *watch* from this point on, because I can't (`STATUS.md` explains why that matters). Consider moving this earlier in the phase: a viewer that shows only terrain and weather is already useful. On load, the viewer should run the arithmetic self-check (`src/sim/core/selfcheck.ts`) in the owner's own browser and say so plainly if it fails.
 - **1.10 [F]** Ecology balance review.
 
 **Exit:** the ecosystem without agents persists 100 simulated years across 20 seeds (no extinction cascades, no unbounded growth); fire behaves plausibly; both landscape types generate; the viewer runs.

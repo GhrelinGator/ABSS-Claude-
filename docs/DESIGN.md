@@ -68,6 +68,69 @@ Mind complexity × population × generations is the budget, and all three can't 
 ### 1.4 Determinism
 Seeded PRNG streams (separate streams for climate, ecology, each agent's decisions, so adding an agent doesn't reshuffle the weather). Fixed update order. State is serializable for snapshot and replay.
 
+### 1.5 Kernel architecture (added in Phase 0)
+The kernel is the substrate everything else runs on. It contains no mechanisms of its own.
+
+- **One write routine per piece of state.** All simulation state lives in registered parts (entity stores, the run-wide stream block, world layers). Each part has a single `write(sink)` routine. Snapshots and state hashes both come from that routine, through a byte sink or a hash sink, so what is saved and what is hashed can't drift apart.
+- **Snapshots are self-describing:** format version, the canonical config JSON, the pipeline's system names, the tick, then every part in registration order. Loading rebuilds the sim from the embedded config and refuses a snapshot whose pipeline or column layout doesn't match.
+- **Entity stores** are structure-of-arrays over typed arrays. Each column declares a **category**: `kernel`, `identity`, `body`, `genome`, or `learned`. A slot is zero-filled when it is assigned and again when it is released, so a reused slot can't inherit anything. Stores grow by doubling. **There is no population cap**, because a cap would be a hidden carrying capacity.
+- **Blank slate, enforced at run time.** No system may write learned content for an agent during the tick it was spawned. That makes "every agent spawned this tick holds no learned content" a checkable invariant for founders and newborns alike, whatever code path created them. The only code allowed to assign a slot is `spawnAgent` in the kernel.
+- **Conserved quantities.** Columns can be tagged as the stock, cumulative inflow, or cumulative outflow of a conserved quantity (energy, water). The audit checks `stock = inflow − outflow` for every live entity. A founder's starting reserve and a newborn's endowment are recorded as inflows, so the identity holds from the first tick.
+- **Pipeline.** A tick runs a fixed, ordered list of systems. Each system is created through `defineSystem` under an `// ALIBI:` comment, may run every N ticks, declares the columns it needs, and is bound to one sim instance. There is no module-level mutable state, so several sims can run in one process.
+- **Streams.** The generator is sfc32. Each consumer's stream is seeded by hashing (run seed, domain, id) into 96 bits through three independent lanes. Per-entity streams are keyed by the entity's id, which is never reused.
+- **Portable arithmetic.** `src/sim/` may use only operations whose results the standard fixes exactly: `+ − × ÷`, `Math.sqrt`, rounding, and integer and bit operations. Engine-provided transcendental functions (`Math.sin`, `exp`, `log`, `pow`, the `**` operator, and the rest) are implementation-defined, so they are banned. When the sim first needs one, it gets a pure-arithmetic implementation in `src/sim/core/dmath.ts`. The goal: a run the owner watches in a browser can be replayed bit-for-bit in Node. State never holds NaN or infinite values.
+- **Derived caches** (the spatial index, id-to-slot maps) are rebuilt from state and never serialized.
+- **World setup happens before tick 0** (added in Phase 1.1). A system may have an `init(sim)` step that builds what exists before anything happens, such as the landscape. It runs once, in pipeline order, when a sim is created fresh, and never when a sim is loaded from a snapshot, because the snapshot already holds the result. Setup draws only from the `WORLD_GEN` stream or from hashes of the seed, and must not spawn agents.
+- **Read-only analysis.** `src/analysis/` reaches the sim only through `src/sim/readonly.ts`. A guardrail test checks that a run with observers attached hashes identically to one without.
+- **No asynchrony.** The sim is synchronous: no promises, timers, or workers inside `src/sim/`. Parallelism happens across runs, in the harness.
+
+### 1.6 Simultaneous actions (design rule for Phases 3–4)
+Agents decide from the same tick-start state, and conflicts (two agents taking the same object) are resolved afterwards with seeded tie-breaks. No agent gets a standing first-mover advantage from where it sits in memory. The decide phase only reads shared state, which also leaves room to run it in parallel later.
+
+### 1.7 Compute budget (measured in Phase 0)
+The §1.3 target (500 agents, one generation per 10 real minutes, one core) works out to **about 6.9 microseconds per agent per tick** for everything: bodies, perception, minds. The arithmetic: a generation is taken as 25 simulated years × 48 days × 144 ticks = 172,800 ticks, so the target is 288 ticks per second at 500 agents. Measured kernel overhead and what it leaves for minds are in `STATUS.md` and `DECISIONS.md` D-016.
+
+### 1.8 Portable math (Phase 1.0)
+`src/sim/` may not call the engine's `Math.sin`, `exp`, `log`, or `pow` (§1.5), so the kernel supplies its own. They use only exactly-specified operations, so they return the same bits on every engine. They live in `src/sim/core/dmath.ts`:
+
+| Function | What it is | Notes |
+|---|---|---|
+| `exp(x)`, `log(x)` | natural exponential and logarithm | the classic fdlibm algorithms |
+| `pow(x, y)` | x to the y | repeated multiplication for whole-number y; `exp(y·log x)` otherwise, which is good to about 13 significant digits |
+| `sinTurn(t)`, `cosTurn(t)` | sine and cosine of an angle given in **turns** (1 turn = one full cycle) | exact at quarter turns; exactly periodic |
+| `nextNormal`, `nextExponential` (in `rng.ts`) | normally and exponentially distributed draws from a stream | polar method; `−log(1 − u)` |
+
+Square roots need nothing special: the standard makes `Math.sqrt` exact.
+
+Accuracy, measured against an arbitrary-precision reference: `exp` and `log` are never more than one representable number away from the correctly rounded result, and `sinTurn` and `cosTurn` never more than two. Agreement between engines has been checked too: Node (the V8 engine) and Bun (JavaScriptCore, the engine in Safari) produce identical results, and GitHub repeats that comparison on every push.
+
+**Rules for using them**
+1. **Angles are in turns, never radians.** Everything periodic in the sim is naturally a fraction of a cycle (time of day, time of year, moon phase). Reducing an angle given in turns is exact; reducing one given in radians is not.
+2. **Directions are unit vectors, never angles.** Draw a direction by rejection from the unit disc; turn it by adding a perturbation and renormalising with `Math.sqrt`. There is no `atan2` and no need for one.
+3. **Call them at setup, not in hot loops, wherever the model allows.** A call costs 15 to 70 nanoseconds on the Phase 0 benchmark machine (1.2 to 2.5 times the engine's built-ins), and the whole budget is 6.9 microseconds per agent per tick (§1.7). A decay with a half-life becomes a constant factor computed once in a system's `create`; the per-agent, per-tick loop only multiplies.
+4. **Changing `dmath.ts` changes every run.** A guardrail test (`portable-math.test.ts`) pins its results to recorded digests, which are kept in two places so they can't be changed by accident. Any change needs a `DECISIONS.md` entry.
+5. **A machine has to pass the same check before it may produce results.** `src/sim/core/selfcheck.ts` recomputes the digests; the harness runs it before every batch and refuses to start on a mismatch. The viewer should run it in the browser too.
+
+**How the needs of Phases 1 and 2 are met.** This table is about arithmetic only. Whether a mechanism should exist, and in what form, is decided in its own section and phase.
+
+| If a system needs… | Do it this way | Uses |
+|---|---|---|
+| a seasonal or daily cycle, or moon phase | `cosTurn` / `sinTurn` of the year or day fraction from the calendar | dmath |
+| a direction (wind, a step, seed dispersal) | unit vector by rejection; perturb and renormalise | exact operations |
+| terrain noise | noise on hashed lattice points with polynomial blending | exact operations |
+| growth or decay per step (regrowth, spoilage, fatigue, forgetting) | multiply by a constant factor each step; get the factor from the half-life with `exp`, once, at setup | dmath at setup |
+| events at a rate (storms, lightning) | a per-tick probability, `1 − exp(−rate·dt)`, computed once at setup | dmath at setup |
+| a hazard that grows exponentially with age | multiply the hazard by a constant factor per year | exact operations |
+| normally distributed variation (mutation, developmental noise, climate anomalies) | `nextNormal` on the consumer's own stream | dmath |
+| waiting times, dispersal distances | `nextExponential` | dmath |
+| scaling with body size (rate ∝ mass^0.75) | `Math.sqrt(Math.sqrt(m·m·m))`, or `pow` | exact operations, or dmath |
+| a temperature response that doubles every N degrees | `exp` of a linear function of temperature | dmath |
+| diminishing returns from practice | `pow(n, −b)`, or an incremental update | dmath |
+| a saturating response | `x / (1 + x)`, or `1 / (1 + exp(−x))` | exact operations, or dmath |
+| softmax choice (Phase 3) | `exp`; its cost goes into the Phase 3.1 measurement | dmath |
+
+Measured accuracy and speed are in `DECISIONS.md` D-018.
+
 ---
 
 ## 2. World
@@ -86,6 +149,13 @@ Rivers, lakes, springs. **Stagnant water carries pathogen load** that rises with
 
 ### 2.4 Light
 Daylight and night. Moonlight varies by phase. Perception range drops sharply in the dark (§4.1). **Fire emits light** in a radius, so agents near a fire can see each other at night.
+
+**Sun and moon (Phase 1.3)** are pure functions of the tick and the config, in `src/sim/world/light.ts`. They hold no state, so they need no system.
+- **The year** starts at the spring equinox: a quarter of the way through is midsummer, three quarters is midwinter. Day length swings from about 9.6 to 14.4 hours, a mid-latitude climate.
+- **Sunlight** rises from 0 at sunrise to 1 at noon. A twilight band of about 45 minutes either side fades from 0.08 to darkness.
+- **The moon** runs on a 29.53-day cycle of real days, not compressed years (§1.1), because it is something agents see from night to night. Its brightness is set by its phase, and it is only up for part of the night. A full moon rises at sunset and is up all night; a first-quarter moon sets around midnight; a new moon is up only during the day.
+- **Ambient light** is the brightest of three sources: sunlight; moonlight (at most 0.06 of full sun at full moon overhead, a deliberate exaggeration so a moonlit night counts as visibly different); and starlight (0.002).
+- Fire light gets added in Phase 1.8, per cell.
 
 ### 2.5 Plants
 Each species has attributes:
@@ -119,6 +189,47 @@ Objects have physical attributes, never use-labels: mass, length, hardness, **fr
 
 ### 2.9 Fire
 A physical process: needs fuel and oxygen, spreads to adjacent flammable cells by dryness and wind, dies without fuel. A burning stick is a carriable object that keeps burning for a while. Fire gives light (§2.4) and heat (reduces thermoregulation cost nearby), deters predators (§2.6), and cooking raises the calories extracted from some foods and detoxifies others (§2.5).
+
+### 2.10 Map generator (Phase 1.1)
+A system with an `init` step (§1.5) builds the landscape once, before tick 0, from the seed and the config. Everything it makes is physical geography. It exists whether or not anything ever lives there, and no part of it is placed with inhabitants in mind.
+
+**The one manipulation knob: `world.circumscription`**, a number from 0 to 1 (default 0.5; experiments set it explicitly). It is experiment E3's independent variable (Carneiro, §7.11). Changing it leaves the seed's axis and noise fields unchanged and adds only:
+- **walls**: on both sides of a valley along a random axis through the map centre, the land rises over a 3 km ramp to a plateau up to 1,400 m higher;
+- **a creeping desert**: beyond the walls, rain drops to 15% of normal. The desert's edge sits beyond the map at 0 and moves in to the middle of the walls at 1, so the land left between valley and desert shrinks gradually;
+- **a graded valley floor**: the valley loses most of its bumps to river sediment and slopes gently toward its centre line, so its water gathers into one river;
+- **a wet upper valley**: extra rain at the upstream end of the valley itself (not the uplands beside it), so a river runs the valley's length even when everything around it is dry, like the Nile.
+
+At 0 the landscape is open: rolling relief, rain everywhere, rivers draining to every edge. At 1 it is a river valley about 14 km wide, walled by steep, dry uplands.
+
+**Steps**, all in exact arithmetic (§1.8). Every number lives in `TERRAIN_CONSTANTS` in `src/sim/world/terrain.ts`; horizontal lengths scale with the map, so small test maps keep the same shapes.
+1. **Axis.** A unit direction drawn from the `WORLD_GEN` stream, through the map centre. Every cell gets an along-axis coordinate *a* and an across-axis distance *d*. *d* wanders with low-frequency noise (about ±3 km over about 20 km), so the valley meanders.
+2. **Relief.** Gradient noise (hashed lattice, eight gradient directions, quintic blending), six octaves, longest wavelength about 25 km: about ±250 m around 400 m. Plus a tilt of 5 m per km along the axis so the valley drains one way. Inside the valley, relief is scaled down by up to 85% and a cross-slope of up to 12 m per km is added, both × knob.
+3. **Walls.** Beyond the valley half-width (7 km), a smooth ramp over 3 km: 1,400 m × knob × (0.6 + 0.4 × noise).
+4. **Rainfall** (`terrain.rainfall`, the long-term mean, 1 = temperate): a broad noise field around 1 (±25%), cut by 85% in the desert, plus up to 0.9 × knob in the upper valley, never below 0.05. The climate system (Phase 1.2) varies weather around this mean.
+5. **Drainage.** A priority-flood from the map edges (Barnes, Lehman & Mulla 2014, the variant with a first-in-first-out queue for cells inside depressions). Cells come off a heap in order of filled height, ties broken by cell index, so the result is deterministic. Each cell drains to the neighbour it was reached from (`water.drain`; −1 means off the map). On flat stretches every neighbour one step nearer the exit is an equally good route, and one is picked by a hash of the seed and the cell. That makes water meander across flats instead of running in straight lines.
+6. **Basin infill.** Each closed basin is filled 85% of the way to its spill point, as sediment does over geological time. Random relief has far more closed basins than real land; without this, lakes covered 8–15% of the map.
+7. **Flow** (`water.flow`, km²): **runoff**-weighted upstream area, where runoff is rainfall minus 0.3 for evaporation and soaking in, never negative. Deserts feed no rivers of their own; rivers that cross them come from wetter ground.
+8. **Lakes.** Cells at least 1 m below the filled surface, in a connected patch of at least 3 cells, whose total inflow (the flow leaving the patch) is at least 0.7 km² and at least 5 times the patch's area, so inflow can offset evaporation from the surface. Depth goes in `water.depth`. Dry basins stay dry.
+9. **Rivers**: cells with flow of at least 7 km². **Springs**: river cells that no other river or lake cell drains into, which is where rivers begin. In this version every spring is a river head; isolated groundwater springs in dry land are a known gap.
+10. **Soil** (`terrain.soil`), by rules in this order: rock where the steepest slope exceeds 0.35; alluvium on flat ground (slope under 0.05) within 200 m of a large river (flow of at least 28 km²) or a lake; sand where rainfall is below 0.25; thin soil where slope exceeds 0.15 or height exceeds 1,200 m; loam everywhere else. What soil means for plants is decided in Phase 1.4.
+
+**Layers**, one value per cell: `terrain.elevation` (f32, m), `terrain.rainfall` (f32), `terrain.soil` (u8: 0 rock, 1 thin, 2 loam, 3 alluvium, 4 sand), `water.kind` (u8: 0 dry, 1 spring, 2 river, 3 lake), `water.depth` (f32, m), `water.drain` (i32), `water.flow` (f32, km²). Slope is computed by whoever needs it, from elevation; it is not stored. Rivers are flowing water and lakes are standing water, the distinction §2.2 needs for pathogens.
+
+**Not in this version:** sea coasts, caves and overhangs (§2.8), and river width or seasonal flooding.
+
+**Manipulation check.** `src/analysis/observers/landscape.ts` measures, for any run: the fraction of the map that is *habitable land* (not open water, slope at most 0.3, and either rainfall at least 0.35 or fresh water within 1.5 km); how much of that habitable land lies in the single largest connected region; and how much of that region's edge is walled by unhabitable land. "Habitable" is the analyst's yardstick for describing the manipulation; agents never see it and the sim never uses it.
+
+Measured over seeds 1, 2, 3, 7 and 8 on the default 512-cell map:
+
+| Knob | Habitable share of the map | Share of it in the largest region |
+|---|---|---|
+| 0 | 95–98% | 100% |
+| 0.25 | 95–97% | 100% |
+| 0.5 | 87–93% | 100% |
+| 0.75 | 68–72% | 44–55% (land beyond the walls, split up) |
+| 1 | 32–39% | 92–94% (one walled valley) |
+
+A test (`tests/unit/terrain.test.ts`) holds the generator to this: habitable land never grows as the knob rises, is at least 90% at 0 and at most 45% at 1, and at 1 lies at least 85% in one region with walls and a river.
 
 ---
 
@@ -404,6 +515,13 @@ Viability tuning (keeping founders from going extinct) is allowed and logged. So
 The player's role is undecided (see `STATUS.md`). Default until decided: **observer** with time controls, map layers, an agent inspector (drives, ledger, world model, lexicon), and a "legends" view of detected events. No interventions.
 
 If a **god mode** is ever added, player interventions must enter the sim as physical events (rain, lightning, a plant appearing) without agent-state conditioning. Then agents who attribute those events to a hidden cause are *correct*, and the experiment changes meaning. That's a design decision for the owner, not a feature to slip in.
+
+### 10.1 The viewer page (Phase 1.9)
+The game has its own page (D-012), built from `src/viewer/` and served by GitHub Pages from this repository.
+- **The browser runs the real simulation** from the same code Node runs, so what the owner watches is the actual sim, not a recording. The arithmetic self-check (§1.8) runs on load and reports plainly whether this browser computes exactly what Node does.
+- **The viewer only reads.** It reaches the sim through the read-only view (`src/sim/readonly.ts`) plus the stepping and creation functions. It never writes to sim state, so a run watched in the browser is the same run the same seed gives anywhere.
+- **Build without installing anything:** `node scripts/build-site.ts` strips the TypeScript types with Node's built-in `module.stripTypeScriptTypes`, rewrites `.ts` imports to `.js`, and writes plain ES modules to `dist/site/`. Browsers load them directly; there is no bundler. Only files reachable from `src/viewer/main.ts` are copied.
+- **Designed for a phone first:** the map fills the width, controls sit below it, and tapping a cell shows what is there.
 
 ---
 

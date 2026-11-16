@@ -2,7 +2,13 @@
 
 A simulation where society, hierarchy, and religion are meant to **emerge**, not be scripted. Agents start knowing nothing. They have bodies that burn calories, get hurt, age, and reproduce; minds that learn from experience and from each other; and the ability to point and to invent signals. Everything social, from food sharing and pair bonds to leaders and gods, has to grow out of that, or it doesn't happen.
 
-**Status:** planning complete, no code yet. See [`docs/STATUS.md`](docs/STATUS.md).
+**Status:** the landscape exists (rivers, lakes, soil, deserts, day and night), and a viewer page shows it. Nothing lives in it yet: no plants, animals, bodies, or minds. See [`docs/STATUS.md`](docs/STATUS.md).
+
+## The one rule
+
+> Code mechanisms, never outcomes.
+
+Words like "religion", "leader", and "trade" are not allowed anywhere in the simulation's code. A test enforces it. Only the separate analysis code, which watches runs and looks for patterns, may use them.
 
 ## Where to start
 
@@ -11,11 +17,43 @@ A simulation where society, hierarchy, and religion are meant to **emerge**, not
 | [`docs/ORIGIN.md`](docs/ORIGIN.md) | The original high-school essay and how each idea maps to the design |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | Full design: world, bodies, minds, signals, the causal chains, and how emergence gets detected |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Phases, milestones, exit criteria, and which Claude model each step suits |
-| [`docs/GUARDRAILS.md`](docs/GUARDRAILS.md) | Rules that stop the builder (Claude) from quietly pre-coding outcomes |
+| [`docs/GUARDRAILS.md`](docs/GUARDRAILS.md) | Rules, and the tests behind them, that stop the builder (Claude) from quietly pre-coding outcomes |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Why things are the way they are |
 | [`docs/STATUS.md`](docs/STATUS.md) | Where things stand and what the owner needs to decide |
 | [`CLAUDE.md`](CLAUDE.md) | Instructions Claude loads at the start of every session |
 
-## The one rule
+## Running it
 
-> Code mechanisms, never outcomes.
+You need [Node.js](https://nodejs.org) 22.18 or newer. Nothing else has to be installed.
+
+```
+npm test                   run every test
+npm run test:guardrails    run only the guardrail tests
+npm run bench              measure speed on this machine
+npm run experiment -- experiments/C0-smoke/spec.json
+```
+
+The last command runs a small batch and writes its results to `runs/`.
+
+To see the world, build the viewer page and open it through any static web server:
+
+```
+npm run build:site
+cd dist/site && python3 -m http.server 8000     # then open http://localhost:8000
+```
+
+Once GitHub Pages is switched on for this repository, the same page is published automatically on every change to `main`.
+
+## Layout
+
+```
+src/sim/        the simulation: deterministic, seeded, imports nothing but itself
+src/analysis/   read-only observers that measure what happens in a run
+src/harness/    batch runner for experiments
+src/viewer/     the viewer page (runs the real simulation in the browser)
+scripts/        build script for the viewer page
+bench/          speed benchmark
+tests/          guardrail tests and unit tests
+experiments/    one folder per experiment: predictions first, results after
+docs/           design, roadmap, decisions, status
+```
