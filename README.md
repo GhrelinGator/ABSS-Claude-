@@ -2,7 +2,7 @@
 
 A simulation where society, hierarchy, and religion are meant to **emerge**, not be scripted. Agents start knowing nothing. They have bodies that burn calories, get hurt, age, and reproduce; minds that learn from experience and from each other; and the ability to point and to invent signals. Everything social, from food sharing and pair bonds to leaders and gods, has to grow out of that, or it doesn't happen.
 
-**Status:** the foundations are built (Phase 0). The world itself is still empty: no terrain, bodies, or minds yet. See [`docs/STATUS.md`](docs/STATUS.md).
+**Status:** the landscape exists (rivers, lakes, soil, deserts, day and night), and a viewer page shows it. Nothing lives in it yet: no plants, animals, bodies, or minds. See [`docs/STATUS.md`](docs/STATUS.md).
 
 ## The one rule
 
@@ -33,7 +33,16 @@ npm run bench              measure speed on this machine
 npm run experiment -- experiments/C0-smoke/spec.json
 ```
 
-The last command runs a small batch and writes its results to `runs/`. Right now there is nothing to watch: the first visual viewer arrives in Phase 1.
+The last command runs a small batch and writes its results to `runs/`.
+
+To see the world, build the viewer page and open it through any static web server:
+
+```
+npm run build:site
+cd dist/site && python3 -m http.server 8000     # then open http://localhost:8000
+```
+
+Once GitHub Pages is switched on for this repository, the same page is published automatically on every change to `main`.
 
 ## Layout
 
@@ -41,6 +50,8 @@ The last command runs a small batch and writes its results to `runs/`. Right now
 src/sim/        the simulation: deterministic, seeded, imports nothing but itself
 src/analysis/   read-only observers that measure what happens in a run
 src/harness/    batch runner for experiments
+src/viewer/     the viewer page (runs the real simulation in the browser)
+scripts/        build script for the viewer page
 bench/          speed benchmark
 tests/          guardrail tests and unit tests
 experiments/    one folder per experiment: predictions first, results after

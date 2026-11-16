@@ -36,6 +36,14 @@ export interface SystemSpec {
    * module level, so that several sims can run side by side.
    */
   readonly create: (sim: Sim) => () => void;
+  /**
+   * Build what exists before anything happens, such as the landscape.
+   * Runs once, after every system has been created, and only when a sim is
+   * created fresh: never when one is loaded from a snapshot, because the
+   * snapshot already holds the result (docs/DESIGN.md §1.5). Draws only
+   * from the WORLD_GEN stream or from hashes of the seed, and spawns nothing.
+   */
+  readonly init?: (sim: Sim) => void;
 }
 
 export interface SystemDef {
@@ -44,6 +52,7 @@ export interface SystemDef {
   readonly every: number;
   readonly declare: ((state: SimState) => void) | null;
   readonly create: (sim: Sim) => () => void;
+  readonly init: ((sim: Sim) => void) | null;
 }
 
 export function defineSystem(spec: SystemSpec): SystemDef {
@@ -53,12 +62,16 @@ export function defineSystem(spec: SystemSpec): SystemDef {
     throw new RangeError(`System "${spec.name}": "every" must be a positive integer, got ${every}.`);
   }
   if (typeof spec.create !== 'function') throw new TypeError(`System "${spec.name}" has no create function.`);
+  if (spec.init !== undefined && typeof spec.init !== 'function') {
+    throw new TypeError(`System "${spec.name}": init must be a function.`);
+  }
   return Object.freeze({
     [KIND]: 'system' as const,
     name: spec.name,
     every,
     declare: spec.declare ?? null,
     create: spec.create,
+    init: spec.init ?? null,
   });
 }
 

@@ -163,3 +163,34 @@ Format: ID, date, status, decision, why, alternatives considered.
   - *Not built:* `tan`, `atan2`, hyperbolic functions, `log2`, `log10`. Add one when a system needs it, with the same tests and a new digest.
 - **Safeguards that came with it:** the recorded digests live in two places (`src/sim/core/selfcheck.ts` and the guardrail test), so the arithmetic can't change by accident; the harness runs the self-check before every batch and refuses to start if this machine's arithmetic differs; the viewer should run it in the browser (Phase 1.9).
 - **Licence note:** the `exp`, `log`, sine, and cosine code is ported from fdlibm (Sun Microsystems, 1993), which allows free use provided its notice is kept. The notice is at the top of `dmath.ts`.
+
+### D-019: Setup steps run before tick 0, only for fresh sims
+- **Date:** 2026-11-15 · **Status:** Accepted
+- **Decision:** A system may have an `init(sim)` step. `createSim` runs every setup step once, in pipeline order, after all systems are bound. `loadSim` never runs them, because the snapshot already holds what they built. The kernel refuses a setup step that spawns agents. See `DESIGN.md` §1.5.
+- **Why:** The landscape has to exist at tick 0, so the first state hash and the first frame the viewer shows include it. Regenerating it on every load would cost a quarter second and, worse, would hide a loader bug behind a regenerated copy.
+- **Alternatives:** Generating on the first tick (the world would be empty at tick 0); generating inside `create` (it would also run on load).
+
+### D-020: The map generator and its one experimental knob
+- **Date:** 2026-11-15 · **Status:** Accepted
+- **Decision:** As in `DESIGN.md` §2.10. One config setting, `world.circumscription` from 0 to 1, moves the landscape from open country to a walled river valley. Everything else about the landscape is fixed by the seed.
+- **How it got there** (each change was made because a rendered map or a measurement showed a problem, not to produce any social outcome):
+  1. First version: lakes covered 8–15% of the map, because random relief has far more closed basins than real land. → Basins are filled 85% with sediment, and a lake must get enough inflow to offset evaporation from its surface. Lakes now cover 0–6%.
+  2. Rivers started in the open desert, because all rain counted as runoff. → Runoff is rain minus evaporation, never negative.
+  3. Water crossing flat ground ran in dead-straight 45° lines. → On flats, one of the equally short routes to the exit is picked by a hash, so channels meander.
+  4. The knob did almost nothing below 0.75, and wet uplands beside the valley left it leaky. → The desert's edge now moves in gradually as the knob rises; the extra upstream rain falls only in the valley.
+  5. A smooth valley floor sent rain down in dozens of parallel streams. → The valley floor slopes gently toward its centre line, as real ones do, so the water gathers into one river.
+- **Result:** across five seeds, habitable land is 95–98% of the map at 0, 87–93% at 0.5, 68–72% at 0.75 and 32–39% at 1, where 92–94% of it is one walled valley. The landscape is identical in Node (V8) and Bun (JavaScriptCore).
+- **Default 0.5**: a moderate world with some desert at the far corners. E3 sets the knob explicitly, so the default only matters for runs that don't mention it.
+- **Costs:** building a 512 × 512 world takes about 0.27 s. The landscape adds about 5.5 MiB to every snapshot; hashing the full state now takes about 2 ms.
+- **Known gaps:** no sea coasts, caves, river width, seasonal floods, or isolated springs in dry land.
+
+### D-021: Sun and moon as pure functions; the moon keeps real time
+- **Date:** 2026-11-15 · **Status:** Accepted
+- **Decision:** Light comes from functions of the tick and config in `src/sim/world/light.ts`, with no state and no system (`DESIGN.md` §2.4). Day length swings 9.6–14.4 hours with the season. The moon runs a real 29.53-day cycle even though years are compressed, and rises and sets according to its phase.
+- **Why:** Nights differ in how dark they are, which matters for the night-talk hypothesis (§7.6): moonlit nights should be measurably different from moonless ones. Keeping the moon on real days preserves its rhythm relative to the day, which is what agents would experience.
+
+### D-022: The viewer page: built without tools, published two ways
+- **Date:** 2026-11-15 · **Status:** Accepted
+- **Decision:** `scripts/build-site.ts` turns the TypeScript into plain browser modules with Node's built-in type stripper (no bundler, nothing to install). GitHub Pages serves the result from this repository: `.github/workflows/pages.yml` deploys on every push to `main`, once the owner switches Pages on (Settings → Pages → Source: GitHub Actions; this session's access to that setting was blocked). Until then, and for quick looks, the same files are published as a private claude.ai artifact.
+- **Safeguards:** a test builds the page and checks that the built simulation gives the same state fingerprint as the TypeScript source. The page runs the arithmetic self-check in the visitor's own browser and says plainly if it fails. The viewer only reads the sim; it advances the clock like a run would, and that's all.
+- **One deliberate liberty:** a fresh world starts at midnight, so the page advances it to noon of the first day before showing it. That's the same run, twelve hours in.

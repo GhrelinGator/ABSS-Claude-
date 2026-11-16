@@ -4,10 +4,10 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Phase 0 (foundations) and Phase 1.0 (portable math) are done.** The kernel, the guardrail tests, the experiment harness, the benchmark, and the math functions the world will need all exist and pass.
-- **The simulation itself is still empty.** The real pipeline has no systems: no terrain, no weather, no bodies, no minds. Nothing has emerged, because nothing can yet. Anyone who reports otherwise at this stage is wrong.
-- **Next action:** Phase 1.1 [O] (map generator) and onward. See `ROADMAP.md`. Consider doing the viewer (1.9) early, so the owner has something to look at.
-- **Blocked on:** the owner merging the open pull requests into `main`. #1 (`phase-0-foundations`) is Phase 0. #2 (`phase-1.0-portable-math`) is built on top of #1 and contains both, so merging #2 alone is enough. The next session starts from `main`.
+- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), the sun-and-moon part of 1.3, and a first viewer (1.9).
+- **The world exists; nothing lives in it.** The real pipeline has one system, the landscape, built before tick 0. No weather, plants, animals, bodies, or minds yet. Nothing has emerged, because nothing can yet.
+- **Next action:** Phase 1.2 [O] (climate: seasons, multi-year variability, storms, lightning), then 1.4 plants. See `ROADMAP.md`.
+- **Blocked on:** the owner merging the open pull requests. They are stacked: #1 (Phase 0) ← #2 (1.0) ← #3 (1.1, 1.3, 1.9). Merging #3 alone brings in all three. The next session starts from `main`.
 
 ## What exists
 
@@ -16,10 +16,13 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/core/` | random streams, state hash, snapshot encoding, entity stores, grid layers, spatial index, calendar, mechanism registry, run-time audits |
 | `src/sim/core/dmath.ts`, `selfcheck.ts` | portable `exp`, `log`, `pow`, `sinTurn`, `cosTurn`; the arithmetic self-check |
 | `src/sim/sim.ts` | state container, tick loop, save/load, `spawnAgent` |
-| `src/sim/pipeline.ts` | the real update order. **Empty.** |
+| `src/sim/pipeline.ts` | the real update order: so far only the landscape |
 | `src/sim/readonly.ts` | the only door the analysis layer may use |
+| `src/sim/world/terrain.ts`, `noise.ts` | the map generator (`DESIGN.md` §2.10) |
+| `src/sim/world/light.ts` | sun, moon, and starlight (`DESIGN.md` §2.4) |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
-| `src/analysis/` | observer interface and one observer (`census`, a head count) |
+| `src/analysis/` | observer interface; `census` (a head count) and `landscape` (the E3 manipulation check) |
+| `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
 | `src/harness/` | experiment specs, batch runner on worker threads, manifests, JSONL metrics, command line |
 | `bench/` | speed benchmark with a scripted stand-in load; timing of the math functions |
 | `tests/guardrails/` | the nine guardrail tests (`GUARDRAILS.md` §1) |
@@ -27,17 +30,15 @@ Update this at the end of every session. Newest information at the top of each s
 | `tests/unit/`, `tests/harness/` | tests of the kernel pieces and the harness |
 | `experiments/C0-smoke/` | a plumbing check for the harness, not an experiment |
 
-About 6,000 lines including tests after Phase 1.0 (Phase 0 alone was about 4,900: 1,900 in `src/sim/`, 2,100 of tests). The roadmap guessed 1,500–2,500 for this phase, so **treat the roadmap's size estimates as low by roughly half.**
+About 7,800 lines including tests after this session (6,000 after Phase 1.0; Phase 0 alone was about 4,900, where the roadmap guessed 1,500–2,500), so **treat the roadmap's size estimates as low by roughly half.**
 
 ## Decisions needed from the owner
 
 Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
 
-Coming up:
-
 | # | Question | Needed by |
 |---|---|---|
-| Q6 | Turn on GitHub Pages for this repository (one setting), so the viewer has its own page. | Phase 1.9 |
+| Q6 | **Switch on GitHub Pages:** Settings → Pages → Source: "GitHub Actions". Claude's access to that setting is blocked. The deploy workflow is ready and runs on every push to `main`. Meanwhile a preview is published as a private claude.ai artifact (see the session log). | now |
 | Q7 | Can the owner's computer run Node 22.18 or newer for long batches, and how many cores does it have? Cloud sessions stop background work a few minutes after a reply. | Phase 3 |
 | Q1 | Player role, if observer-only turns out not to be what he wants (D-011). | Phase 9 |
 
@@ -78,6 +79,7 @@ Coming up:
 
 ## Session log
 
+- **2026-11-15, session 4** (Opus 5.5, claude.ai; same chat). Phase 1.1 map generator, sun and moon (1.3), and viewer v0 (1.9), on branch `phase-1.1-terrain-viewer`, stacked on #2 because #1 and #2 were still unmerged. Iterated on the generator five times from rendered maps (D-020). Added the kernel's setup step (D-019), the `landscape` observer, the page build and its Pages workflow, and a test that the built page runs the same simulation as the source. Published a preview of the page as a private claude.ai artifact. Opened pull request #3.
 - **2026-11-15, session 3** (Fable 5.2, claude.ai; same chat as session 2). Phase 1.0, portable math, on branch `phase-1.0-portable-math`, built on the unmerged Phase 0 branch because pull request #1 was still open. Added `dmath.ts`, `selfcheck.ts`, normal and exponential draws, accuracy tests against an arbitrary-precision reference, recorded digests, a second-engine comparison (Bun) locally and on GitHub, and `DESIGN.md` §1.8. Recorded D-018. Opened pull request #2.
 - **2026-11-15, session 2** (Fable 5.2, claude.ai). Built all of Phase 0 on branch `phase-0-foundations`: kernel (0.1), guardrail tests (0.2), harness (0.3), benchmark (0.4), stack checkpoint (0.5). Milestones 0.2–0.4 were tagged for Opus; they were done in the same Fable session because the owner had already switched models and splitting would have cost him a round trip. Recorded D-012 to D-017. Added `DESIGN.md` §1.5–§1.7. Opened pull request #1; GitHub's checks passed. The session was interrupted once partway and resumed from the files on disk.
 - **2026-11-15, session 1** (Opus 5.5, claude.ai). Wrote the full plan: `CLAUDE.md`, `GUARDRAILS.md`, `DESIGN.md`, `ROADMAP.md`, `DECISIONS.md`, `RESEARCH.md`, `ORIGIN.md`, experiment template, tuning log. No code, per the owner's instruction to brainstorm and plan first.

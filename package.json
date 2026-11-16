@@ -10,9 +10,10 @@
   "scripts": {
     "test": "node --test \"tests/**/*.test.ts\"",
     "test:guardrails": "node --test \"tests/guardrails/*.test.ts\"",
-    "typecheck": "tsc -p tsconfig.pure.json && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.pure.json && tsc -p tsconfig.viewer.json && tsc -p tsconfig.json",
     "bench": "node bench/bench.ts",
-    "experiment": "node src/harness/cli.ts run"
+    "experiment": "node src/harness/cli.ts run",
+    "build:site": "node --no-warnings scripts/build-site.ts"
   },
   "devDependencies": {
     "@types/node": "^22",

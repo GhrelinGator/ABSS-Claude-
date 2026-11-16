@@ -86,11 +86,12 @@ Inside `src/sim/`: seeded streams only (`Math.random` is banned), and only arith
 ```
 npm test                   all tests
 npm run test:guardrails    guardrail tests only
-npm run typecheck          full type check (needs `npm install` once)
+npm run typecheck          full type check: sim, viewer, everything else (needs `npm install` once)
 tsc -p tsconfig.pure.json  type check of sim + analysis alone; works without `npm install` if tsc is on the PATH
 npm run bench              speed benchmark (`node bench/math.ts` times the math functions)
 node tests/cross-engine/print-digests.ts    run with `bun` too and diff: two engines must print the same
 npm run experiment -- experiments/<id>/spec.json
+npm run build:site         build the viewer page into dist/site/ (open it through any static web server)
 ```
 
 ## How a mechanism gets added (kernel contract, `DESIGN.md` §1.5)

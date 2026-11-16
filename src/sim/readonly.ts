@@ -35,6 +35,10 @@ export interface SimView {
   readonly config: SimConfig;
   readonly agents: StoreView;
   store(name: string): StoreView;
+  /** Names of the environment grid's layers. */
+  layerNames(): string[];
+  /** Current values of a grid layer: one per cell, row by row, cell (i, j) at index j * widthCells + i. */
+  layer(name: string): RoArray;
 }
 
 function storeView(store: EntityStore): StoreView {
@@ -68,5 +72,7 @@ export function viewOf(sim: Sim): SimView {
       if (!view) throw new Error(`There is no store "${name}".`);
       return view;
     },
+    layerNames: () => state.world.layerNames(),
+    layer: (name) => state.world.layer(name),
   };
 }

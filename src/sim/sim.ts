@@ -118,8 +118,18 @@ export interface StepProbe {
   exit(systemIndex: number): void;
 }
 
-/** Build a simulation at tick 0 with the given systems, in the given order. */
+/** Build a simulation at tick 0 with the given systems, in the given order, and run their setup steps. */
 export function createSim(config: SimConfig, pipeline: readonly SystemDef[]): Sim {
+  const sim = assembleSim(config, pipeline);
+  for (const def of sim.pipeline) {
+    if (def.init) def.init(sim);
+  }
+  if (sim.state.agents.count !== 0) throw new Error('A setup step spawned agents; setup builds the world only.');
+  return sim;
+}
+
+/** Declare, seal, and bind every system, without running any setup step. */
+function assembleSim(config: SimConfig, pipeline: readonly SystemDef[]): Sim {
   const checked = validateConfig(config);
   const names = new Set<string>();
   for (const def of pipeline) {
@@ -224,7 +234,8 @@ export function loadSim(bytes: Uint8Array, pipeline: readonly SystemDef[]): Sim 
     throw new Error(`Snapshot format ${format} is not supported (this build reads format ${SNAPSHOT_FORMAT}).`);
   }
   const config = validateConfig(JSON.parse(source.str()));
-  const sim = createSim(config, pipeline);
+  // Setup steps are not run: the snapshot already holds what they built.
+  const sim = assembleSim(config, pipeline);
   const { state } = sim;
 
   const nsystems = source.u32();

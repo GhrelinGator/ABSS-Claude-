@@ -6,13 +6,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { getObserver, observerNames } from '../../src/analysis/index.ts';
 import type { Observer } from '../../src/analysis/index.ts';
-import { defaultConfig } from '../../src/sim/config.ts';
+import { defaultConfig, validateConfig } from '../../src/sim/config.ts';
+import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
 import { viewOf } from '../../src/sim/readonly.ts';
 import { createSim, hashSim, stepSim } from '../../src/sim/sim.ts';
 import { FIXTURE_PIPELINE } from '../fixtures/systems.ts';
 
+// The real pipeline (so there is a landscape to observe) plus the fixture's agents, on a smaller map.
+const PIPELINE = [...SIM_PIPELINE, ...FIXTURE_PIPELINE];
+const raw = JSON.parse(JSON.stringify(defaultConfig(17)));
+raw.world.widthCells = 160;
+raw.world.heightCells = 160;
+const CONFIG = validateConfig(raw);
+
 function run(observers: Observer[]): string[] {
-  const sim = createSim(defaultConfig(17), FIXTURE_PIPELINE);
+  const sim = createSim(CONFIG, PIPELINE);
   const view = viewOf(sim);
   const hashes: string[] = [];
   for (let t = 0; t < 2_000; t += 10) {
@@ -41,9 +49,12 @@ test('the comparison would catch an observer that writes', () => {
 });
 
 test('observers report through the read-only view', () => {
-  const sim = createSim(defaultConfig(17), FIXTURE_PIPELINE);
+  const sim = createSim(CONFIG, PIPELINE);
   stepSim(sim, 50);
   const measured = getObserver('census').observe(viewOf(sim));
   assert.equal(measured.agents, sim.state.agents.count);
   assert.equal(measured.scanned, sim.state.agents.count);
+  const land = getObserver('landscape').observe(viewOf(sim));
+  assert.ok(land.habitableFraction > 0 && land.habitableFraction <= 1);
+  assert.deepEqual(getObserver('landscape').observe(viewOf(createSim(defaultConfig(1), FIXTURE_PIPELINE))), {});
 });

@@ -17,6 +17,12 @@ export interface SimConfig {
     readonly heightCells: number;
     /** Side of one environment cell, in metres. */
     readonly cellSizeM: number;
+    /**
+     * How hemmed in the land is, from 0 (open country) to 1 (a river valley
+     * walled by dry uplands). Experiment E3's independent variable; see
+     * docs/DESIGN.md §2.10.
+     */
+    readonly circumscription: number;
   };
 }
 
@@ -25,7 +31,7 @@ export function defaultConfig(seed = 1): SimConfig {
   return validateConfig({
     seed,
     time: { ticksPerDay: 144, daysPerYear: 48 },
-    world: { widthCells: 512, heightCells: 512, cellSizeM: 100 },
+    world: { widthCells: 512, heightCells: 512, cellSizeM: 100, circumscription: 0.5 },
   });
 }
 
@@ -56,6 +62,13 @@ function integer(where: string, value: unknown, min: number, max: number): numbe
   return value;
 }
 
+function fraction(where: string, value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`Config: "${where}" must be a number from 0 to 1, got ${String(value)}.`);
+  }
+  return value;
+}
+
 function positive(where: string, value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw new Error(`Config: "${where}" must be a positive number, got ${String(value)}.`);
@@ -67,7 +80,7 @@ function positive(where: string, value: unknown): number {
 export function validateConfig(input: unknown): SimConfig {
   const root = section('config', input, ['seed', 'time', 'world']);
   const time = section('config.time', root.time, ['ticksPerDay', 'daysPerYear']);
-  const world = section('config.world', root.world, ['widthCells', 'heightCells', 'cellSizeM']);
+  const world = section('config.world', root.world, ['widthCells', 'heightCells', 'cellSizeM', 'circumscription']);
   return Object.freeze({
     seed: integer('config.seed', root.seed, 0, 0xffffffff),
     time: Object.freeze({
@@ -78,6 +91,7 @@ export function validateConfig(input: unknown): SimConfig {
       widthCells: integer('config.world.widthCells', world.widthCells, 1, 8192),
       heightCells: integer('config.world.heightCells', world.heightCells, 1, 8192),
       cellSizeM: positive('config.world.cellSizeM', world.cellSizeM),
+      circumscription: fraction('config.world.circumscription', world.circumscription),
     }),
   });
 }

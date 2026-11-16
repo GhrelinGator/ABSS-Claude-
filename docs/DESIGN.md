@@ -80,6 +80,7 @@ The kernel is the substrate everything else runs on. It contains no mechanisms o
 - **Streams.** The generator is sfc32. Each consumer's stream is seeded by hashing (run seed, domain, id) into 96 bits through three independent lanes. Per-entity streams are keyed by the entity's id, which is never reused.
 - **Portable arithmetic.** `src/sim/` may use only operations whose results the standard fixes exactly: `+ − × ÷`, `Math.sqrt`, rounding, and integer and bit operations. Engine-provided transcendental functions (`Math.sin`, `exp`, `log`, `pow`, the `**` operator, and the rest) are implementation-defined, so they are banned. When the sim first needs one, it gets a pure-arithmetic implementation in `src/sim/core/dmath.ts`. The goal: a run the owner watches in a browser can be replayed bit-for-bit in Node. State never holds NaN or infinite values.
 - **Derived caches** (the spatial index, id-to-slot maps) are rebuilt from state and never serialized.
+- **World setup happens before tick 0** (added in Phase 1.1). A system may have an `init(sim)` step that builds what exists before anything happens, such as the landscape. It runs once, in pipeline order, when a sim is created fresh, and never when a sim is loaded from a snapshot, because the snapshot already holds the result. Setup draws only from the `WORLD_GEN` stream or from hashes of the seed, and must not spawn agents.
 - **Read-only analysis.** `src/analysis/` reaches the sim only through `src/sim/readonly.ts`. A guardrail test checks that a run with observers attached hashes identically to one without.
 - **No asynchrony.** The sim is synchronous: no promises, timers, or workers inside `src/sim/`. Parallelism happens across runs, in the harness.
 
@@ -149,6 +150,13 @@ Rivers, lakes, springs. **Stagnant water carries pathogen load** that rises with
 ### 2.4 Light
 Daylight and night. Moonlight varies by phase. Perception range drops sharply in the dark (§4.1). **Fire emits light** in a radius, so agents near a fire can see each other at night.
 
+**Sun and moon (Phase 1.3)** are pure functions of the tick and the config, in `src/sim/world/light.ts`. They hold no state, so they need no system.
+- **The year** starts at the spring equinox: a quarter of the way through is midsummer, three quarters is midwinter. Day length swings from about 9.6 to 14.4 hours, a mid-latitude climate.
+- **Sunlight** rises from 0 at sunrise to 1 at noon. A twilight band of about 45 minutes either side fades from 0.08 to darkness.
+- **The moon** runs on a 29.53-day cycle of real days, not compressed years (§1.1), because it is something agents see from night to night. Its brightness is set by its phase, and it is only up for part of the night. A full moon rises at sunset and is up all night; a first-quarter moon sets around midnight; a new moon is up only during the day.
+- **Ambient light** is the brightest of three sources: sunlight; moonlight (at most 0.06 of full sun at full moon overhead, a deliberate exaggeration so a moonlit night counts as visibly different); and starlight (0.002).
+- Fire light gets added in Phase 1.8, per cell.
+
 ### 2.5 Plants
 Each species has attributes:
 - calories and nutrients per unit, seasonality, growth and regrowth rates
@@ -181,6 +189,47 @@ Objects have physical attributes, never use-labels: mass, length, hardness, **fr
 
 ### 2.9 Fire
 A physical process: needs fuel and oxygen, spreads to adjacent flammable cells by dryness and wind, dies without fuel. A burning stick is a carriable object that keeps burning for a while. Fire gives light (§2.4) and heat (reduces thermoregulation cost nearby), deters predators (§2.6), and cooking raises the calories extracted from some foods and detoxifies others (§2.5).
+
+### 2.10 Map generator (Phase 1.1)
+A system with an `init` step (§1.5) builds the landscape once, before tick 0, from the seed and the config. Everything it makes is physical geography. It exists whether or not anything ever lives there, and no part of it is placed with inhabitants in mind.
+
+**The one manipulation knob: `world.circumscription`**, a number from 0 to 1 (default 0.5; experiments set it explicitly). It is experiment E3's independent variable (Carneiro, §7.11). Changing it leaves the seed's axis and noise fields unchanged and adds only:
+- **walls**: on both sides of a valley along a random axis through the map centre, the land rises over a 3 km ramp to a plateau up to 1,400 m higher;
+- **a creeping desert**: beyond the walls, rain drops to 15% of normal. The desert's edge sits beyond the map at 0 and moves in to the middle of the walls at 1, so the land left between valley and desert shrinks gradually;
+- **a graded valley floor**: the valley loses most of its bumps to river sediment and slopes gently toward its centre line, so its water gathers into one river;
+- **a wet upper valley**: extra rain at the upstream end of the valley itself (not the uplands beside it), so a river runs the valley's length even when everything around it is dry, like the Nile.
+
+At 0 the landscape is open: rolling relief, rain everywhere, rivers draining to every edge. At 1 it is a river valley about 14 km wide, walled by steep, dry uplands.
+
+**Steps**, all in exact arithmetic (§1.8). Every number lives in `TERRAIN_CONSTANTS` in `src/sim/world/terrain.ts`; horizontal lengths scale with the map, so small test maps keep the same shapes.
+1. **Axis.** A unit direction drawn from the `WORLD_GEN` stream, through the map centre. Every cell gets an along-axis coordinate *a* and an across-axis distance *d*. *d* wanders with low-frequency noise (about ±3 km over about 20 km), so the valley meanders.
+2. **Relief.** Gradient noise (hashed lattice, eight gradient directions, quintic blending), six octaves, longest wavelength about 25 km: about ±250 m around 400 m. Plus a tilt of 5 m per km along the axis so the valley drains one way. Inside the valley, relief is scaled down by up to 85% and a cross-slope of up to 12 m per km is added, both × knob.
+3. **Walls.** Beyond the valley half-width (7 km), a smooth ramp over 3 km: 1,400 m × knob × (0.6 + 0.4 × noise).
+4. **Rainfall** (`terrain.rainfall`, the long-term mean, 1 = temperate): a broad noise field around 1 (±25%), cut by 85% in the desert, plus up to 0.9 × knob in the upper valley, never below 0.05. The climate system (Phase 1.2) varies weather around this mean.
+5. **Drainage.** A priority-flood from the map edges (Barnes, Lehman & Mulla 2014, the variant with a first-in-first-out queue for cells inside depressions). Cells come off a heap in order of filled height, ties broken by cell index, so the result is deterministic. Each cell drains to the neighbour it was reached from (`water.drain`; −1 means off the map). On flat stretches every neighbour one step nearer the exit is an equally good route, and one is picked by a hash of the seed and the cell. That makes water meander across flats instead of running in straight lines.
+6. **Basin infill.** Each closed basin is filled 85% of the way to its spill point, as sediment does over geological time. Random relief has far more closed basins than real land; without this, lakes covered 8–15% of the map.
+7. **Flow** (`water.flow`, km²): **runoff**-weighted upstream area, where runoff is rainfall minus 0.3 for evaporation and soaking in, never negative. Deserts feed no rivers of their own; rivers that cross them come from wetter ground.
+8. **Lakes.** Cells at least 1 m below the filled surface, in a connected patch of at least 3 cells, whose total inflow (the flow leaving the patch) is at least 0.7 km² and at least 5 times the patch's area, so inflow can offset evaporation from the surface. Depth goes in `water.depth`. Dry basins stay dry.
+9. **Rivers**: cells with flow of at least 7 km². **Springs**: river cells that no other river or lake cell drains into, which is where rivers begin. In this version every spring is a river head; isolated groundwater springs in dry land are a known gap.
+10. **Soil** (`terrain.soil`), by rules in this order: rock where the steepest slope exceeds 0.35; alluvium on flat ground (slope under 0.05) within 200 m of a large river (flow of at least 28 km²) or a lake; sand where rainfall is below 0.25; thin soil where slope exceeds 0.15 or height exceeds 1,200 m; loam everywhere else. What soil means for plants is decided in Phase 1.4.
+
+**Layers**, one value per cell: `terrain.elevation` (f32, m), `terrain.rainfall` (f32), `terrain.soil` (u8: 0 rock, 1 thin, 2 loam, 3 alluvium, 4 sand), `water.kind` (u8: 0 dry, 1 spring, 2 river, 3 lake), `water.depth` (f32, m), `water.drain` (i32), `water.flow` (f32, km²). Slope is computed by whoever needs it, from elevation; it is not stored. Rivers are flowing water and lakes are standing water, the distinction §2.2 needs for pathogens.
+
+**Not in this version:** sea coasts, caves and overhangs (§2.8), and river width or seasonal flooding.
+
+**Manipulation check.** `src/analysis/observers/landscape.ts` measures, for any run: the fraction of the map that is *habitable land* (not open water, slope at most 0.3, and either rainfall at least 0.35 or fresh water within 1.5 km); how much of that habitable land lies in the single largest connected region; and how much of that region's edge is walled by unhabitable land. "Habitable" is the analyst's yardstick for describing the manipulation; agents never see it and the sim never uses it.
+
+Measured over seeds 1, 2, 3, 7 and 8 on the default 512-cell map:
+
+| Knob | Habitable share of the map | Share of it in the largest region |
+|---|---|---|
+| 0 | 95–98% | 100% |
+| 0.25 | 95–97% | 100% |
+| 0.5 | 87–93% | 100% |
+| 0.75 | 68–72% | 44–55% (land beyond the walls, split up) |
+| 1 | 32–39% | 92–94% (one walled valley) |
+
+A test (`tests/unit/terrain.test.ts`) holds the generator to this: habitable land never grows as the knob rises, is at least 90% at 0 and at most 45% at 1, and at 1 lies at least 85% in one region with walls and a river.
 
 ---
 
@@ -466,6 +515,13 @@ Viability tuning (keeping founders from going extinct) is allowed and logged. So
 The player's role is undecided (see `STATUS.md`). Default until decided: **observer** with time controls, map layers, an agent inspector (drives, ledger, world model, lexicon), and a "legends" view of detected events. No interventions.
 
 If a **god mode** is ever added, player interventions must enter the sim as physical events (rain, lightning, a plant appearing) without agent-state conditioning. Then agents who attribute those events to a hidden cause are *correct*, and the experiment changes meaning. That's a design decision for the owner, not a feature to slip in.
+
+### 10.1 The viewer page (Phase 1.9)
+The game has its own page (D-012), built from `src/viewer/` and served by GitHub Pages from this repository.
+- **The browser runs the real simulation** from the same code Node runs, so what the owner watches is the actual sim, not a recording. The arithmetic self-check (§1.8) runs on load and reports plainly whether this browser computes exactly what Node does.
+- **The viewer only reads.** It reaches the sim through the read-only view (`src/sim/readonly.ts`) plus the stepping and creation functions. It never writes to sim state, so a run watched in the browser is the same run the same seed gives anywhere.
+- **Build without installing anything:** `node scripts/build-site.ts` strips the TypeScript types with Node's built-in `module.stripTypeScriptTypes`, rewrites `.ts` imports to `.js`, and writes plain ES modules to `dist/site/`. Browsers load them directly; there is no bundler. Only files reachable from `src/viewer/main.ts` are copied.
+- **Designed for a phone first:** the map fills the width, controls sit below it, and tapping a cell shows what is there.
 
 ---
 

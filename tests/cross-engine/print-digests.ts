@@ -9,6 +9,6 @@
 // Safari), so agreement between them is a real test, not a formality.
 
 import { portableMathDigests } from '../../src/sim/core/selfcheck.ts';
-import { fixtureRunHashes } from '../guardrails/lib/portable-digests.ts';
+import { fixtureRunHashes, worldHashes } from '../guardrails/lib/portable-digests.ts';
 
-console.log(JSON.stringify({ math: portableMathDigests(), fixtureRun: fixtureRunHashes() }, null, 2));
+console.log(JSON.stringify({ math: portableMathDigests(), fixtureRun: fixtureRunHashes(), worlds: worldHashes() }, null, 2));
