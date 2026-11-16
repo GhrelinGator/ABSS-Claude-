@@ -27,6 +27,14 @@ jobs:
       - name: All tests
         run: npm test
 
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Same results on a second JavaScript engine (Node is V8, Bun is JavaScriptCore)
+        run: |
+          node tests/cross-engine/print-digests.ts > node-digests.json
+          bun tests/cross-engine/print-digests.ts > bun-digests.json
+          diff node-digests.json bun-digests.json
+
       - name: Install type-checking packages
         run: npm install --no-audit --no-fund
 
