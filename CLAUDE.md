@@ -49,7 +49,7 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 
 ## Session workflow
 
-**Start:** list open pull requests with `gh api "repos/GhrelinGator/ABSS-Claude-/pulls?state=open"` (plain `gh pr` commands don't work in cloud sessions; the REST API does). If an earlier session's pull request is still open, `main` is behind: tell the owner before building anything → read `STATUS.md` → re-read `GUARDRAILS.md` if touching sim → check the roadmap milestone → confirm the plan with the owner if the task is ambiguous or expensive → create a branch.
+**Start:** list open pull requests with `gh api "repos/GhrelinGator/ABSS-Claude-/pulls?state=open"` (plain `gh pr` commands don't work in cloud sessions; the REST API does). If an earlier session's pull request is still open, `main` is behind: merge it if GitHub's checks passed and it isn't waiting on an owner decision (D-025); otherwise tell the owner before building anything (in an unattended run, stop) → read `STATUS.md` → re-read `GUARDRAILS.md` if touching sim → check the roadmap milestone → confirm the plan with the owner if the task is ambiguous or expensive → create a branch.
 
 **During:** keep changes inside the current milestone. If you discover design work that isn't in `DESIGN.md`, write it there before coding it. Run guardrail tests before every commit.
 
@@ -58,8 +58,26 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 - Append any design decision to `docs/DECISIONS.md` (append-only; supersede, never delete).
 - Append any parameter or mechanism change made for tuning reasons to `docs/TUNING_LOG.md`.
 - Run `npm test` and the type checks.
-- Commit with a message that says *why*, push the branch, and open a pull request for the owner to merge (D-017): `gh api repos/GhrelinGator/ABSS-Claude-/pulls -X POST -f title=... -f head=<branch> -f base=main -F body=@file`.
+- Commit with a message that says *why*, push the branch, and open a pull request (D-017): `gh api repos/GhrelinGator/ABSS-Claude-/pulls -X POST -f title=... -f head=<branch> -f base=main -F body=@file`.
 - Check that GitHub's run of the tests comes back green: `gh api "repos/GhrelinGator/ABSS-Claude-/actions/runs?branch=<branch>&per_page=3"`. Report its result, not just the local one.
+- When it's green, merge it yourself (D-025): `gh api repos/GhrelinGator/ABSS-Claude-/pulls/<n>/merge -X PUT -f merge_method=merge`. Leave it open, and say why, only if it waits on one of the owner decisions below.
+
+## Owner's standing instructions (2026-11-16, D-025)
+
+- **Decide as much as you want, as long as it serves the primary goal** (the Prime Directive). Don't ask about choices inside a milestone; record them in `DECISIONS.md` instead.
+- **Still ask the owner, and wait,** before: a nudge-protocol change classified (c) or ambiguous (`GUARDRAILS.md` §4); adding a drive (`GUARDRAILS.md`); and merging any work that reports a social phenomenon emerged (he sees the claim and its null model first).
+- **Tell him, without waiting,** about removing or simplifying a designed mechanism (`GUARDRAILS.md`), and about anything surprising.
+
+## Unattended nightly runs
+
+A scheduled task starts a fresh session every night at 1:39 am US Central, from 2026-11-19 (asked for by the owner on 2026-11-16). The owner is asleep and doesn't code. In such a run:
+1. **No questions.** Take the most reasonable reading, and write down which one you took.
+2. **Do the next milestone** named in `STATUS.md` under "Next action": one milestone, or two when `STATUS.md` says they're small enough to share a run.
+3. **[F] milestones wait for a Fable session.** If the next one is tagged [F] and this session isn't Fable, don't start it; put "waiting for a Fable session: <milestone>" under "Blocked on" in `STATUS.md` and stop.
+4. **Push as you go.** Commit and push the milestone branch whenever a piece passes its tests, so a run cut off by a usage limit leaves its work on GitHub. If a branch for the next milestone already holds unmerged work, carry it on.
+5. **Stop at owner decisions** (the list above): write the question under "Decisions needed from the owner" in `STATUS.md`, push it, and leave the pull request open.
+6. **Spend carefully.** The owner's usage limits are the project's budget. Batch checks into few commands; don't probe what a test already shows.
+7. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him.
 
 I have no memory between sessions. These files are my memory. If it isn't written down, the next session won't know it.
 
@@ -69,7 +87,7 @@ The owner picks the model per session. Each roadmap milestone is tagged:
 - **[F] Fable 5.2:** architecture, cross-system integration, diagnosing why something did or didn't emerge, designing experiments, reviewing guardrail compliance.
 - **[O] Opus 5.5:** implementing well-specified modules, tests, tooling, viewer work.
 
-If the session's model doesn't match the tag, proceed anyway, but say so at the start and be extra careful on [F] work.
+If the session's model doesn't match the tag, proceed anyway, but say so at the start and be extra careful on [F] work. Unattended runs are the exception: they leave [F] milestones for a Fable session.
 
 ## Honesty requirements
 
