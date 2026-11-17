@@ -189,6 +189,7 @@ Objects have physical attributes, never use-labels: mass, length, hardness, **fr
 - Certain stone pairs make sparks when struck; a spark near dry tinder may ignite it.
 - **Shelter is physical:** cells with natural cover (caves, overhangs, dense trees) or with enough stacked long wood and hide reduce wind, rain, and heat loss. Huts, if they happen, are accumulations of objects.
 - A carried hide reduces heat loss. Clothing, if it happens, is carrying.
+- How it is built: §2.15.
 
 ### 2.9 Fire
 A physical process: needs fuel and oxygen, spreads to adjacent flammable cells by dryness and wind, dies without fuel. A burning stick is a carriable object that keeps burning for a while. Fire gives light (§2.4) and heat (reduces thermoregulation cost nearby), deters predators (§2.6), and cooking raises the calories extracted from some foods and detoxifies others (§2.5).
@@ -369,6 +370,50 @@ The invisible half of §2.7. One system, `world.pathogens`, runs daily after the
 **Clock:** real days, like all daily physiology (D-024, D-026). Only the seasons are compressed.
 
 **Not in this version:** pathogens carried downstream by rivers, wounds infected from dirt (§3, Phase 2 uses these loads), and cooking killing pathogens (needs fire, 1.8, and bodies, Phase 2).
+
+### 2.15 Materials and objects (Phase 1.7)
+One system, `world.materials`, runs daily after the pathogens, plus functions that later phases call when a body acts. Everything here is physics: no object has a purpose, only a material, a size, an edge, and a condition. Implemented in `src/sim/world/materials.ts`.
+
+**The catalogue** (`MATERIALS`). Eight materials, each with density, bulk hardness (roughly Mohs' scale), a way of breaking, the energy that breaks it, the sharpness of a fresh and of a weathered edge, whether particles shaved off it burn (sparks), flammability and fuel value (for fire, 1.8), insulation (for bodies, Phase 2), how much wind screen a kilogram makes when piled or leaned, how much rain that screen sheds, and how fast it rots.
+
+| material | hardness | breaks by | what is distinctive |
+|---|---|---|---|
+| flint | 7 | conchoidal | flakes easily into the keenest edges (0.95); found as nodules weathered out of limestone |
+| quartzite | 7 | conchoidal | flakes, but needs harder blows and gives rougher edges (0.65); common everywhere in small amounts |
+| granite | 6 | granular | tough and heavy; crumbles little; blunt when split |
+| limestone | 3 | granular | soft; crumbles; never keen |
+| sandstone | 4.5 | granular | crumbles fastest |
+| pyrite (iron sulfide) | 6.25 | conchoidal | brittle; **struck by harder stone, throws hot sparks**; found as rarer nodules in limestone, in different patches from flint; none in river beds (it rusts and breaks up in water) |
+| wood | 2.5 | fibrous | snaps when a blow carries more than about 15 J per kg; burns (16 MJ/kg dry); rots |
+| hide | 1.5 | pliable | insulates (0.8 clo per kg wrapped round a body); sheds rain; lies flat unless something holds it up; rots in weeks |
+
+**Loose material** is kept per cell, not as objects, until something picks a piece up:
+- **Bedrock** (`materials.bedrock`): granite, limestone or sandstone, from a smooth noise field with a 15 km wavelength, independent of the circumscription knob.
+- **Loose stone** (`materials.stone.<material>`, kg per cell), hand-sized pieces on the surface. Amount by ground: rock 30 t/ha, thin soil 8, loam 0.3, alluvium 1.5, sand 0.1, river beds and gravel bars 20, spring heads 2, lakes none. The mix follows the bedrock: granite gives granite with a little vein quartzite; sandstone gives sandstone and quartzite; limestone gives limestone, 18% flint, and 0.1% iron sulfide, the two nodule kinds each patchy at a 2 km scale. In river beds and on alluvium, hard stone survives transport better and soft stone and iron sulfide worse. Rivers carry the local bedrock's stones; transport across bedrock boundaries is not modelled.
+- **Fallen wood** (`materials.wood.small` for sticks and branches under 1.5 m, `materials.wood.long` for poles and trunks), kg per cell. Nut trees drop 1.5 t/ha of each per compressed year at full cover, berry bushes 0.4 t/ha of small wood. Wood rots at a rate set by its thickness (about 25% a year for 3 cm sticks, 6% for 8 cm poles), scaled by warmth (0 at or below 0 °C, 1 at 12 °C) and wetness (soil moisture). It starts at the balance of input and rotting. On the default map that is about 1.3 t/ha of small and 5 t/ha of long wood averaged over land, and about 12 t/ha together where nut trees cover more than 30% of a cell.
+- **Which clock.** Fallen wood comes from tree life history, so it runs on the compressed year like plant cover (§2.12). A rotting hide is daily microbial physiology, like meat (§2.14), so it runs on real days.
+
+**Rock shelters** (store `rockShelters`: kind, position, floor area) are made once, before tick 0. On dry land steeper than a slope of 0.12, the chance of a shelter rises to full at 0.37: 4% per cell on limestone, 3% on sandstone, 1% on granite. Limestone also has caves opening on gentle ground (sinkholes), 0.2% per cell. 40% of limestone shelters are caves, 5% of sandstone ones, none of granite ones; the rest are overhangs. Overhangs cover 6–40 m², caves 20–150 m². Someone within the radius of a shelter's floor area is inside it. On the default map there are about 14 per 100 km²; on a walled valley about 34; on open country only the few limestone caves (about 1.5). **This is a confound for E3**: the circumscription knob makes cliffs, and cliffs make rock shelters. Real walled valleys have them too, so it stays, but E3's preregistration must name it (for example, by also running with rock shelters removed).
+
+**Objects** (store `objects`): material, position, mass, length, edge sharpness (0 to 1), integrity (1 new, gone at 0), and the id of the agent holding it (0 while it lies on the ground). An object comes into being only through `spawnObject`: when a piece is taken from loose material (`takeStone`, 0.15 to 3 kg, or `takeWood`, a stick or a pole), when a blow breaks a piece off, or (later) when a body cuts something from a carcass. In a run without agents the store stays empty. Wood objects rot like fallen wood of their thickness; hides lose 5% of their integrity a real day at 12 °C on half-wet ground, faster when warm and wet, so a hide left out in summer is gone within weeks; stone never rots.
+
+**Striking** (`strikeObjects(sim, striker, struck, energy, precision, stream)`), the physics behind the `manipulate` and `strike` primitives (§5.5). A hand-swung stone delivers tens of joules; `precision` (0 to 1) is how squarely it lands, which skill will supply (Phase 2.4). The softer of the two takes the larger share of the energy, in proportion to the other's hardness. Then, for each piece:
+- an edge dulls against anything about as hard as itself;
+- **conchoidal** stone shatters into three if the energy exceeds its breaking energy (flint 300 J per kg, so a small flake shatters easily and a nodule never does by hand); otherwise, above its flaking energy (flint 3 J, quartzite 10 J, iron sulfide 4 J) and with chance `precision`, a flake of 2 g per joule detaches (at most 40% of the piece), its edge `freshEdge × (0.6 + 0.4 × precision)`, and the piece left behind gains a half-keen edge;
+- **granular** stone splits in two blunt pieces above its breaking energy, and otherwise loses crumbs;
+- **wood** snaps in two above about 15 J per kg (a light stick yes, a heavy pole no), splintered edges 0.3; below that it is slightly damaged;
+- **hide** is unharmed.
+
+Mass is conserved except crumbs. **Sparks**: when one material is harder than the other by more than about a point, it shaves particles off it; particles of iron sulfide burn in air, so flint or quartzite on iron sulfide throws about one spark per 9 J with heat near 0.9, granite on iron sulfide cooler ones, and no other pair throws hot sparks. Whether a spark catches is fire's business (1.8).
+
+**Shelter** (`createShelterProbe(sim).at(x, y, out)`), for bodies to read (Phase 2): the share of wind, rain, and body-heat loss kept off at a point, combining three sources as independent screens (`1 − Π(1 − share)`):
+- **inside a rock shelter**: overhang 50% / 85% / 25%; cave 95% / 100% / 60%;
+- **plant cover in the cell**: wind 0.7 × tree + 0.35 × bush + 0.2 × reed cover (at most 90%); rain 0.3 × tree cover while leaves are out (mid-spring to mid-autumn), 0.1 otherwise, plus 0.1 × bush; heat loss 0.25 × tree + 0.05 × bush;
+- **lying objects within 3 m**: things that stand up (stone stacks to any height; wood screens up to its length, full at 1.5 m) make a standing screen of mass × material screen per kg; things that lie flat (hide) count only up to twice the standing screen, because nothing else holds them off the ground. Wind kept off is 90% × screen / (screen + 6 m²); rain, 90% × cover / (cover + 4 m²), where cover is 30% of standing wood's screen plus 95% of held-up hide; heat loss, 0.3 × wind + 0.3 × rain. Twenty 3 m poles and four hides (about 170 kg) keep off about 58% of wind and rain. A hut, if one ever appears, is just such a pile. Objects are seen as they lay at the first query of a tick (§1.6).
+
+All protection numbers are estimates for Phase 2.2 (thermoregulation) to check against shelter physics.
+
+**Not in this version:** bones and antlers (natural objects from carcasses and shed antlers), rubbing (abrasion that grinds an edge, and friction heat in wood, an ignition source for 1.8), dead grass and other tinder (fire, 1.8), fuel moisture (1.8), trees dying back into fallen wood (the ecology review, 1.10), cutting hides from carcasses (needs bodies acting, Phase 3–4), curing hides so they last, containers, and objects carried by an agent rotting at the agent's position (Phase 3 keeps a held object's position current).
 
 ## 3. Bodies
 
@@ -664,6 +709,7 @@ The game has its own page (D-012), built from `src/viewer/` and served by GitHub
 - **No flashing.** Two switches turn off the day-and-night shading and the weather effects; the page remembers them on that device. Above 1 simulated day per second both are off regardless, because night and rain would come and go several times a second (accessibility guidelines warn against flashing more than three times a second). Asked for by the owner after watching at year speed.
 - **Plants on the map** (Phase 1.4): a Plants layer colours each patch by the species covering most of it, fading to bare ground where cover is thin; a Ripe layer shows the fruit, seeds and nuts waiting to be picked, on a log scale, so the seasons pulse across the map. Both redraw daily. Tapping a cell lists its plants and the food in it, including food underground. At 1 year per second the plants cost about 0.8 s of computing per second on a desktop, so a phone may run slower than the chosen speed.
 - **Hidden loads** (Phase 1.6): tapping a water cell shows its pathogen load, and a carcass shows how foul its meat is, both marked as hidden from agents.
+- **Stone and wood** (Phase 1.7): a Stone layer colours each patch by its bedrock, darker where little stone lies loose, with flint (50 kg per hectare or more) in slate blue, iron sulfide (5 kg or more) in yellow, and rock shelters as dark triangles (bigger for caves). A Wood layer shows fallen wood, redrawn daily. Tapping land lists its bedrock, loose stone, fallen wood, any rock shelter in the cell, and how much wind, rain and heat loss the spot keeps off right now.
 - **Animals on the map** (Phase 1.5): every group is a dot on every layer (brown deer, black aurochs, white wolves, orange big cats; bigger dots for bigger groups). An Animals layer shows hares as a shade and carcasses in red. Tapping a cell lists the hares, any carcass, and every group within 500 m with what it is doing. With animals, a day on the full map costs about 63 ms, so the page runs slower than chosen at 1 year per second.
 
 ---

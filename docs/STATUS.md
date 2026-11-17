@@ -4,9 +4,9 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants), 1.5 (animals, with grazing, browsing, and seeds carried by animals), 1.6 (pathogens in water and carcasses), and a viewer (1.9) that shows all of it.
-- **The world has weather, plants and animals; no people.** The real pipeline has five systems: the landscape (built before tick 0), the climate, the plants, the animals, and the pathogens. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 1.7 [O], materials and objects (`DESIGN.md` §2.8): **carry on the branch `phase-1.7-materials`**, whose code is written and passes GitHub's checks but has no design notes, decision, status update, or pull request yet (D-029). Compare with `parked/phase-1.7-materials-second-run` only if something is missing. One milestone per run. Then fire (1.8 [O]: lightning strikes, dryness and plant cover as fuel, fire light, and predators keeping away from fire), then the ecology review (1.10 [F]), which waits for a Fable session. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`, D-029).
+- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants), 1.5 (animals, with grazing, browsing, and seeds carried by animals), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), and a viewer (1.9) that shows all of it.
+- **The world has weather, plants, animals, stone and fallen wood; no people.** The real pipeline has six systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, and the materials. Nothing has emerged, because nothing can yet.
+- **Next action:** Phase 1.8 [O], fire (`DESIGN.md` §2.9): ignition by lightning, by hot sparks (`strikeObjects` already reports them, §2.15) and by friction heat from rubbing wood (moved here from 1.7); fuel from fallen wood (`materials.wood.*`), dry grass and plant cover, with fuel moisture; spread by dryness and wind; burnout; carriable burning sticks (wood objects); fire light (§2.4); and predators keeping away from fire (§2.13). One milestone per run. Then the ecology review (1.10 [F]), which waits for a Fable session. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`, D-030).
 - **Blocked on:** nothing. #1–#6 are merged. From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, and a nightly scheduled run does one milestone at a time (D-025, `CLAUDE.md`).
 
 ## What exists
@@ -24,8 +24,9 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/world/plants.ts` | eight plant species: cover, fruit and seed seasons, roots, drought dieback, spreading, forage for grazing and browsing, seed rain (`DESIGN.md` §2.12) |
 | `src/sim/world/animals.ts` | deer, aurochs, wolf packs, big cats, hares, vultures, carcasses (`DESIGN.md` §2.13) |
 | `src/sim/world/pathogens.ts` | pathogen loads in water and carcass meat (`DESIGN.md` §2.14) |
+| `src/sim/world/materials.ts` | eight materials, bedrock, loose stone and fallen wood per cell, rock shelters, objects, striking (flakes, crumbs, snapping, sparks), rotting, and shelter at a point (`DESIGN.md` §2.15) |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
-| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat) |
+| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat), `materials` (loose stone by material, fallen wood, rock shelters, objects) |
 | `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
 | `src/harness/` | experiment specs, batch runner on worker threads, manifests, JSONL metrics, command line |
 | `bench/` | speed benchmark with a scripted stand-in load; timing of the math functions |
@@ -62,6 +63,8 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 - Hashing the whole state or saving a snapshot took well under a millisecond at these sizes (no world layers yet).
 - Full reasoning and what it demands of Phase 3: `DECISIONS.md` D-016.
 
+**2026-11-17, Phase 1.7.** Materials add about 5 ms per simulated day on the full map (fallen wood rotting in every cell); building a world takes about 0.1 s longer. Snapshots grow by about 8 MB.
+
 **2026-11-16, Phase 1.5.** A day on the full map now takes about 63 ms: animals about 38, plants about 21 (forage added a little), climate 2. Building a world takes about 0.45 s.
 
 **2026-11-15, Phase 1.4 (world systems, same sandbox).** On the 512 × 512 map: a day of plants takes about 16 ms, of climate about 2 ms. That averages 0.13 ms per tick, small next to the agent budget, but at "1 year per second" the page computes 48 days a second: about 0.8 s of work per second on this machine, more on a phone. Building a world takes about 0.4 s. Snapshots grow by 16 MiB (two layers per species).
@@ -74,6 +77,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 - **Floor 1 expressiveness** (`DESIGN.md` §6.7). The legitimation chain may be inexpressible with unordered token bags.
 - **Claude's drift** (`GUARDRAILS.md`). The guardrail tests catch words, imports, and bookkeeping. They can't judge whether an alibi is true or whether a number was tuned toward an outcome.
 - **Long-run plant balance** (for 1.10). In 20 seeds × 100 years on small maps, no species died out and none grew without bound, but greens and reeds fell to about a fifth of their starting cover in runs with large year-to-year swings: riverbank soil dries in a drought like any other, because the soil-moisture model has no water table (`DESIGN.md` §2.12). Animals will add grazing pressure on top.
+- **Rock shelters follow the circumscription knob** (for E3, D-029). Cliffs come with walls, so a walled valley has about 34 rock shelters per 100 km² and open country about 1.5. That is real geography, but E3's preregistration has to account for it.
 - **Animal balance** (for 1.10). Predators die out on a small, hemmed-in map with large climate swings; deer gather in tight clusters on the best browse; most animal numbers are estimates (`RESEARCH.md`). Eleven rounds of correction went into the current balance (T-004), so it should be reviewed by fresh eyes, not just extended.
 - **Root refilling rates are estimates** (T-003). Real tuber turnover hasn't been looked up yet; Phase 3's foraging-return calibration will test it.
 - **Claude can't watch.** I read numbers; the owner can see behaviour in the viewer once it exists. Odd behaviour he notices is high-value input. Ask him what he's seen.
@@ -91,7 +95,9 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 
 ## Session log
 
-- **2026-11-17, session 11** (Opus 5.5, claude.ai; same chat). The first chained run fired twice; two sessions built 1.7 and neither finished. Added claims, a run log (`docs/RUNS.md`), a weekly cap of 35 runs, and a 6-hourly wake-up (D-029), using the owner's usage readings. Restarted the chain to finish 1.7.
+- **2026-11-17, session 12** (Opus 5.5, claude.ai; same chat). The first chained run fired twice; two sessions built 1.7 and neither finished. Added claims, a run log (`docs/RUNS.md`), a weekly cap of 35 runs, and a 6-hourly wake-up (D-030), using the owner's usage readings. Restarted the chain to finish 1.7.
+- **2026-11-17, session 11** (Opus 5.5, unattended chained run). Built Phase 1.7: materials and objects (`DESIGN.md` §2.15, D-029): bedrock, loose stone with flint and iron-sulfide nodules in limestone country, fallen wood that rots, rock shelters and caves, an `objects` store, striking physics (flaking, crumbling, snapping, hot sparks only from iron sulfide), and shelter at a point from rock, plants and piled objects. A `materials` observer and Stone and Wood layers on the page. No tuning. Took the roadmap's "sparks" to mean producing them; whether one catches is fire's (1.8), as is friction heat from rubbing.
+
 - **2026-11-17, session 10** (Opus 5.5, claude.ai; same chat). Built Phase 1.6: pathogen loads in water and carcass meat (`DESIGN.md` §2.14, D-027), a `pathogens` observer, and hidden loads in the page's inspector. No tuning needed. At the owner's request, set up chained runs until his weekly reset (D-028) and started the chain for 1.7.
 - **2026-11-16, session 9** (Opus 5.5, claude.ai; same chat). Built Phase 1.5: animals (`DESIGN.md` §2.13, D-026), grazing and browsing stocks and seed rain in the plants, the `fauna` observer, animals on the page, and `spawnEntity` in the kernel. Took eleven rounds of correction (T-004); persistence over 100 compressed years checked on five maps. Merged its own pull request (D-025).
 - **2026-11-16, session 8** (Opus 5.5, claude.ai; same chat). No code. Measured what a milestone costs: Phase 1.4 took 86 requests and about 3.1 million tokens of usage, 60% of it Claude's fixed instructions re-read on every step, so cost follows the number of steps. Estimated 150–250 million more through Phase 6. The owner answered Q7 and gave Claude broad autonomy (D-025): Claude now merges its own pull requests (merged #6), and a nightly scheduled task does one milestone at a time from the night of 2026-11-18. Ideas from the owner's side, for later: another AI as an outside skeptic of emergence claims, an anthropology professor's view on the detector definitions (Phase 6), and paywalled papers through his university library.

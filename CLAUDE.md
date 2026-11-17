@@ -68,10 +68,10 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 - **Still ask the owner, and wait,** before: a nudge-protocol change classified (c) or ambiguous (`GUARDRAILS.md` §4); adding a drive (`GUARDRAILS.md`); and merging any work that reports a social phenomenon emerged (he sees the claim and its null model first).
 - **Tell him, without waiting,** about removing or simplifying a designed mechanism (`GUARDRAILS.md`), and about anything surprising.
 
-## Unattended runs (D-025, D-029)
+## Unattended runs (D-025, D-030)
 
 Scheduled sessions build the project while the owner is away; he doesn't code. A scheduled task wakes a fresh session every 6 hours, and each run that merges a milestone starts the next one about 5 minutes later (a chain). In any such run:
-1. **Claim before building.** The milestone's branch is `milestone-<number>` (for example `milestone-1.8`), unless `STATUS.md` names an existing branch to carry on. If that branch doesn't exist, create it from `main` with one empty commit, `claim <milestone> for session <this session's id>`, and push it. If the push is rejected, or the branch already exists and its newest commit is under 3 hours old, another run has the milestone: stop at once, commit nothing, schedule nothing. (Two sessions once fired 11 seconds apart and both built the same milestone; D-029.) An older branch holds abandoned work: merge `main` into it and carry it on.
+1. **Claim before building.** The milestone's branch is `milestone-<number>` (for example `milestone-1.8`), unless `STATUS.md` names an existing branch to carry on. If that branch doesn't exist, create it from `main` with one empty commit, `claim <milestone> for session <this session's id>`, and push it. If the push is rejected, or the branch already exists and its newest commit is under 3 hours old, another run has the milestone: stop at once, commit nothing, schedule nothing. (Two sessions once fired 11 seconds apart and both built the same milestone; D-030.) An older branch holds abandoned work: merge `main` into it and carry it on.
 2. **No questions.** Take the most reasonable reading, and write down which one you took.
 3. **Do the next milestone** named in `STATUS.md` under "Next action": one milestone, or two when `STATUS.md` says they're small enough to share a run.
 4. **[F] milestones wait for a Fable session.** If the next one is tagged [F] and this session isn't Fable, don't start it; make sure `STATUS.md` says "waiting for a Fable session: <milestone>" under "Blocked on" (commit only if it doesn't already), and stop.

@@ -82,3 +82,12 @@ Grouped by the part of the design they inform. **✓** means checked against a s
 - **Wolf kill rates, large prey:** in the Southern Lakes, Yukon, winter kill rates were 0.018 ungulates per wolf per day (moose and caribou) and consumption 3.49 kg per wolf per day (Yukon government wolf programme summary, 2023).
 - **Wolf minimum need:** about 3.7 kg per wolf per day (Metz et al. 2011, cited by the Yellowstone Wolf Project).
 - **Not yet checked (estimates in `animals.ts`):** densities of aurochs, hares, big cats and vultures; birth and death rates; forage stocks and regrowth; carcass rotting rates. The ecology review (1.10) should look these up.
+
+## Materials (written from memory 2026-11-17, not checked against sources)
+
+Phase 1.7's numbers are first estimates. Before Phase 2.2 (thermoregulation) or Phase 3 relies on any of them, check them.
+- Mohs hardness: flint and quartzite about 7, pyrite 6–6.5, granite about 6 (quartz and feldspar grains), limestone (calcite) 3. Standard mineralogy.
+- Flint and chert break conchoidally; flake edges are among the sharpest natural edges. Quartzite flakes less predictably. Struck flint on flint gives faint cold flashes (triboluminescence), not fire.
+- Fire from sparks: iron pyrite or marcasite struck with flint was a prehistoric fire-making method. Sorensen, Claud & Soressi (2018), "Neandertal fire-making technology inferred from microwear analysis," *Scientific Reports* 8:10065, report wear on Neandertal bifaces consistent with striking pyrite. Marcasite and flint nodules both occur in chalk.
+- Fallen wood: Harmon et al. (1986), "Ecology of coarse woody debris in temperate ecosystems," *Advances in Ecological Research* 15, is the standard review of how much dead wood lies in temperate forests and how fast it decays (decay constants of a few percent a year for large pieces, faster for small ones).
+- Not yet sourced at all: the energies to flake, split and snap; the share of iron sulfide in limestone's loose stone; rock-shelter frequency; how much wind and rain trees and piled objects keep off; the insulation of a hide.
