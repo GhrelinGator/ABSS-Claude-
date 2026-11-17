@@ -112,10 +112,10 @@ export const FIRE_CONSTANTS = {
   /** Up a slope s: × (1 + slopeDoubling × s); down: × 1 / (1 + slopeDoubling × |s|). |s| is capped. */
   slopeDoubling: 5.7,
   slopeMost: 0.6,
-  /** A tick is split so no sub-step covers more than this share of a cell; at most this many sub-steps. */
-  stepShareOfCell: 0.5,
-  maxSubSteps: 20,
-  /** A cell flames for one cell width ÷ the backing rate, within these limits, minutes. */
+  /** Each burning cell's spread rates are scaled by a vigour drawn between these when it starts flaming. */
+  vigourLeast: 0.7,
+  vigourMost: 1.3,
+  /** A cell flames for 1.5 cell widths ÷ its slowest spread rate, within these limits, minutes. */
   flameLeastMinutes: 10,
   flameMostMinutes: 240,
   /** Share of fine fuel left unburnt after flaming, and share of the sticks burnt in the flames. */
@@ -176,9 +176,10 @@ export const FIRE_CONSTANTS = {
   loneOutChance: 0.08,
   /** Catching from a burning neighbour within reach: chance per tick = this ÷ thickness (m) × dryness; in a flaming cell: twice that. */
   catchPerThickness: 0.015,
-  /** Rain falling now puts a burning object out with chance per tick per mm/h, at most `rainOutObjectMost`. */
-  rainOutObjectPerMmPerHour: 0.1,
+  /** Rain puts a burning object out with chance per tick per mm on the cell today (at most `rainOutObjectMost`), or `stormOutObject` under a storm. */
+  rainOutObjectPerMm: 0.02,
   rainOutObjectMost: 0.5,
+  stormOutObject: 0.5,
   /** A burning object lying on the ground lights the cell with chance this × readiness × heat ÷ `escapeRefKw`. */
   escapeChance: 0.05,
   escapeRefKw: 20,
@@ -296,12 +297,6 @@ export function fireLight(kw: number, distanceM: number): number {
   const d = distanceM < 1 ? 1 : distanceM;
   const r = K.lightRefM / d;
   return K.lightAtRef * (kw / K.lightRefKw) * r * r;
-}
-
-/** Chance of an event at rate x (expected count) happening at least once: 1 − e^−x. */
-function atLeastOnce(x: number): number {
-  if (x <= 0) return 0;
-  return x < 0.5 ? x * (1 - x * (0.5 - x / 6)) : 1 - exp(-x);
 }
 
 // ---------------------------------------------------------------- conditions in a cell
@@ -859,6 +854,9 @@ export const fire: SystemDef = defineSystem({
     const store = state.addStore(FIRE_STORE);
     store.ensureColumn({ name: 'cell', dtype: 'i32', category: 'identity' });
     store.ensureColumn({ name: 'flameLeft', dtype: 'f32', category: 'body' });
+    // Minutes this cell has flamed since it last started, and how vigorously it burns (scales its spread).
+    store.ensureColumn({ name: 'age', dtype: 'f32', category: 'body' });
+    store.ensureColumn({ name: 'vigour', dtype: 'f32', category: 'body' });
     store.ensureColumn({ name: 'heat', dtype: 'f32', category: 'body' });
     // Set when something outside the fire system lit the cell; taken up on the system's next run.
     store.ensureColumn({ name: 'fresh', dtype: 'u8', category: 'body' });
@@ -923,11 +921,14 @@ export const fire: SystemDef = defineSystem({
     let headRate = new Float32Array(0);
     let backRate = new Float32Array(0);
     let readyAt = new Float32Array(0);
-    let pendingMark = new Int32Array(0);
-    let pending = new Int32Array(256);
-    let pendingRate = new Float64Array(256);
-    let burnedMinutes = new Float32Array(256);
-    let pendingStamp = 0;
+    let startAt = new Float32Array(256);
+    let heapT = new Float64Array(256);
+    let heapC = new Int32Array(256);
+    let heapSize = 0;
+    let popT = 0;
+    let popC = 0;
+    /** Length-to-breadth ratio of fires under this tick's wind. */
+    let currentLb = 1;
     const reading = emptyReading();
     let objectGrid: BucketGrid | null = null;
     let objectMask = new Uint8Array(256);
@@ -940,7 +941,6 @@ export const fire: SystemDef = defineSystem({
       headRate = new Float32Array(N);
       backRate = new Float32Array(N);
       readyAt = new Float32Array(N);
-      pendingMark = new Int32Array(N);
     }
 
     /** Spread rates and readiness of cell k for this tick, computed once a tick. */
@@ -959,17 +959,17 @@ export const fire: SystemDef = defineSystem({
       readyAt[k] = reading.readiness;
     }
 
-    /** Room in the per-slot minutes-burned scratch for `slot`. */
+    /** Room in the per-slot scratch of start times for `slot`. */
     function fitBurned(slot: number): void {
-      if (burnedMinutes.length > slot) return;
-      let n = burnedMinutes.length;
+      if (startAt.length > slot) return;
+      let n = startAt.length;
       while (n <= slot) n *= 2;
       const bigger = new Float32Array(n);
-      bigger.set(burnedMinutes);
-      burnedMinutes = bigger;
+      bigger.set(startAt);
+      startAt = bigger;
     }
 
-    /** Chance this tick that rain puts out a fire in cell k: a storm by its rate, a wet day by its total. */
+    /** Chance this tick that rain puts out a smouldering cell k: a storm by its rate, a wet day by its total. */
     function rainOutChance(k: number, perMmPerHour: number, most: number): number {
       const storm = perMmPerHour * conditions.stormRateNow(k);
       let day = K.wetDayOutPerMm * conditions.dayRainOn(k);
@@ -1008,10 +1008,9 @@ export const fire: SystemDef = defineSystem({
 
     /**
      * Start cell k flaming if its fine fuel can carry flame now; returns false if it can't. It
-     * flames for as long as the fire takes to cross it at `entryRate` (m/min, the rate it came in
-     * at), or at the backing rate for a fire starting at a point (pass 0).
+     * flames until the fire has left it in every direction: 1.5 cell widths ÷ its slowest rate.
      */
-    function flame(k: number, tick: number, entryRate: number): boolean {
+    function flame(k: number, tick: number): boolean {
       evaluate(k, tick);
       if (!(headRate[k] > 0) || !(backRate[k] > 0)) return false;
       let slot = slotOfCell[k];
@@ -1019,12 +1018,13 @@ export const fire: SystemDef = defineSystem({
         slot = spawnEntity(state, fires);
         fires.column<Int32Array>('cell').data[slot] = k;
         slotOfCell[k] = slot;
-        fitBurned(slot);
-        burnedMinutes[slot] = 0;
       }
-      let minutes = cs / (entryRate > backRate[k] ? entryRate : backRate[k]);
+      const backing = headRate[k] * shareOfHead(-1, currentLb);
+      let minutes = (1.5 * cs) / (backing > backRate[k] ? backing : backRate[k]);
       minutes = minutes < K.flameLeastMinutes ? K.flameLeastMinutes : minutes > K.flameMostMinutes ? K.flameMostMinutes : minutes;
       fires.column<Float32Array>('flameLeft').data[slot] = minutes;
+      fires.column<Float32Array>('age').data[slot] = 0;
+      fires.column<Float32Array>('vigour').data[slot] = K.vigourLeast + (K.vigourMost - K.vigourLeast) * random();
       fires.column<Uint8Array>('fresh').data[slot] = 0;
       stage[k] = FireStage.FLAMING;
       lastBurn[k] = dayIndex(config, tick) + 1;
@@ -1068,7 +1068,7 @@ export const fire: SystemDef = defineSystem({
         const pFine = K.strikeChance * readyAt[k];
         const p = 1 - (1 - pWood) * (1 - pFine);
         if (!(random() < p)) continue;
-        if (flame(k, tick, 0)) {
+        if (flame(k, tick)) {
           counts[FIRE_FIELDS.lightningIgnitions] += 1;
         } else if (stage[k] === FireStage.NONE && smoulder(k)) {
           counts[FIRE_FIELDS.lightningIgnitions] += 1;
@@ -1077,83 +1077,115 @@ export const fire: SystemDef = defineSystem({
       }
     }
 
+    /** Push a candidate arrival of the fire at cell `b`, `t` minutes into the tick. */
+    function heapPush(t: number, b: number): void {
+      if (heapSize === heapT.length) {
+        const biggerT = new Float64Array(heapT.length * 2);
+        biggerT.set(heapT);
+        heapT = biggerT;
+        const biggerC = new Int32Array(heapC.length * 2);
+        biggerC.set(heapC);
+        heapC = biggerC;
+      }
+      let n = heapSize++;
+      while (n > 0) {
+        const up = (n - 1) >> 1;
+        if (heapT[up] < t || (heapT[up] === t && heapC[up] < b)) break;
+        heapT[n] = heapT[up];
+        heapC[n] = heapC[up];
+        n = up;
+      }
+      heapT[n] = t;
+      heapC[n] = b;
+    }
+
+    /** Remove the earliest candidate (ties go to the lower cell) into popT and popC. */
+    function heapPop(): void {
+      popT = heapT[0];
+      popC = heapC[0];
+      const t = heapT[--heapSize];
+      const c = heapC[heapSize];
+      let n = 0;
+      for (;;) {
+        let child = 2 * n + 1;
+        if (child >= heapSize) break;
+        if (child + 1 < heapSize && (heapT[child + 1] < heapT[child] || (heapT[child + 1] === heapT[child] && heapC[child + 1] < heapC[child]))) child++;
+        if (t < heapT[child] || (t === heapT[child] && c < heapC[child])) break;
+        heapT[n] = heapT[child];
+        heapC[n] = heapC[child];
+        n = child;
+      }
+      heapT[n] = t;
+      heapC[n] = c;
+    }
+
+    /**
+     * The fire in cell a (flaming in `slot`, started `startedAt` minutes into this tick, negative if
+     * before it) reaches each neighbour one distance ÷ the rate toward it later. Arrivals within this
+     * tick, and while a still flames, become candidates.
+     */
+    function reachNeighbours(slot: number, a: number, startedAt: number, tick: number): void {
+      const i = a % W;
+      const j = (a - i) / W;
+      const vigour = fires.column<Float32Array>('vigour').data[slot];
+      // It flames until `flameLeft` minutes after the later of its start and the start of the tick.
+      const until = (startedAt > 0 ? startedAt : 0) + fires.column<Float32Array>('flameLeft').data[slot];
+      for (let n = 0; n < 8; n++) {
+        const ni = i + DI[n];
+        const nj = j + DJ[n];
+        if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+        const b = nj * W + ni;
+        if (stage[b] === FireStage.FLAMING || water[b] !== Water.DRY) continue;
+        // A diagonal step that would pass between water cells would have to cross the water.
+        if (DI[n] !== 0 && DJ[n] !== 0 && (water[j * W + ni] !== Water.DRY || water[nj * W + i] !== Water.DRY)) continue;
+        evaluate(b, tick);
+        if (!(headRate[b] > 0)) continue;
+        const along = headRate[b] * toward[n];
+        const rate = (along > backRate[b] ? along : backRate[b]) * slopeFactor((elevation[b] - elevation[a]) / DIST[n]) * vigour;
+        let arrival = startedAt + DIST[n] / rate;
+        if (arrival < 0) arrival = 0;
+        if (arrival < tickMinutes && arrival <= until) heapPush(arrival, b);
+      }
+    }
+
     function cellFires(tick: number): void {
       const cellCol = fires.column<Int32Array>('cell').data;
       const fresh = fires.column<Uint8Array>('fresh').data;
       // Fires lit from outside since the last run, and flaming cells under this tick's weather.
-      let fastest = 0;
       for (let slot = 0; slot < fires.highWater; slot++) {
         if (fires.alive.data[slot] !== 1) continue;
         const k = cellCol[slot];
         if (fresh[slot] === 1) {
           stage[k] = FireStage.NONE;
-          if (!flame(k, tick, 0)) {
+          if (!flame(k, tick)) {
             if (!smoulder(k)) removeFire(slot);
-            continue;
           }
         } else if (stage[k] === FireStage.FLAMING) {
           evaluate(k, tick);
-          if (!(headRate[k] > 0)) {
-            stopFlaming(slot);
-            continue;
-          }
+          if (!(headRate[k] > 0)) stopFlaming(slot);
         }
-        if (stage[k] === FireStage.FLAMING && headRate[k] > fastest) fastest = headRate[k];
       }
       fitBurned(fires.highWater);
-      burnedMinutes.fill(0);
+      startAt.fill(0);
 
-      // Spread, in sub-steps short enough that none covers more than half a cell.
-      let steps = Math.ceil((fastest * tickMinutes) / (K.stepShareOfCell * cs));
-      steps = steps < 1 ? 1 : steps > K.maxSubSteps ? K.maxSubSteps : steps;
-      const dt = tickMinutes / steps;
-      const lb = lengthToBreadth(conditions.windKmh);
-      for (let n = 0; n < 8; n++) toward[n] = shareOfHead(UX[n] * conditions.windUx + UY[n] * conditions.windUy, lb);
-      for (let step = 0; step < steps; step++) {
-        pendingStamp++;
-        let found = 0;
-        // Columns are fetched afresh each sub-step: new fires can grow the store and replace them.
-        const end = fires.highWater;
-        const alive = fires.alive.data;
-        const cells = fires.column<Int32Array>('cell').data;
-        const left = fires.column<Float32Array>('flameLeft').data;
-        for (let slot = 0; slot < end; slot++) {
-          if (alive[slot] !== 1) continue;
-          const a = cells[slot];
-          if (stage[a] !== FireStage.FLAMING || !(left[slot] > 0)) continue;
-          const i = a % W;
-          const j = (a - i) / W;
-          for (let n = 0; n < 8; n++) {
-            const ni = i + DI[n];
-            const nj = j + DJ[n];
-            if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
-            const b = nj * W + ni;
-            if (stage[b] === FireStage.FLAMING || pendingMark[b] === pendingStamp || water[b] !== Water.DRY) continue;
-            // A diagonal step that would pass between water cells would have to cross the water.
-            if (DI[n] !== 0 && DJ[n] !== 0 && (water[j * W + ni] !== Water.DRY || water[nj * W + i] !== Water.DRY)) continue;
-            evaluate(b, tick);
-            if (!(headRate[b] > 0)) continue;
-            const along = headRate[b] * toward[n];
-            const rate = (along > backRate[b] ? along : backRate[b]) * slopeFactor((elevation[b] - elevation[a]) / DIST[n]);
-            if (random() < atLeastOnce((rate * dt) / DIST[n])) {
-              if (found === pending.length) {
-                const bigger = new Int32Array(pending.length * 2);
-                bigger.set(pending);
-                pending = bigger;
-                const biggerRate = new Float64Array(pending.length);
-                biggerRate.set(pendingRate);
-                pendingRate = biggerRate;
-              }
-              pendingRate[found] = rate;
-              pending[found++] = b;
-              pendingMark[b] = pendingStamp;
-            }
-          }
-          left[slot] -= dt;
-          burnedMinutes[slot] += dt;
-        }
-        // New fires start together after the sub-step, so the order of cells doesn't matter.
-        for (let q = 0; q < found; q++) flame(pending[q], tick, pendingRate[q]);
+      // Spread by minimum travel time: each neighbour starts burning when the fire, travelling at the
+      // rate toward it, gets there. Arrivals are taken in time order within the tick.
+      for (let n = 0; n < 8; n++) toward[n] = shareOfHead(UX[n] * conditions.windUx + UY[n] * conditions.windUy, currentLb);
+      heapSize = 0;
+      for (let slot = 0; slot < fires.highWater; slot++) {
+        if (fires.alive.data[slot] !== 1) continue;
+        const a = fires.column<Int32Array>('cell').data[slot];
+        if (stage[a] === FireStage.FLAMING) reachNeighbours(slot, a, -fires.column<Float32Array>('age').data[slot], tick);
+      }
+      while (heapSize > 0) {
+        heapPop();
+        const b = popC;
+        const t = popT;
+        if (stage[b] === FireStage.FLAMING || !flame(b, tick)) continue;
+        const slot = slotOfCell[b];
+        fitBurned(slot);
+        startAt[slot] = t;
+        reachNeighbours(slot, b, t, tick);
       }
 
       // Burn the fuel: fine fuel and some sticks in the flames, wood while smouldering.
@@ -1163,9 +1195,13 @@ export const fire: SystemDef = defineSystem({
         const heat = fires.column<Float32Array>('heat').data;
         const left = fires.column<Float32Array>('flameLeft').data;
         if (stage[k] === FireStage.FLAMING) {
-          const burned = burnedMinutes[slot];
-          const remaining = left[slot] > 0 ? left[slot] : 0;
-          const share = burned + remaining > 0 ? burned / (burned + remaining) : 1;
+          // Minutes of flame this tick: from when it started (0 if before the tick) to the end of the tick or of its flame.
+          const before = left[slot] > 0 ? left[slot] : 0;
+          let burned = tickMinutes - startAt[slot];
+          if (burned > before) burned = before;
+          const share = before > 0 ? burned / before : 1;
+          left[slot] = before - burned;
+          fires.column<Float32Array>('age').data[slot] += burned;
           const fine = litter[k] * share * (1 - K.litterLeft);
           const sticks = small[k] * share * K.sticksInFlames;
           litter[k] -= fine;
@@ -1197,7 +1233,7 @@ export const fire: SystemDef = defineSystem({
           evaluate(k, tick);
           if (headRate[k] > 0) {
             const damp = moistureFactor(conditions.fineMoisture(k));
-            if (random() < K.flarePerHour * (damp >= dryDamp ? 1 : damp / dryDamp) && flame(k, tick, 0)) counts[FIRE_FIELDS.flareUps] += 1;
+            if (random() < K.flarePerHour * (damp >= dryDamp ? 1 : damp / dryDamp) && flame(k, tick)) counts[FIRE_FIELDS.flareUps] += 1;
           }
         }
       }
@@ -1263,7 +1299,8 @@ export const fire: SystemDef = defineSystem({
           burn[slot] = kw > 0.1 ? kw : 0.1;
           const inFlames = stage[k] === FireStage.FLAMING;
           let out = others === 0 && !inFlames && thick > K.loneOutThicknessM && random() < K.loneOutChance;
-          const rainP = rainOutChance(k, K.rainOutObjectPerMmPerHour, K.rainOutObjectMost);
+          const dayP = K.rainOutObjectPerMm * conditions.dayRainOn(k);
+          const rainP = conditions.stormRateNow(k) > 0 ? K.stormOutObject : dayP < K.rainOutObjectMost ? dayP : K.rainOutObjectMost;
           if (!out && rainP > 0 && random() < rainP) out = true;
           if (out) {
             burn[slot] = 0;
@@ -1306,6 +1343,7 @@ export const fire: SystemDef = defineSystem({
       if (!struck && fires.count === 0 && !anyObjects) return;
       ensureScratch();
       conditions.refresh(tick);
+      currentLb = lengthToBreadth(conditions.windKmh);
       if (fires.count > 0) rebuildSlotMap();
       if (struck) lightning(tick);
       if (fires.count > 0) cellFires(tick);
