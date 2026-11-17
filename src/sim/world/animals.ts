@@ -11,6 +11,7 @@ import type { EntityStore } from '../core/store.ts';
 import { spawnEntity } from '../sim.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { CLIMATE_CONSTANTS, CLIMATE_PARTS, dailyMeanTemperatureC } from './climate.ts';
+import { FIRE_CONSTANTS, FIRE_LAYERS, FIRE_STORE, FirePoints, FireStage, avoidDistanceM } from './fire.ts';
 import { seasonFraction, sunlight } from './light.ts';
 import { BROWSE_LAYER, FORAGE_LAYER, PLANT_CONSTANTS, PLANT_SPECIES, SEED_RAIN_LAYER, coverLayer } from './plants.ts';
 import { TERRAIN_LAYERS, Water } from './terrain.ts';
@@ -217,6 +218,12 @@ export const ANIMAL_CONSTANTS = {
   catDisperseFarM: 15_000,
   /** Predators drift back toward their anchor beyond this distance. */
   rangeM: 6000,
+  /** In a flaming cell (§2.16): share of the hares that die each tick, share of carcass meat burnt, and of its pathogen load left. */
+  hareFireDeathsPerTick: 0.03,
+  carcassBurntPerTick: 0.05,
+  carcassLoadLeftPerTick: 0.5,
+  /** Fires this hot or hotter, kW, make an animal run rather than walk away. */
+  runFromFireKw: 1000,
 } as const;
 const A = ANIMAL_CONSTANTS;
 
@@ -476,7 +483,8 @@ function startAnimals(sim: Sim): void {
 }
 
 // ALIBI: grazers seek food, water and comfortable warmth; predators hunt when hungry and rest when fed;
-// scavengers eat what dies. All of it happens whether or not anyone ever watches or hunts.
+// scavengers eat what dies; animals keep away from fire, which burns them. All of it happens whether
+// or not anyone ever watches or hunts.
 export const animals: SystemDef = defineSystem({
   name: 'world.animals',
   declare(state: SimState) {
@@ -543,6 +551,50 @@ export const animals: SystemDef = defineSystem({
     const reference = CLIMATE_CONSTANTS.referenceElevationM;
     const specOf: GroupKind[] = [];
     for (const spec of GROUP_KINDS) specOf[spec.kind] = spec;
+
+    // Fire (§2.16), if the pipeline has it: every animal keeps away from a burning cell, predators from any fire.
+    const fireStore = state.stores.find((st) => st.name === FIRE_STORE) ?? null;
+    const fireStage = fireStore ? world.layer<Uint8Array>(FIRE_LAYERS.stage) : null;
+    const firePoints = fireStore ? new FirePoints(sim) : null;
+    let fireNow = false;
+    /** The fire a group of `kind` at (x, y) is too close to, or -1. */
+    function fireTooClose(kind: number, x: number, y: number): number {
+      if (!fireNow || firePoints === null) return -1;
+      const predator = kind === AnimalKind.WOLF || kind === AnimalKind.CAT;
+      return firePoints.tooClose(x, y, predator ? 0 : FIRE_CONSTANTS.everyAnimalAvoidsKw);
+    }
+    /** Move away from fire point p, running from a big fire, walking from a small one. */
+    function leaveFire(slot: number, p: number): void {
+      const points = firePoints as FirePoints;
+      const dx = c.x[slot] - points.x[p];
+      const dy = c.y[slot] - points.y[p];
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const ux = d > 0 ? dx / d : 1;
+      const uy = d > 0 ? dy / d : 0;
+      const away = 2 * avoidDistanceM(points.kw[p]) + 200;
+      setTarget(slot, c.x[slot] + ux * away, c.y[slot] + uy * away, points.kw[p] >= A.runFromFireKw ? AnimalMode.FLEE : AnimalMode.MOVE);
+    }
+    /** Hares and carcass meat in flaming cells. */
+    function burnInCells(): void {
+      const store = fireStore as EntityStore;
+      const stageOf = fireStage as Uint8Array;
+      const cells = store.column<Int32Array>('cell').data;
+      for (let slot = 0; slot < store.highWater; slot++) {
+        if (store.alive.data[slot] !== 1) continue;
+        const k = cells[slot];
+        if (stageOf[k] !== FireStage.FLAMING) continue;
+        if (carcass[k] > 0) {
+          carcass[k] *= 1 - A.carcassBurntPerTick;
+          carcassLoad[k] *= A.carcassLoadLeftPerTick;
+        }
+        const dead = hare[k] * A.hareFireDeathsPerTick;
+        if (dead > 0) {
+          hare[k] -= dead;
+          counts[F.deathsHare] += dead;
+          addMeat(k, dead * HARE.edibleKg);
+        }
+      }
+    }
 
     // Derived from the landscape; built on the first run, never saved (docs/DESIGN.md §1.5).
     let waterDist = new Uint16Array(0);
@@ -795,7 +847,7 @@ export const animals: SystemDef = defineSystem({
         const px = clampX(c.x[slot] + (random() * 2 - 1) * 800);
         const py = clampY(c.y[slot] + (random() * 2 - 1) * 800);
         const cell = cellAt(px, py);
-        if (waterKind[cell] !== Water.DRY) continue;
+        if (waterKind[cell] !== Water.DRY || fireTooClose(c.kind[slot], px, py) >= 0) continue;
         const sc = placeScore(cell, dayNeed, spec, atReference);
         if (sc > bestScore) {
           bestScore = sc;
@@ -818,6 +870,8 @@ export const animals: SystemDef = defineSystem({
         if (prey < 0 && c.count[slot] >= A.wolvesNeededForAurochs) {
           prey = nearest(herbGrid, c.x[slot], c.y[slot], A.wolfSearchM, AnimalKind.AUROCHS, -1);
         }
+        // Prey standing near a fire is left alone.
+        if (prey >= 0 && fireTooClose(AnimalKind.WOLF, c.x[prey], c.y[prey]) >= 0) prey = -1;
         catchHare(slot, k, A.wolfHarePerHare, A.wolfHareCap, F.wolfKillsHare);
         if (prey >= 0) {
           c.preyId[slot] = store.id.data[prey];
@@ -851,7 +905,8 @@ export const animals: SystemDef = defineSystem({
       const hungry = c.condition[slot] < A.hungryBelow;
       if (night && hungry) {
         catchHare(slot, k, A.catHarePerHare, A.catHareCap, F.catKillsHare);
-        const prey = nearest(herbGrid, c.x[slot], c.y[slot], A.catSearchM, AnimalKind.DEER, -1);
+        let prey = nearest(herbGrid, c.x[slot], c.y[slot], A.catSearchM, AnimalKind.DEER, -1);
+        if (prey >= 0 && fireTooClose(AnimalKind.CAT, c.x[prey], c.y[prey]) >= 0) prey = -1;
         if (prey < 0) {
           // Nothing near: search somewhere else in the range.
           setTarget(slot, c.anchorX[slot] + (random() * 2 - 1) * A.rangeM, c.anchorY[slot] + (random() * 2 - 1) * A.rangeM, AnimalMode.MOVE);
@@ -870,7 +925,7 @@ export const animals: SystemDef = defineSystem({
           const px = clampX(c.x[prey] + (random() * 2 - 1) * reach);
           const py = clampY(c.y[prey] + (random() * 2 - 1) * reach);
           const cell = cellAt(px, py);
-          if (waterKind[cell] !== Water.DRY) continue;
+          if (waterKind[cell] !== Water.DRY || fireTooClose(AnimalKind.CAT, px, py) >= 0) continue;
           const tc = tallCover(cell, season);
           if (tc > bestCover) {
             bestCover = tc;
@@ -889,7 +944,7 @@ export const animals: SystemDef = defineSystem({
           const px = clampX(c.x[slot] + (random() * 2 - 1) * 1000);
           const py = clampY(c.y[slot] + (random() * 2 - 1) * 1000);
           const cell = cellAt(px, py);
-          if (waterKind[cell] !== Water.DRY) continue;
+          if (waterKind[cell] !== Water.DRY || fireTooClose(AnimalKind.CAT, px, py) >= 0) continue;
           const tc = tallCover(cell, season);
           if (tc > bestCover) {
             bestCover = tc;
@@ -956,6 +1011,11 @@ export const animals: SystemDef = defineSystem({
         c.mode[slot] = AnimalMode.REST;
         return;
       }
+      // A chase is given up when the prey runs near a fire.
+      if (fireTooClose(AnimalKind.WOLF, c.x[prey], c.y[prey]) >= 0) {
+        c.mode[slot] = AnimalMode.REST;
+        return;
+      }
       c.targetX[slot] = c.x[prey];
       c.targetY[slot] = c.y[prey];
       const dx = c.x[prey] - c.x[slot];
@@ -984,7 +1044,7 @@ export const animals: SystemDef = defineSystem({
     function ambush(slot: number, night: boolean, season: number): void {
       if (!night || c.cooldown[slot] > 0 || c.condition[slot] >= A.hungryBelow) return;
       const prey = nearest(herbGrid, c.x[slot], c.y[slot], A.ambushM, AnimalKind.DEER, -1);
-      if (prey < 0) return;
+      if (prey < 0 || fireTooClose(AnimalKind.CAT, c.x[prey], c.y[prey]) >= 0) return;
       counts[F.catStrikes] += 1;
       c.cooldown[slot] = A.restTicks;
       const px = c.x[prey];
@@ -1205,6 +1265,8 @@ export const animals: SystemDef = defineSystem({
         lifeAndDeath(season);
         c = columnsOf(store);
       }
+      fireNow = firePoints !== null && firePoints.refresh() > 0;
+      if (fireStore !== null && fireStore.count > 0) burnInCells();
       buildGrids();
       const night = isNight(tick);
       const hour = Math.floor(tick / ticksPerHour);
@@ -1223,6 +1285,10 @@ export const animals: SystemDef = defineSystem({
           if (!store.isAlive(slot)) continue;
         }
         if (c.cooldown[slot] > 0) c.cooldown[slot] -= 1;
+        if (fireNow) {
+          const p = fireTooClose(kind, c.x[slot], c.y[slot]);
+          if (p >= 0) leaveFire(slot, p);
+        }
         if (kind === AnimalKind.WOLF && c.mode[slot] === AnimalMode.HUNT) chase(slot);
         else if (kind === AnimalKind.CAT && c.mode[slot] === AnimalMode.AMBUSH) ambush(slot, night, season);
         if (store.isAlive(slot)) move(slot);

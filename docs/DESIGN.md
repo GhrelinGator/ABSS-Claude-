@@ -157,7 +157,7 @@ Daylight and night. Moonlight varies by phase. Perception range drops sharply in
 - **Sunlight** rises from 0 at sunrise to 1 at noon. A twilight band of about 45 minutes either side fades from 0.08 to darkness.
 - **The moon** runs on a 29.53-day cycle of real days, not compressed years (§1.1), because it is something agents see from night to night. Its brightness is set by its phase, and it is only up for part of the night. A full moon rises at sunset and is up all night; a first-quarter moon sets around midnight; a new moon is up only during the day.
 - **Ambient light** is the brightest of three sources: sunlight; moonlight (at most 0.06 of full sun at full moon overhead, a deliberate exaggeration so a moonlit night counts as visibly different); and starlight (0.002).
-- Fire light gets added in Phase 1.8, per cell.
+- Fire light is added at a point by `createFireProbe` (Phase 1.8, §2.16), from burning cells and burning objects.
 
 ### 2.5 Plants
 Each species has attributes:
@@ -268,6 +268,7 @@ One system, `world.climate`, keeps the weather. It draws only from the `CLIMATE`
 - Water out: potential evaporation, 0.2 mm × (daily mean temperature + 3 °C), never negative and at most 7 mm per day, scaled by how full the bucket is.
 - River, lake, and spring cells stay at 1.
 - At setup, each cell starts at 60% of its mean rainfall factor, capped at 1; the first weeks of a run settle it toward its own climate.
+- **Wind** (added in Phase 1.8, §2.16): a daily vector on its own stream, swinging through the day and doubling under storms.
 - This is the "dryness" plants (1.4) and fire (1.8) will read. Long-term river flow (§2.10) is static for now; rivers that shrink in droughts are a known gap.
 
 **What gets stored** (all part of the state hash and snapshots): the four anomalies, today's wet flag and rain factor, the active storm (centre, radius, end tick, extra rain), the strikes of the current tick, a count of all strikes so far, and the soil moisture layer. Temperature is computed, not stored.
@@ -414,6 +415,58 @@ Mass is conserved except crumbs. **Sparks**: when one material is harder than th
 All protection numbers are estimates for Phase 2.2 (thermoregulation) to check against shelter physics.
 
 **Not in this version:** bones and antlers (natural objects from carcasses and shed antlers), rubbing (abrasion that grinds an edge, and friction heat in wood, an ignition source for 1.8), dead grass and other tinder (fire, 1.8), fuel moisture (1.8), trees dying back into fallen wood (the ecology review, 1.10), cutting hides from carcasses (needs bodies acting, Phase 3–4), curing hides so they last, containers, and objects carried by an agent rotting at the agent's position (Phase 3 keeps a held object's position current).
+
+### 2.16 Fire (Phase 1.8)
+One system, `world.fire`, runs every tick after the materials, plus functions that later phases call when a body acts (striking sparks, rubbing wood, holding a stick to a flame). Implemented in `src/sim/world/fire.ts`. Fire is physics: it needs dry fuel and spreads by dryness, wind and slope; nothing about it depends on who watches. It draws from its own stream (`StreamDomain.FIRE`).
+
+**Wind (added to the climate, §2.11).** A daily wind vector at 10 m: each component an AR(1) process stepped once a day, persistence 0.6, spread 2.5 m/s, around a prevailing westerly of 2 m/s (mean speed about 3.5 m/s, usual for temperate lowlands). Through the day the speed swings by ±40%, strongest at 14:00 and calmest before dawn; under an active storm it doubles (gust fronts). Wind has its own stream (`StreamDomain.WIND`), so adding it left every other part of the weather unchanged. Bodies (Phase 2.2) will read it too.
+
+**Fuel** (kg per cell):
+- **Fine dead fuel** (`materials.litter`, kept by the materials system like fallen wood): cured grass, dead herbs and fallen leaves, the fuel that carries a fire and the tinder a spark needs. Plants add it during the dying-back season (season fraction 0.45–0.7) at, per full cover and compressed year: grass 3 t/ha, reed 6, nut trees 3, berry bushes 1.5, greens 1, tuber, bitter root and nightshade 0.5 each. It rots at 60% a compressed year at reference conditions, times the same warmth-and-wetness factor as fallen wood. Like fallen wood it runs on the compressed year (plant life history) and starts at the balance of input and rotting: about 4–5 t/ha under full grass, 10 under reeds.
+- **Sticks and poles** (`materials.wood.small`, `materials.wood.long`, §2.15): a share of the sticks burns in the flames; the rest, and the poles and trunks, smoulder afterwards.
+- **Living plants** don't carry the fire, but green plants hold it back (curing, below) and are damaged by it.
+
+**Fuel moisture** (a share of dry mass), computed when needed from the weather; nothing extra is stored:
+- **Fine fuel** follows the air within an hour. Relative humidity, which the climate doesn't keep, is estimated as 40% + 40% × soil moisture, +15% on a wet day, ±15% through the day (driest at 15:00), within 10–100%. Equilibrium moisture then follows Simard's (1968) equations, as used by the US fire-danger rating system. Rain falling on the cell today adds 6 points per mm (storm rain from the moment the storm starts).
+- **Sticks**: equilibrium moisture at the day's mean humidity, plus 2 points, plus 3 points per mm of rain today.
+- **Poles and trunks** respond over weeks, so they follow soil moisture: 8% + 25% × soil moisture, plus 1 point per mm of rain today (at most 15).
+- **Moisture of extinction**: fine fuel at 24% or wetter doesn't carry flame (Cheney et al. 1998 for grass).
+
+**Curing.** Green plants are wet and shade the dead fuel. A cell's greenness is warmth (0 at a daily mean of 5 °C, 1 at 13 °C) × wetness (0 at soil moisture 0.25, 1 at 0.55) × its live cover (grass, greens, reed and nightshade count fully, other plants half, at most 1). Cured share = 1 − greenness, and the curing factor rises from 0 at 40% cured to 1 at 90% (after Cheney's curing function). So a moist summer meadow barely burns, and the same meadow in a drought, or dormant in the cold, does.
+
+**Rate of spread** (head fire, in open fuel; Cheney et al. 1998, natural grassland): with the wind at 10 m *U* in km/h, *R* = 0.054 + 0.269 *U* km/h below 5 km/h and 1.4 + 0.838 (*U* − 5)^0.844 above, times:
+- **moisture**: exp(−0.108 *M*) up to *M* = 12%, then falling linearly to 0 at 24%;
+- **curing** (above);
+- **fuel**: 0 below 0.5 t/ha of fine fuel (litter plus 30% of the sticks), 1 above 2 t/ha;
+- **trees**: under nut-tree cover *c* the wind reaching the fire is (1 − 0.75 *c*) of the open wind, and the compact leaf bed spreads (1 − 0.6 *c*) as fast. Full forest at 20 km/h and 10% moisture spreads about 0.2 km/h; open grass about 3 km/h.
+- **slope**: up a slope *s* (rise over run) × (1 + 5.7 *s*), down × 1 / (1 + 5.7 |*s*|), so it doubles each 10° up and halves each 10° down (McArthur's rule of thumb), with *s* at most 0.6.
+The fire backs into the wind at the no-wind rate (0.054 km/h × the same factors) and spreads in direction θ from the wind at back + (head − back) × ((1 + cos θ)/2)².
+
+**Spreading between cells.** Each burning cell is an entry in the store `fires` (cell, stage, minutes of flame left, heat), and `fire.stage` marks it on the grid (1 flaming, 2 smouldering). A flaming cell ignites each of its eight neighbours with chance 1 − exp(−*R*θ × dt / distance), using the rate toward that neighbour and only if the neighbour's fine fuel is dry, cured and heavy enough. A tick is split into up to 20 sub-steps so that no step covers more than half a cell, so a fast grass fire can cross several cells in ten minutes. Ignitions found in a sub-step take effect together after it, so the order of cells doesn't matter. A cell flames for 100 m ÷ the backing rate (10 minutes to 4 hours), consuming its fine fuel and 40% of its sticks evenly over that time (5% of the fine fuel is left unburnt). If its fine fuel becomes too wet (a humid night, rain) or too green, flaming stops early and what's left can burn later.
+
+**Smouldering.** After flaming, or when lightning strikes wood that is too wet to flame, a cell with at least 5 kg of wood smoulders: 15% of its sticks and 3% of its poles an hour, slower as they get wetter (no burning above 35% moisture). Each hour a smouldering cell whose own fine fuel is dry and cured enough flares into flame with chance 0.3 × the moisture factor. Rain puts it out with chance 0.4% per mm on the cell per tick (at most 20%), and it goes out when the wood is gone. This is how real lightning fires often start: as "holdovers" smouldering in a log for a day or more until the litter around dries.
+
+**Ignition:**
+- **Lightning** (§2.11): a strike on a cell holding wood starts a smouldering fire with chance 0.03 × the wood present (full at 5 t/ha) × the dryness of the poles (1 at 15% moisture, 0 at 30%); if the fine fuel is dry enough to flame (dry thunderstorms, mostly on dry land where storms drop little rain), it flames at once. A first estimate: about 1 strike in 100–300 into dry fuel starts a fire.
+- **Sparks** (`sparksAt(sim, x, y, sparks, heat, stream)`): the caller is whatever struck iron sulfide (`strikeObjects` reports the sparks, §2.15). Each spark catches the fine fuel on the ground with chance 0.04 × its heat × how ready the tinder is (dry, cured, and at least 0.5 t/ha). A caught spark is a small flame at that point for one tick.
+- **Friction** (`rubWood(sim, a, b, energy, precision, stream)`): rubbing two pieces of wood turns work into heat in the dust. If energy × precision² reaches 2,500 J × (1 + 8 × (moisture above 8%)) and the wood holds no more than 22% water, an ember forms: a small flame at the point with chance 0.5 × tinder readiness. Rubbing grinds off 1 g of dust per kJ. (Real hand-drill fire takes about a minute of hard work with dry wood.)
+- **A small flame at a point** (from a spark or an ember) lights wood objects within 0.5 m (thin ones easily: chance 0.03 m ÷ thickness, doubled) and the cell's fine fuel with chance 0.3 × readiness.
+
+**Burning objects** (column `burnKw` on `objects`, 0 when not burning). A burning piece of wood loses radius at 0.25 mm a minute on its own, or 0.8 mm a minute when two or more other burning pieces lie within 0.5 m (a pile burns hotter), and is gone when its radius falls below 2 mm. Its heat is the mass lost × 16 MJ/kg. A piece thicker than 2.5 cm burning alone goes out with chance 8% a tick (a lone log dies; a pile keeps going). Every tick an unburnt wood piece within 0.5 m of a burning one catches with chance 0.015 m ÷ thickness × its dryness, and wood lying or held in a flaming cell catches with chance 0.03 m ÷ thickness; so a stick held into a fire, or lying in a burnt cell's path, becomes a burning stick that can be carried while it lasts. Rain puts burning pieces out with chance 2% per mm on the cell per tick, or 50% under an active storm. A burning piece lying on the ground lights the cell's fine fuel with chance 5% × readiness × heat ÷ 20 kW per tick. Hides in a flaming cell lose half their integrity. A burning stick carried by a body moves with it (Phase 3 keeps a held object's position current).
+
+**What a flaming cell does to what's in it** (once, when it starts flaming), scaled by the fire's severity *s* = *I* / (*I* + 2,000 kW/m), where *I* is Byram's fireline intensity (18,000 kJ/kg × fine fuel per m² × head rate): plant cover loses its top-kill share × *s* (grass 0.15, reed 0.15, greens 0.4, berry 0.5, nut 0.6, nightshade 0.5, tuber and bitter root 0.05); fruit and seeds above ground burn (grass seeds 90%, berries 80%, nuts 50%); food underground is untouched; grass forage loses 90% and browse 60% × *s*. The animals system reacts too (below).
+
+**Light and heat** (`createFireProbe(sim).at(x, y, out)`): light, as a share of full sun, is 0.06 × (heat ÷ 20 kW) × (8 m ÷ distance)², summed over fires and capped at 1: a 20 kW fire lights things within 8 m as brightly as the full moon (§2.4), and about 40 m as brightly as starlight; a flaming cell (tens of MW) lights the land for kilometres. Radiant heat is 30% of the heat output spread over a sphere (W/m² at the point), for bodies to read (Phase 2.2). Burning cells are counted from their centres; burning objects within 100 m and cells within 3 km.
+
+**Animals** (§2.13): every animal keeps away from a fire of 1 MW or more (a burning cell); predators keep away from any fire. The distance kept is 25 m × (heat ÷ 20 kW)^¼ (25 m from a 20 kW fire, 60 m from a smouldering log pile, about 200 m from a flaming cell). An animal inside that distance moves away; wolves won't chase prey and cats won't strike at prey that stands inside it, and cats won't wait in cover inside it. In a flaming cell, 3% of the hares die each tick, leaving meat; carcass meat in a flaming cell loses 5% a tick and half its pathogen load (heat kills microbes, §2.14).
+
+**What's stored** (part of the state hash and snapshots): the store `fires`, the layers `fire.stage` and `fire.lastBurnDay` (day number + 1 of the cell's last flaming, 0 if never), the objects' `burnKw` column, running counts (ignitions by cause, cells ignited, flare-ups, objects that caught), and the two wind components in the weather. Fuel moisture, curing and spread rates are computed.
+
+**Which clock.** Ignition and spread follow the weather, on real days. Fuel builds up on the compressed year, like the plants it comes from. So a compressed year holds 48 real days of fire weather and a 48-day year's worth of fuel; burned area per real day is meant to be realistic, and the interval between fires on one spot, counted in compressed years, is about 7.6 times longer than in real years. That is the same choice the storms make (§2.11).
+
+**Costs.** Nothing runs while nothing burns, apart from checking the lightning strikes of the tick. Fuel moisture is computed only for burning cells and their neighbours.
+
+**Not in this version:** heat-treating or cracking stone in fire, cooking food (Phase 2: bodies eat), smoke, embers carried by the wind ahead of the front (spotting), crown fires, fire killing animal groups, ash fertilising regrowth, burning across rivers, and clearing ground of fuel (needs bodies acting). Abrasion (rubbing grinding an edge) stays parked; only rubbing's friction heat is here.
 
 ## 3. Bodies
 

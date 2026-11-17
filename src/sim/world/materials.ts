@@ -277,6 +277,8 @@ export const MATERIAL_LAYERS = {
   smallWood: 'materials.wood.small',
   /** Fallen branches and trunks 1.5 m or longer. kg per cell. */
   longWood: 'materials.wood.long',
+  /** Fine dead plant matter: cured grass, dead herbs, fallen leaves (the fuel fire spreads in, §2.16). kg per cell. */
+  litter: 'materials.litter',
 } as const;
 
 /** Name of the layer holding kilograms of loose, hand-sized stone of one material per cell. */
@@ -313,6 +315,16 @@ export const MATERIAL_CONSTANTS = {
   treeSmallWoodPerHa: 1500,
   treeLongWoodPerHa: 1500,
   bushSmallWoodPerHa: 400,
+  /**
+   * Fine dead plant matter added per compressed year at full cover, kg/ha, by plant species
+   * (§2.16). It falls during the dying-back season and rots at `litterDecayPerYear`.
+   */
+  litterKgHaPerYear: { grass: 3000, tuber: 500, berry: 1500, nut: 3000, greens: 1000, bitterRoot: 500, nightshade: 500, reed: 6000 } as Readonly<Record<string, number>>,
+  /** Season fractions between which plants die back and drop it (late summer to late autumn). */
+  litterFallStart: 0.45,
+  litterFallEnd: 0.7,
+  /** Share of fine dead matter that rots per compressed year at reference conditions. */
+  litterDecayPerYear: 0.6,
   /** Thickness of a typical piece in each wood stock, m: sets how fast it rots (woodDecayPerYear). */
   smallWoodThicknessM: 0.03,
   longWoodThicknessM: 0.08,
@@ -782,6 +794,15 @@ export function createShelterProbe(sim: Sim): ShelterProbe {
   };
 }
 
+/** Fine dead matter each plant species drops per compressed year at full cover, kg/ha, in catalogue order. */
+function litterInputs(): number[] {
+  return PLANT_SPECIES.map((sp) => {
+    const kg = K.litterKgHaPerYear[sp.name];
+    if (kg === undefined) throw new Error(`world.materials has no litter input for the plant species "${sp.name}".`);
+    return kg;
+  });
+}
+
 function speciesNamed(name: string) {
   const found = PLANT_SPECIES.find((s) => s.name === name);
   if (!found) throw new Error(`world.materials needs the plant species "${name}".`);
@@ -804,6 +825,9 @@ function buildLooseMaterial(sim: Sim): void {
   const long = world.layer<Float32Array>(MATERIAL_LAYERS.longWood);
   const tree = world.layer<Float32Array>(coverLayer(speciesNamed('nut')));
   const bush = world.layer<Float32Array>(coverLayer(speciesNamed('berry')));
+  const litter = world.layer<Float32Array>(MATERIAL_LAYERS.litter);
+  const litterCover = PLANT_SPECIES.map((sp) => world.layer<Float32Array>(coverLayer(sp)));
+  const litterPerYear = litterInputs();
   const areaHa = (cellSizeM * cellSizeM) / 10_000;
   const rockKey = fieldKey(config.seed, SALT_BEDROCK);
   const noduleKey = fieldKey(config.seed, SALT_NODULES);
@@ -844,6 +868,9 @@ function buildLooseMaterial(sim: Sim): void {
       if (w === Water.DRY) {
         small[k] = ((K.treeSmallWoodPerHa * tree[k] + K.bushSmallWoodPerHa * bush[k]) * areaHa) / kSmall;
         long[k] = (K.treeLongWoodPerHa * tree[k] * areaHa) / kLong;
+        let input = 0;
+        for (let sp = 0; sp < litterCover.length; sp++) input += litterPerYear[sp] * litterCover[sp][k];
+        litter[k] = (input * areaHa) / K.litterDecayPerYear;
       }
     }
   }
@@ -887,6 +914,7 @@ export const materials: SystemDef = defineSystem({
     for (const m of STONE_MATERIALS) world.ensureLayer(stoneLayer(m), 'f32');
     world.ensureLayer(MATERIAL_LAYERS.smallWood, 'f32');
     world.ensureLayer(MATERIAL_LAYERS.longWood, 'f32');
+    world.ensureLayer(MATERIAL_LAYERS.litter, 'f32');
     world.ensureLayer(TERRAIN_LAYERS.soil, 'u8');
     world.ensureLayer(TERRAIN_LAYERS.waterKind, 'u8');
     world.ensureLayer(TERRAIN_LAYERS.elevation, 'f32');
@@ -923,11 +951,20 @@ export const materials: SystemDef = defineSystem({
     const smallOut = woodDecayPerYear(K.smallWoodThicknessM) / daysPerYear;
     const longOut = woodDecayPerYear(K.longWoodThicknessM) / daysPerYear;
     const wood = materialById(Material.WOOD);
+    const litter = world.layer<Float32Array>(MATERIAL_LAYERS.litter);
+    const litterCover = PLANT_SPECIES.map((sp) => world.layer<Float32Array>(coverLayer(sp)));
+    // Litter falls only in the dying-back season, so a day in it carries the whole year's input ÷ the season's days.
+    const fallDays = (K.litterFallEnd - K.litterFallStart) * daysPerYear;
+    const litterIn = litterInputs().map((kg) => (kg * areaHa) / fallDays);
+    const litterOut = K.litterDecayPerYear / daysPerYear;
+    const species = litterCover.length;
 
     return () => {
       const tick = state.tick;
       if (tick % ticksPerDay !== 0) return;
       const atReference = dailyMeanTemperatureC(config, tick, weatherValues, reference);
+      const season = seasonFraction(config, tick);
+      const falling = season >= K.litterFallStart && season < K.litterFallEnd;
       for (let k = 0; k < N; k++) {
         if (water[k] !== Water.DRY) continue;
         const rot = rotFactor(atReference - lapse * (elevation[k] - reference), moisture[k]);
@@ -935,6 +972,9 @@ export const materials: SystemDef = defineSystem({
         long[k] += longIn * tree[k] - longOut * rot * long[k];
         if (small[k] < 0) small[k] = 0;
         if (long[k] < 0) long[k] = 0;
+        let fine = litter[k] - litterOut * rot * litter[k];
+        if (falling) for (let sp = 0; sp < species; sp++) fine += litterIn[sp] * litterCover[sp][k];
+        litter[k] = fine > 0 ? fine : 0;
       }
 
       // Objects made of something that rots: wood on the trees' clock, hide on real days.
