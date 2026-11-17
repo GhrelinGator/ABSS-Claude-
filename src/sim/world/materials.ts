@@ -304,7 +304,7 @@ export const MATERIAL_CONSTANTS = {
    */
   stoneShares: {
     granite: [0, 0.05, 0.95, 0, 0, 0],
-    limestone: [0.18, 0, 0, 0.8, 0, 0.003],
+    limestone: [0.18, 0, 0, 0.8, 0, 0.001],
     sandstone: [0, 0.15, 0, 0, 0.85, 0],
   },
   /** Stones carried and rolled by water: how well each survives (flint ... pyrite). Soft stones wear away; pyrite rusts and breaks up. */
@@ -824,7 +824,7 @@ function buildLooseMaterial(sim: Sim): void {
       // Nodules come in patches, from none to twice the usual share; flint and iron sulfide in different ones.
       let patch = 1 + 2 * fractal(noduleKey, i * noduleScale, j * noduleScale, 2);
       patch = patch < 0 ? 0 : patch > 2 ? 2 : patch;
-      let patchP = 1 + 3 * fractal(pyriteKey, i * noduleScale, j * noduleScale, 2);
+      let patchP = 1 + 4 * fractal(pyriteKey, i * noduleScale, j * noduleScale, 2);
       patchP = patchP < 0 ? 0 : patchP > 2 ? 2 : patchP;
       const w = water[k];
       let total = 0;

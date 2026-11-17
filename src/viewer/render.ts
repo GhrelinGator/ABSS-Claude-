@@ -2,9 +2,9 @@
 // any arithmetic, because nothing here feeds back into the simulation.
 
 import type { RoArray, SimView } from '../sim/index.ts';
-import { animals, plants } from '../sim/index.ts';
+import { animals, materials, plants } from '../sim/index.ts';
 
-export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe' | 'animals';
+export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe' | 'animals' | 'stone' | 'wood';
 
 /** Display names and colours of the plant species, in catalogue order. */
 export const PLANT_NAMES: Readonly<Record<string, string>> = {
@@ -51,6 +51,17 @@ export const SOIL_COLORS: ReadonlyArray<[number, number, number]> = [
   [214, 190, 132], // sand
 ];
 export const SOIL_NAMES = ['Rock', 'Thin soil', 'Loam', 'Alluvium', 'Sand'];
+
+/** Bedrock colours and names, by bedrock number (1 granite, 2 limestone, 3 sandstone). */
+export const BEDROCK_COLORS: Readonly<Record<number, [number, number, number]>> = {
+  1: [168, 140, 140],
+  2: [222, 214, 186],
+  3: [196, 150, 98],
+};
+export const BEDROCK_NAMES: Readonly<Record<number, string>> = { 1: 'Granite', 2: 'Limestone', 3: 'Sandstone' };
+const FLINT_COLOR: [number, number, number] = [62, 74, 104];
+const PYRITE_COLOR: [number, number, number] = [222, 184, 40];
+export const SHELTER_COLOR: [number, number, number] = [30, 20, 14];
 export const WATER_NAMES = ['Dry land', 'Spring', 'River', 'Lake'];
 
 const RIVER: [number, number, number] = [64, 118, 206];
@@ -77,6 +88,11 @@ export interface Landscape {
   /** Hares per cell, and kilograms of carcass meat per cell. */
   hare: RoArray;
   carcass: RoArray;
+  /** Bedrock, loose stone per material (catalogue order of the stone materials), fallen wood, kg per cell. */
+  bedrock: RoArray;
+  stone: RoArray[];
+  smallWood: RoArray;
+  longWood: RoArray;
   /** 0 (shadow) to 1 (lit), from light falling from the north-west. */
   shade: Float32Array;
   minElevation: number;
@@ -122,6 +138,10 @@ export function readLandscape(view: SimView): Landscape {
     plantFood: plants.PLANT_SPECIES.map((s) => view.layer(plants.foodLayer(s))),
     hare: view.layer(animals.HARE_LAYER),
     carcass: view.layer(animals.CARCASS_LAYER),
+    bedrock: view.layer(materials.MATERIAL_LAYERS.bedrock),
+    stone: materials.STONE_MATERIALS.map((m) => view.layer(materials.stoneLayer(m))),
+    smallWood: view.layer(materials.MATERIAL_LAYERS.smallWood),
+    longWood: view.layer(materials.MATERIAL_LAYERS.longWood),
     shade,
     minElevation,
     maxElevation,
@@ -227,6 +247,30 @@ export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray):
         }
         break;
       }
+      case 'stone': {
+        // Bedrock colour, darker where little stone lies loose; flint and iron sulfide picked out.
+        const perHa = (k2: number) => k2 / ((land.cellSizeM * land.cellSizeM) / 10_000);
+        let total = 0;
+        for (const layer of land.stone) total += layer[k];
+        const flint = perHa(land.stone[materials.STONE_MATERIALS.findIndex((m) => m.id === materials.Material.FLINT)][k]);
+        const pyrite = perHa(land.stone[materials.STONE_MATERIALS.findIndex((m) => m.id === materials.Material.PYRITE)][k]);
+        if (pyrite >= 5) c = PYRITE_COLOR;
+        else if (flint >= 50) c = FLINT_COLOR;
+        else {
+          const t = Math.max(0, Math.min(1, Math.log10(1 + perHa(total)) / 4.5));
+          c = mix([60, 56, 50], BEDROCK_COLORS[land.bedrock[k]] ?? [255, 0, 255], 0.35 + 0.65 * t);
+        }
+        c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
+        break;
+      }
+      case 'wood': {
+        // Fallen wood, tonnes per hectare on a log scale from 0.1 to 30.
+        const t = (land.smallWood[k] + land.longWood[k]) / 1000 / ((land.cellSizeM * land.cellSizeM) / 10_000);
+        const u = t <= 0.1 ? 0 : Math.min(1, Math.log10(t / 0.1) / 2.5);
+        c = u === 0 ? [44, 42, 38] : mix([84, 74, 56], [176, 112, 52], u);
+        c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
+        break;
+      }
       case 'ripe': {
         let kcal = 0;
         for (let s = 0; s < species.length; s++) if (ripe[s] > 0) kcal += plantFood[s][k] * ripe[s];
@@ -274,6 +318,17 @@ export function legendFor(mode: LayerMode, land: Landscape): string {
       return '<span>Colour of the plant covering most of each patch:</span>' + plants.PLANT_SPECIES.map((s) => swatch(PLANT_COLORS[s.name] ?? [255, 0, 255], PLANT_NAMES[s.name] ?? s.name)).join('') + swatch(BARE, 'Bare ground') + water;
     case 'animals':
       return '<span>Hares: few<span class="ramp" style="background:linear-gradient(90deg,rgb(46,44,40),rgb(190,170,120))"></span>100 per km²</span>' + swatch([200, 40, 40], 'Carcass') + ANIMAL_DOTS.map(([name, color]) => swatch(color, name)).join('') + water;
+    case 'stone':
+      return (
+        '<span>Bedrock, darker where little stone lies loose:</span>' +
+        [1, 2, 3].map((b) => swatch(BEDROCK_COLORS[b], BEDROCK_NAMES[b])).join('') +
+        swatch(FLINT_COLOR, 'Flint to pick up') +
+        swatch(PYRITE_COLOR, 'Iron sulfide (sparks)') +
+        swatch(SHELTER_COLOR, 'Rock shelter or cave') +
+        water
+      );
+    case 'wood':
+      return '<span>None<span class="ramp" style="background:linear-gradient(90deg,rgb(44,42,38),rgb(84,74,56),rgb(176,112,52))"></span>30 tonnes per hectare</span><span>Fallen wood: sticks, branches and poles lying on the ground</span>' + water;
     case 'ripe':
       return '<span>None<span class="ramp" style="background:linear-gradient(90deg,rgb(40,38,34),rgb(70,60,40),rgb(214,150,50),rgb(255,236,150))"></span>10 million kcal per hectare (from 1,000)</span><span>Fruit, seeds and nuts waiting to be picked (not roots underground, not nightshade)</span>' + water;
   }

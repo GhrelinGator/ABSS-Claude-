@@ -10,6 +10,7 @@ import {
   defaultConfig,
   animals,
   light,
+  materials,
   pathogens,
   plants,
   stepSim,
@@ -18,7 +19,7 @@ import {
 } from '../sim/index.ts';
 import type { Sim, SimConfig, SimView } from '../sim/index.ts';
 import { BUILD } from './build-info.ts';
-import { ANIMAL_DOT_COLORS, PLANT_NAMES, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
+import { ANIMAL_DOT_COLORS, BEDROCK_NAMES, PLANT_NAMES, SHELTER_COLOR, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
 import type { Landscape, LayerMode } from './render.ts';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -256,7 +257,7 @@ function updateClock(): void {
 function draw(now: number): void {
   if (!sim || !land) return;
   const day = clock.dayIndex(sim.config, sim.state.tick);
-  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe' || mode === 'animals';
+  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe' || mode === 'animals' || mode === 'wood';
   if (drawnMode !== mode || (daily && day !== paintedDay)) {
     paintedDay = day;
     const image = offscreenContext.createImageData(land.W, land.H);
@@ -298,6 +299,7 @@ function draw(now: number): void {
     context.fillStyle = `rgba(8, 12, 32, ${darkness.toFixed(3)})`;
     context.fillRect(0, 0, land.W, land.H);
   }
+  if (mode === 'stone') drawRockShelters();
   drawAnimals();
   for (const flash of flashes) {
     const age = (now - flash.born) / FLASH_MS;
@@ -360,6 +362,59 @@ function drawAnimals(): void {
     context.arc(x[s] / cs, y[s] / cs, r, 0, Math.PI * 2);
     context.fill();
   }
+}
+
+/** Rock shelters and caves as small dark triangles (on the Stone layer only). */
+function drawRockShelters(): void {
+  if (!view || !land) return;
+  const store = view.store(materials.ROCK_SHELTER_STORE);
+  const alive = store.column('alive');
+  const x = store.column('x');
+  const y = store.column('y');
+  const kind = store.column('kind');
+  const cs = land.cellSizeM;
+  context.fillStyle = `rgb(${SHELTER_COLOR.join(',')})`;
+  for (let s = 0; s < store.highWater; s++) {
+    if (alive[s] !== 1) continue;
+    const r = kind[s] === materials.RockShelterKind.CAVE ? 2.4 : 1.7;
+    const px = x[s] / cs;
+    const py = y[s] / cs;
+    context.beginPath();
+    context.moveTo(px, py - r);
+    context.lineTo(px + r, py + r);
+    context.lineTo(px - r, py + r);
+    context.closePath();
+    context.fill();
+  }
+}
+
+let shelterProbe: { sim: Sim; probe: ReturnType<typeof materials.createShelterProbe> } | null = null;
+
+/** Rock shelters in a cell, and the protection at its centre right now, described in words. */
+function shelterHere(i: number, j: number): Array<[string, string]> {
+  if (!view || !land || !sim) return [];
+  const rows: Array<[string, string]> = [];
+  const cs = land.cellSizeM;
+  const store = view.store(materials.ROCK_SHELTER_STORE);
+  const alive = store.column('alive');
+  const x = store.column('x');
+  const y = store.column('y');
+  const kind = store.column('kind');
+  const area = store.column('area');
+  const here: string[] = [];
+  for (let s = 0; s < store.highWater; s++) {
+    if (alive[s] !== 1 || Math.floor(x[s] / cs) !== i || Math.floor(y[s] / cs) !== j) continue;
+    here.push(`${kind[s] === materials.RockShelterKind.CAVE ? 'a cave' : 'a rock overhang'} of ${Math.round(area[s])} m²`);
+  }
+  if (here.length > 0) rows.push(['Rock shelter', here.join(', ')]);
+  if (!shelterProbe || shelterProbe.sim !== sim) shelterProbe = { sim, probe: materials.createShelterProbe(sim) };
+  const out = new Float64Array(3);
+  shelterProbe.probe.at((i + 0.5) * cs, (j + 0.5) * cs, out);
+  rows.push([
+    'Shelter at the centre',
+    `keeps off ${percent(out[0])} of the wind and ${percent(out[1])} of the rain; ${percent(out[2])} less body heat lost`,
+  ]);
+  return rows;
 }
 
 /** Animal groups within `radius` metres of a point, described in words. */
@@ -435,6 +490,20 @@ function inspect(event: MouseEvent): void {
   }
   if (kind !== 0 && view) {
     rows.push(['Pathogens', `${Math.round(view.layer(pathogens.WATER_PATHOGEN_LAYER)[k] * 100)}% of a full bloom (hidden from agents)`]);
+  }
+  if (kind === 0) {
+    const perHa = (land.cellSizeM * land.cellSizeM) / 10_000;
+    const loose: string[] = [];
+    materials.STONE_MATERIALS.forEach((m, n) => {
+      const kg = land!.stone[n][k] / perHa;
+      if (kg >= 1) loose.push(`${kg < 10 ? kg.toFixed(1) : Math.round(kg).toLocaleString('en')} kg ${m.name === 'pyrite' ? 'iron sulfide' : m.name}`);
+    });
+    rows.push(['Bedrock', BEDROCK_NAMES[land.bedrock[k]] ?? '?']);
+    rows.push(['Loose stone per hectare', loose.length > 0 ? loose.join(', ') : 'none']);
+    const small = land.smallWood[k] / perHa;
+    const long = land.longWood[k] / perHa;
+    rows.push(['Fallen wood per hectare', small + long < 1 ? 'none' : `${Math.round(small).toLocaleString('en')} kg of sticks, ${Math.round(long).toLocaleString('en')} kg of poles and trunks`]);
+    rows.push(...shelterHere(i, j));
   }
   const near = animalsNear((i + 0.5) * land.cellSizeM, (j + 0.5) * land.cellSizeM, 500);
   rows.push(['Animals within 500 m', near.length > 0 ? near.join(', ') : 'none']);
