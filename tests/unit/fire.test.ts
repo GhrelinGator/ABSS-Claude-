@@ -11,12 +11,13 @@ import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
 import { createSim, hashSim, loadSim, saveSim, spawnEntity, stepSim } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
 import { ANIMAL_STORE, AnimalKind, CARCASS_LAYER, CARCASS_LOAD_LAYER } from '../../src/sim/world/animals.ts';
-import { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, StrikeState, climate, windAt } from '../../src/sim/world/climate.ts';
+import { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, StrikeState, WeatherState, climate, windAt } from '../../src/sim/world/climate.ts';
 import {
   FIRE_FIELDS,
   FIRE_LAYERS,
   FIRE_PARTS,
   FIRE_STORE,
+  FireCounts,
   FireStage,
   avoidDistanceM,
   createFireProbe,
@@ -55,8 +56,8 @@ function stream(id: number): Uint32Array {
 }
 const f32 = (sim: Sim, name: string) => sim.state.world.layer<Float32Array>(name);
 const u8 = (sim: Sim, name: string) => sim.state.world.layer<Uint8Array>(name);
-const weather = (sim: Sim) => (sim.state.parts.find((p) => p.name === CLIMATE_PARTS.weather) as { values: Float64Array }).values;
-const fireCounts = (sim: Sim) => (sim.state.parts.find((p) => p.name === FIRE_PARTS.counts) as { values: Float64Array }).values;
+const weather = (sim: Sim) => (sim.state.parts.find((p) => p.name === CLIMATE_PARTS.weather) as WeatherState).values;
+const fireCounts = (sim: Sim) => (sim.state.parts.find((p) => p.name === FIRE_PARTS.counts) as FireCounts).values;
 
 /**
  * Step to `hour` o'clock on a day at least one day ahead, then fix the day's weather: no rain,
