@@ -15,6 +15,7 @@ export * as climate from './world/climate.ts';
 export * as plants from './world/plants.ts';
 export * as animals from './world/animals.ts';
 export * as pathogens from './world/pathogens.ts';
+export * as materials from './world/materials.ts';
 export { Soil, TERRAIN_LAYERS, Water } from './world/terrain.ts';
 export { defineDial, defineDrive, definePrimitive, defineSystem } from './core/registry.ts';
 export type { DialDef, DriveDef, PrimitiveDef, SystemDef, SystemSpec } from './core/registry.ts';

@@ -5,6 +5,7 @@
 import type { SystemDef } from './core/registry.ts';
 import { climate } from './world/climate.ts';
 import { animals } from './world/animals.ts';
+import { materials } from './world/materials.ts';
 import { pathogens } from './world/pathogens.ts';
 import { plants } from './world/plants.ts';
 import { terrain } from './world/terrain.ts';
@@ -20,4 +21,6 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   animals,
   // Phase 1.6: pathogens in standing water and rotting meat.
   pathogens,
+  // Phase 1.7: loose stone, dead wood, bone and skin; rock shelters.
+  materials,
 ]);

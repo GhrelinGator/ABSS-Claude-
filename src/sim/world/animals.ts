@@ -12,6 +12,7 @@ import { spawnEntity } from '../sim.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { CLIMATE_CONSTANTS, CLIMATE_PARTS, dailyMeanTemperatureC } from './climate.ts';
 import { seasonFraction, sunlight } from './light.ts';
+import { MATERIAL_CONSTANTS, MATERIAL_LAYERS } from './materials.ts';
 import { BROWSE_LAYER, FORAGE_LAYER, PLANT_CONSTANTS, PLANT_SPECIES, SEED_RAIN_LAYER, coverLayer } from './plants.ts';
 import { TERRAIN_LAYERS, Water } from './terrain.ts';
 
@@ -485,6 +486,9 @@ export const animals: SystemDef = defineSystem({
     state.world.ensureLayer(HARE_LAYER, 'f32');
     state.world.ensureLayer(CARCASS_LAYER, 'f32');
     state.world.ensureLayer(CARCASS_LOAD_LAYER, 'f32');
+    // Every death leaves bone and skin as well as meat (docs/DESIGN.md §2.15).
+    state.world.ensureLayer(MATERIAL_LAYERS.bone, 'f32');
+    state.world.ensureLayer(MATERIAL_LAYERS.hide, 'f32');
     // Read from the landscape, the climate and the plants, which run first.
     state.world.ensureLayer(TERRAIN_LAYERS.elevation, 'f32');
     state.world.ensureLayer(TERRAIN_LAYERS.waterKind, 'u8');
@@ -512,11 +516,15 @@ export const animals: SystemDef = defineSystem({
     const hare = world.layer<Float32Array>(HARE_LAYER);
     const carcass = world.layer<Float32Array>(CARCASS_LAYER);
     const carcassLoad = world.layer<Float32Array>(CARCASS_LOAD_LAYER);
-    /** Fresh meat into a cell: the cell's pathogen load is diluted by weight (§2.14). */
+    const bone = world.layer<Float32Array>(MATERIAL_LAYERS.bone);
+    const hide = world.layer<Float32Array>(MATERIAL_LAYERS.hide);
+    /** Fresh meat into a cell, with the bone and skin that came with it. The cell's pathogen load is diluted by weight (§2.14). */
     function addMeat(k: number, kg: number): void {
       const before = carcass[k];
       carcassLoad[k] = dilutedLoad(carcassLoad[k], before, kg);
       carcass[k] = before + kg;
+      bone[k] += kg * MATERIAL_CONSTANTS.bonePerMeatKg;
+      hide[k] += kg * MATERIAL_CONSTANTS.hidePerMeatKg;
     }
     const cover = PLANT_SPECIES.map((sp) => world.layer<Float32Array>(coverLayer(sp)));
     const areaHa = (cs * cs) / 10_000;

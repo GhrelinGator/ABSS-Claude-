@@ -14,6 +14,7 @@ export { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, stormAc
 export { BROWSE_LAYER, FORAGE_LAYER, PLANT_SPECIES, SEED_RAIN_LAYER, coverLayer, foodLayer } from './world/plants.ts';
 export { ANIMAL_FIELDS, ANIMAL_PARTS, ANIMAL_STORE, AnimalKind, AnimalMode, CARCASS_LAYER, CARCASS_LOAD_LAYER, GROUP_KINDS, HARE_LAYER } from './world/animals.ts';
 export { WATER_PATHOGEN_LAYER } from './world/pathogens.ts';
+export { MATERIALS, MATERIAL_LAYERS, Material, OBJECT_STORE, RockShelter, STONE_KINDS, stoneLayer } from './world/materials.ts';
 export { Soil, TERRAIN_LAYERS, Water } from './world/terrain.ts';
 
 /** A numeric array that can be read but not written. */

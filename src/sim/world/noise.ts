@@ -24,6 +24,11 @@ export function fieldKey(seed: number, salt: number): number {
   return mix32(mix32(seed ^ 0x2c1b3c6d) ^ Math.imul(salt + 1, 0x9e3779b1));
 }
 
+/** A number in [0, 1) fixed by a field key and an index (a cell, say): the same on every engine. */
+export function hash01(key: number, index: number): number {
+  return mix32(mix32(key ^ Math.imul(index | 0, 0x27d4eb2d)) ^ 0x165667b1) / 4294967296;
+}
+
 /** Quintic blending curve: 6t^5 - 15t^4 + 10t^3. */
 function fade(t: number): number {
   return t * t * t * (t * (t * 6 - 15) + 10);
