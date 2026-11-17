@@ -68,23 +68,24 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 - **Still ask the owner, and wait,** before: a nudge-protocol change classified (c) or ambiguous (`GUARDRAILS.md` §4); adding a drive (`GUARDRAILS.md`); and merging any work that reports a social phenomenon emerged (he sees the claim and its null model first).
 - **Tell him, without waiting,** about removing or simplifying a designed mechanism (`GUARDRAILS.md`), and about anything surprising.
 
-## Unattended nightly runs
+## Unattended runs (D-025, D-029)
 
-A scheduled task starts a fresh session every night at 1:39 am US Central, from 2026-11-19 (asked for by the owner on 2026-11-16). The owner is asleep and doesn't code. In such a run:
-1. **No questions.** Take the most reasonable reading, and write down which one you took.
-2. **Do the next milestone** named in `STATUS.md` under "Next action": one milestone, or two when `STATUS.md` says they're small enough to share a run.
-3. **[F] milestones wait for a Fable session.** If the next one is tagged [F] and this session isn't Fable, don't start it; put "waiting for a Fable session: <milestone>" under "Blocked on" in `STATUS.md` and stop.
-4. **Push as you go.** Commit and push the milestone branch whenever a piece passes its tests, so a run cut off by a usage limit leaves its work on GitHub. If a branch for the next milestone already holds unmerged work, carry it on.
-5. **Stop at owner decisions** (the list above): write the question under "Decisions needed from the owner" in `STATUS.md`, push it, and leave the pull request open.
-6. **Spend carefully.** The owner's usage limits are the project's budget. Batch checks into few commands; don't probe what a test already shows.
-7. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him.
+Scheduled sessions build the project while the owner is away; he doesn't code. A scheduled task wakes a fresh session every 6 hours, and each run that merges a milestone starts the next one about 5 minutes later (a chain). In any such run:
+1. **Claim before building.** The milestone's branch is `milestone-<number>` (for example `milestone-1.8`), unless `STATUS.md` names an existing branch to carry on. If that branch doesn't exist, create it from `main` with one empty commit, `claim <milestone> for session <this session's id>`, and push it. If the push is rejected, or the branch already exists and its newest commit is under 3 hours old, another run has the milestone: stop at once, commit nothing, schedule nothing. (Two sessions once fired 11 seconds apart and both built the same milestone; D-029.) An older branch holds abandoned work: merge `main` into it and carry it on.
+2. **No questions.** Take the most reasonable reading, and write down which one you took.
+3. **Do the next milestone** named in `STATUS.md` under "Next action": one milestone, or two when `STATUS.md` says they're small enough to share a run.
+4. **[F] milestones wait for a Fable session.** If the next one is tagged [F] and this session isn't Fable, don't start it; make sure `STATUS.md` says "waiting for a Fable session: <milestone>" under "Blocked on" (commit only if it doesn't already), and stop.
+5. **Push as you go.** Commit and push whenever a piece passes its tests, so a run cut off by a usage limit leaves its work on GitHub.
+6. **Stop at owner decisions** (the list above): write the question under "Decisions needed from the owner" in `STATUS.md`, push it, and leave the pull request open.
+7. **Log the run.** Before merging, add one line to `docs/RUNS.md`: date and time (US Central), milestone, outcome, pull request. Runs that stop at once (rules 1 and 4) don't log.
+8. **Spend carefully.** The owner's usage limits are the project's budget. Batch checks into few commands; don't probe what a test already shows.
+9. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him.
 
-## Chained runs (until 2026-11-18, 7:59 pm US Central)
+## Chained runs
 
-The owner asked (2026-11-17) for runs to follow one another until his weekly usage resets on Wednesday 2026-11-18 at 7:59 pm Central, so the remaining week's budget isn't wasted. A chained run follows every rule for unattended runs above, and then:
-1. **Schedule the next one** if the milestone merged, the next milestone isn't [F] and isn't waiting on the owner, and it's before 7:30 pm Central on 2026-11-18: a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word.
-2. **Otherwise schedule nothing.** The nightly task takes over from 2026-11-19.
-3. A usage limit can cut a run off mid-milestone. The chain then simply stops, and the nightly run carries on the pushed branch after the reset.
+After rule 7, schedule the next run if the milestone merged, the next milestone isn't [F] and isn't waiting on the owner, and `docs/RUNS.md` shows fewer than **35 runs since the last weekly reset** (Wednesdays at 7:59 pm US Central). Schedule it as a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word. Otherwise schedule nothing; the 6-hourly wake-up restarts the chain later.
+
+The cap keeps about 10% of the owner's weekly limit for his own use (his request, 2026-11-17). A milestone run measured about 1.5% of his weekly limit and 11% of a 5-hour window; 35 runs leave room for heavier milestones. If he reports his usage running high, lower the cap here.
 
 I have no memory between sessions. These files are my memory. If it isn't written down, the next session won't know it.
 
