@@ -4,9 +4,9 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants), 1.5 (animals, with grazing, browsing, and seeds carried by animals), and a viewer (1.9) that shows all of it.
-- **The world has weather, plants and animals; no people.** The real pipeline has four systems: the landscape (built before tick 0), the climate, the plants, and the animals. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 1.6 [O], real hidden causes: pathogen load in stagnant water and in carcasses (`animals.carcass` holds the meat; 1.6 needs to add how old it is). One milestone per run. Then materials (1.7) and fire (1.8: lightning strikes, dryness and plant cover as fuel, and predators keeping away from fire), then the ecology review (1.10 [F]), which waits for a Fable session.
+- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), the sun-and-moon part of 1.3, 1.4 (plants), 1.5 (animals, with grazing, browsing, and seeds carried by animals), 1.6 (pathogens in water and carcasses), and a viewer (1.9) that shows all of it.
+- **The world has weather, plants and animals; no people.** The real pipeline has five systems: the landscape (built before tick 0), the climate, the plants, the animals, and the pathogens. Nothing has emerged, because nothing can yet.
+- **Next action:** Phase 1.7 [O], materials and objects (`DESIGN.md` §2.8). One milestone per run. Then fire (1.8 [O]: lightning strikes, dryness and plant cover as fuel, fire light, and predators keeping away from fire), then the ecology review (1.10 [F]), which waits for a Fable session. Until 2026-11-18 at 7:59 pm Central, runs chain one after another (`CLAUDE.md`, D-028).
 - **Blocked on:** nothing. #1–#6 are merged. From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, and a nightly scheduled run does one milestone at a time (D-025, `CLAUDE.md`).
 
 ## What exists
@@ -16,15 +16,16 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/core/` | random streams, state hash, snapshot encoding, entity stores, grid layers, spatial index, calendar, mechanism registry, run-time audits |
 | `src/sim/core/dmath.ts`, `selfcheck.ts` | portable `exp`, `log`, `pow`, `sinTurn`, `cosTurn`; the arithmetic self-check |
 | `src/sim/sim.ts` | state container, tick loop, save/load, `spawnAgent` |
-| `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants, the animals |
+| `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants, the animals, the pathogens |
 | `src/sim/readonly.ts` | the only door the analysis layer may use |
 | `src/sim/world/terrain.ts`, `noise.ts` | the map generator (`DESIGN.md` §2.10) |
 | `src/sim/world/light.ts` | sun, moon, and starlight (`DESIGN.md` §2.4) |
 | `src/sim/world/climate.ts` | weather, storms, lightning, soil moisture (`DESIGN.md` §2.11) |
 | `src/sim/world/plants.ts` | eight plant species: cover, fruit and seed seasons, roots, drought dieback, spreading, forage for grazing and browsing, seed rain (`DESIGN.md` §2.12) |
 | `src/sim/world/animals.ts` | deer, aurochs, wolf packs, big cats, hares, vultures, carcasses (`DESIGN.md` §2.13) |
+| `src/sim/world/pathogens.ts` | pathogen loads in water and carcass meat (`DESIGN.md` §2.14) |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
-| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths) |
+| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat) |
 | `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
 | `src/harness/` | experiment specs, batch runner on worker threads, manifests, JSONL metrics, command line |
 | `bench/` | speed benchmark with a scripted stand-in load; timing of the math functions |
@@ -90,6 +91,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 
 ## Session log
 
+- **2026-11-17, session 10** (Opus 5.5, claude.ai; same chat). Built Phase 1.6: pathogen loads in water and carcass meat (`DESIGN.md` §2.14, D-027), a `pathogens` observer, and hidden loads in the page's inspector. No tuning needed. At the owner's request, set up chained runs until his weekly reset (D-028) and started the chain for 1.7.
 - **2026-11-16, session 9** (Opus 5.5, claude.ai; same chat). Built Phase 1.5: animals (`DESIGN.md` §2.13, D-026), grazing and browsing stocks and seed rain in the plants, the `fauna` observer, animals on the page, and `spawnEntity` in the kernel. Took eleven rounds of correction (T-004); persistence over 100 compressed years checked on five maps. Merged its own pull request (D-025).
 - **2026-11-16, session 8** (Opus 5.5, claude.ai; same chat). No code. Measured what a milestone costs: Phase 1.4 took 86 requests and about 3.1 million tokens of usage, 60% of it Claude's fixed instructions re-read on every step, so cost follows the number of steps. Estimated 150–250 million more through Phase 6. The owner answered Q7 and gave Claude broad autonomy (D-025): Claude now merges its own pull requests (merged #6), and a nightly scheduled task does one milestone at a time from the night of 2026-11-18. Ideas from the owner's side, for later: another AI as an outside skeptic of emergence claims, an anthropology professor's view on the detector definitions (Phase 6), and paywalled papers through his university library.
 - **2026-11-15, session 7** (Opus 5.5, claude.ai; same chat). Owner merged #4 and #5. Built Phase 1.4: eight plant species (`DESIGN.md` §2.12, D-024), the `vegetation` observer, and Plants and Ripe layers on the page. Mistakes caught on the way: the habitat map was first built before the landscape existed, so everything died (rule added to `DESIGN.md` §1.5); a division by zero put NaN in plant cover (the non-finite guardrail now runs a full year and was shown to catch it); and I misreported the old root-refilling version's food at 1.6 million kcal per km² per day, an artifact of my probe (corrected in D-024 and T-003). Moved root refilling to real days (T-003). Made the plant update 5× faster by staggering slow work. Lengthened the Node-vs-Bun comparison to a full year. Opened pull request #6.

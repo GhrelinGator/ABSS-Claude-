@@ -353,6 +353,23 @@ Animals are environment: simple drives, no learning. They respond to food, water
 
 **Not in this version:** fire avoidance (1.8 adds it: predators keep away from fire), disease in carcasses (1.6), animals noticing agents (Phase 3), injuries to predators, snow, and fish.
 
+### 2.14 Pathogens (Phase 1.6)
+The invisible half of §2.7. One system, `world.pathogens`, runs daily after the animals. Agents never perceive these layers (§4); bodies (Phase 2) read them to decide infections, and observers can see them.
+
+**Units.** A load is a share of a full bloom, 0 to 1. Phase 2 turns it into a chance of infection per drink or per kilogram eaten.
+
+**Water** (`water.pathogen`, one value per water cell). Microbes always drift in at a trickle; what happens next depends on whether the water moves:
+- **Lakes** (standing water): load grows logistically in warm weather (none below 8 °C, about 0.3 a day at 23 °C) toward a full bloom, and dies back slowly (5% a day) when cold. Lakes are cleanest in winter and foul by late summer.
+- **Rivers** (flowing water) flush 60% of their load each day, so they stay clean unless something is rotting beside them.
+- **Springs** (groundwater) flush 80% a day and get only half the input.
+- **Carcasses** in or next to a water cell add load in proportion to their meat. Waste from agents will add to this in Phase 2.
+
+**Carcasses** (`animals.carcassLoad`, per cell with meat). Fresh meat starts clean; when meat is added to a cell, the load mixes by weight, so a fresh kill on old meat dilutes it. Load grows with warmth (by 0.15 for every 10 degree-days above 4 °C), so meat is foul after about four warm days, and keeps for weeks in the cold. When the meat is gone, the load goes with it.
+
+**Clock:** real days, like all daily physiology (D-024, D-026). Only the seasons are compressed.
+
+**Not in this version:** pathogens carried downstream by rivers, wounds infected from dirt (§3, Phase 2 uses these loads), and cooking killing pathogens (needs fire, 1.8, and bodies, Phase 2).
+
 ## 3. Bodies
 
 ### 3.1 Metabolism
@@ -646,6 +663,7 @@ The game has its own page (D-012), built from `src/viewer/` and served by GitHub
 - **Weather on the map** (Phase 1.2): a grey veil on wet days, a dark disc over an active storm, a flash for every lightning strike (the page steps one tick at a time so none is missed), and a soil-moisture layer redrawn daily.
 - **No flashing.** Two switches turn off the day-and-night shading and the weather effects; the page remembers them on that device. Above 1 simulated day per second both are off regardless, because night and rain would come and go several times a second (accessibility guidelines warn against flashing more than three times a second). Asked for by the owner after watching at year speed.
 - **Plants on the map** (Phase 1.4): a Plants layer colours each patch by the species covering most of it, fading to bare ground where cover is thin; a Ripe layer shows the fruit, seeds and nuts waiting to be picked, on a log scale, so the seasons pulse across the map. Both redraw daily. Tapping a cell lists its plants and the food in it, including food underground. At 1 year per second the plants cost about 0.8 s of computing per second on a desktop, so a phone may run slower than the chosen speed.
+- **Hidden loads** (Phase 1.6): tapping a water cell shows its pathogen load, and a carcass shows how foul its meat is, both marked as hidden from agents.
 - **Animals on the map** (Phase 1.5): every group is a dot on every layer (brown deer, black aurochs, white wolves, orange big cats; bigger dots for bigger groups). An Animals layer shows hares as a shade and carcasses in red. Tapping a cell lists the hares, any carcass, and every group within 500 m with what it is doing. With animals, a day on the full map costs about 63 ms, so the page runs slower than chosen at 1 year per second.
 
 ---

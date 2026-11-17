@@ -79,6 +79,13 @@ A scheduled task starts a fresh session every night at 1:39 am US Central, from 
 6. **Spend carefully.** The owner's usage limits are the project's budget. Batch checks into few commands; don't probe what a test already shows.
 7. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him.
 
+## Chained runs (until 2026-11-18, 7:59 pm US Central)
+
+The owner asked (2026-11-17) for runs to follow one another until his weekly usage resets on Wednesday 2026-11-18 at 7:59 pm Central, so the remaining week's budget isn't wasted. A chained run follows every rule for unattended runs above, and then:
+1. **Schedule the next one** if the milestone merged, the next milestone isn't [F] and isn't waiting on the owner, and it's before 7:30 pm Central on 2026-11-18: a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word.
+2. **Otherwise schedule nothing.** The nightly task takes over from 2026-11-19.
+3. A usage limit can cut a run off mid-milestone. The chain then simply stops, and the nightly run carries on the pushed branch after the reset.
+
 I have no memory between sessions. These files are my memory. If it isn't written down, the next session won't know it.
 
 ## Model routing

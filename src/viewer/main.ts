@@ -10,6 +10,7 @@ import {
   defaultConfig,
   animals,
   light,
+  pathogens,
   plants,
   stepSim,
   validateConfig,
@@ -427,7 +428,13 @@ function inspect(event: MouseEvent): void {
   if (kind === 0) {
     const perKm2 = land.hare[k] * (1e6 / (land.cellSizeM * land.cellSizeM));
     rows.push(['Hares', `about ${Math.round(perKm2)} per km² here`]);
-    if (land.carcass[k] >= 0.5) rows.push(['Carcass', `${Math.round(land.carcass[k])} kg of meat`]);
+    if (land.carcass[k] >= 0.5) {
+      const foul = view ? view.layer(animals.CARCASS_LOAD_LAYER)[k] : 0;
+      rows.push(['Carcass', `${Math.round(land.carcass[k])} kg of meat, ${Math.round(foul * 100)}% foul (hidden from agents)`]);
+    }
+  }
+  if (kind !== 0 && view) {
+    rows.push(['Pathogens', `${Math.round(view.layer(pathogens.WATER_PATHOGEN_LAYER)[k] * 100)}% of a full bloom (hidden from agents)`]);
   }
   const near = animalsNear((i + 0.5) * land.cellSizeM, (j + 0.5) * land.cellSizeM, 500);
   rows.push(['Animals within 500 m', near.length > 0 ? near.join(', ') : 'none']);
