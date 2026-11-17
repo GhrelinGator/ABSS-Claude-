@@ -4,6 +4,7 @@ import type { Observer } from './observer.ts';
 import { census } from './observers/census.ts';
 import { landscape } from './observers/landscape.ts';
 import { fauna } from './observers/fauna.ts';
+import { fire } from './observers/fire.ts';
 import { materials } from './observers/materials.ts';
 import { pathogens } from './observers/pathogens.ts';
 import { vegetation } from './observers/vegetation.ts';
@@ -13,7 +14,7 @@ export type { Measurements, Observer } from './observer.ts';
 export { HABITABLE, summarizeLandscape } from './observers/landscape.ts';
 export type { LandscapeSummary } from './observers/landscape.ts';
 
-const OBSERVERS: readonly Observer[] = [census, landscape, weather, vegetation, fauna, pathogens, materials];
+const OBSERVERS: readonly Observer[] = [census, landscape, weather, vegetation, fauna, pathogens, materials, fire];
 
 export function observerNames(): string[] {
   return OBSERVERS.map((observer) => observer.name);

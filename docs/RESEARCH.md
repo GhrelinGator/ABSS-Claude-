@@ -91,3 +91,16 @@ Phase 1.7's numbers are first estimates. Before Phase 2.2 (thermoregulation) or 
 - Fire from sparks: iron pyrite or marcasite struck with flint was a prehistoric fire-making method. Sorensen, Claud & Soressi (2018), "Neandertal fire-making technology inferred from microwear analysis," *Scientific Reports* 8:10065, report wear on Neandertal bifaces consistent with striking pyrite. Marcasite and flint nodules both occur in chalk.
 - Fallen wood: Harmon et al. (1986), "Ecology of coarse woody debris in temperate ecosystems," *Advances in Ecological Research* 15, is the standard review of how much dead wood lies in temperate forests and how fast it decays (decay constants of a few percent a year for large pieces, faster for small ones).
 - Not yet sourced at all: the energies to flake, split and snap; the share of iron sulfide in limestone's loose stone; rock-shelter frequency; how much wind and rain trees and piled objects keep off; the insulation of a hide.
+
+## Fire (written from memory 2026-11-17, not checked against sources)
+
+Phase 1.8's numbers come from these as remembered; check them before the ecology review (1.10) or Phase 2.2 relies on them.
+- Cheney, Gould & Catchpole (1998), "Prediction of fire spread in grasslands," *International Journal of Wildland Fire* 8:1–13. Head-fire rate in natural pasture: 0.054 + 0.269 *U* km/h below 5 km/h of 10 m wind, 1.4 + 0.838 (*U* − 5)^0.844 above; moisture damping exp(−0.108 *M*) to 12% moisture; no spread above about 24%; a curing function that makes spread negligible below about 50% cured.
+- Simard (1968), *The moisture content of forest fuels*, Canadian Department of Forestry: equilibrium moisture of fine fuel from temperature and relative humidity (three ranges of humidity), used in the US National Fire Danger Rating System.
+- Alexander (1985), length-to-breadth ratio of wind-driven fires, LB = 1 + 8.729 (1 − e^(−0.030 *U*))^2.155, as used in the Canadian Fire Behavior Prediction System (Forestry Canada 1992).
+- Finney (2002), "Fire growth using minimum travel time methods," *Canadian Journal of Forest Research* 32:1420–1424. The spread method.
+- Byram (1959): fireline intensity *I* = *H w R*.
+- McArthur's rule of thumb: spread roughly doubles for every 10° upslope.
+- Anderson (2002), Latham & Williams (2001): lightning ignitions often smoulder ("holdovers") for days before spreading; only a small share of strikes start fires.
+- Temperate deciduous leaf litterfall about 3–4 t/ha a year, decaying 30–70% a year; cured grassland fuel loads about 2–6 t/ha.
+- Not yet sourced at all: the relative-humidity estimate from soil moisture (a stand-in: the climate keeps no humidity), smouldering rates and how fast embers die, how rain puts out smouldering wood and burning sticks, the burning rate of single sticks and piles (char rates of about 0.6–1 mm a minute are typical of wood in a fire), the energy to make a friction ember, how often sparks catch, plant top-kill shares, and how far animals keep from fire.
