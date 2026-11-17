@@ -223,6 +223,8 @@ const A = ANIMAL_CONSTANTS;
 export const ANIMAL_STORE = 'animals';
 export const HARE_LAYER = 'animals.hare';
 export const CARCASS_LAYER = 'animals.carcass';
+/** Pathogen load of the carcass meat in each cell, 0 to 1 (§2.14). Fresh meat is clean; mixing is by weight. */
+export const CARCASS_LOAD_LAYER = 'animals.carcassLoad';
 export const ANIMAL_PARTS = { counts: 'animals.counts' } as const;
 
 export const AnimalMode = {
@@ -296,6 +298,11 @@ const DEATH_FIELD: Readonly<Record<number, number>> = {
   [AnimalKind.WOLF]: F.deathsWolf,
   [AnimalKind.CAT]: F.deathsCat,
 };
+
+/** The pathogen load of a cell's meat after `added` kg of fresh, clean meat joins `kg` kg at `load`. */
+export function dilutedLoad(load: number, kg: number, added: number): number {
+  return kg > 0 && added > 0 ? (load * kg) / (kg + added) : load;
+}
 
 /** Bits of the plant species whose seeds grazers carry: grass, berry, nut, greens. */
 const CARRIED_SEEDS = (['grass', 'berry', 'nut', 'greens'] as const).map((name) => {
@@ -477,6 +484,7 @@ export const animals: SystemDef = defineSystem({
     state.addPart(new AnimalCounts());
     state.world.ensureLayer(HARE_LAYER, 'f32');
     state.world.ensureLayer(CARCASS_LAYER, 'f32');
+    state.world.ensureLayer(CARCASS_LOAD_LAYER, 'f32');
     // Read from the landscape, the climate and the plants, which run first.
     state.world.ensureLayer(TERRAIN_LAYERS.elevation, 'f32');
     state.world.ensureLayer(TERRAIN_LAYERS.waterKind, 'u8');
@@ -503,6 +511,13 @@ export const animals: SystemDef = defineSystem({
     const seedRain = world.layer<Uint8Array>(SEED_RAIN_LAYER);
     const hare = world.layer<Float32Array>(HARE_LAYER);
     const carcass = world.layer<Float32Array>(CARCASS_LAYER);
+    const carcassLoad = world.layer<Float32Array>(CARCASS_LOAD_LAYER);
+    /** Fresh meat into a cell: the cell's pathogen load is diluted by weight (§2.14). */
+    function addMeat(k: number, kg: number): void {
+      const before = carcass[k];
+      carcassLoad[k] = dilutedLoad(carcassLoad[k], before, kg);
+      carcass[k] = before + kg;
+    }
     const cover = PLANT_SPECIES.map((sp) => world.layer<Float32Array>(coverLayer(sp)));
     const areaHa = (cs * cs) / 10_000;
     const grazeFloorPerCover = PLANT_SPECIES.map((sp) => (sp.forageKind === 'graze' ? sp.forageKgHa * areaHa * PLANT_CONSTANTS.ungrazableShare : 0));
@@ -699,7 +714,7 @@ export const animals: SystemDef = defineSystem({
 
     function killOne(prey: number, field: number): void {
       const k = cellAt(c.x[prey], c.y[prey]);
-      carcass[k] += specOf[c.kind[prey]].edibleKg;
+      addMeat(k, specOf[c.kind[prey]].edibleKg);
       counts[field] += 1;
       c.count[prey] -= 1;
       if (c.count[prey] === 0) store.remove(prey);
@@ -1023,7 +1038,7 @@ export const animals: SystemDef = defineSystem({
           if (d > n) d = n;
           born += b;
           died += d;
-          carcass[k] += d * HARE.edibleKg;
+          addMeat(k, d * HARE.edibleKg);
           let next = n + b - d;
           // Wander to neighbouring land.
           const out = next * share;
@@ -1099,7 +1114,7 @@ export const animals: SystemDef = defineSystem({
         let died = 0;
         for (let a = c.count[slot]; a > 0; a--) if (chance(hazard)) died++;
         if (died > 0) {
-          carcass[k] += died * spec.edibleKg;
+          addMeat(k, died * spec.edibleKg);
           counts[DEATH_FIELD[spec.kind]] += died;
           if (hunger > 0) counts[F.hungerDeaths] += died;
           c.count[slot] -= died;

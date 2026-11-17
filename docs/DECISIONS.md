@@ -232,3 +232,16 @@ Format: ID, date, status, decision, why, alternatives considered.
 - **Getting there took eleven rounds (T-004).** The two that mattered most were real ecology I had left out: a wolf pack raises one litter a year however big it is, and packs hold large separate ranges; and deer mostly browse while aurochs graze, with plants keeping an ungrazable base. Without them, predators overshot and deer or aurochs went extinct.
 - **Cost:** about 38 ms per simulated day for animals on the full map (63 ms with plants and climate). The page at 1 year per second now runs slower than chosen.
 - **Not done:** fire avoidance (1.8), disease in carcasses (1.6), animals noticing agents (Phase 3), predator injuries.
+
+### D-027: Pathogens as loads in water and meat
+- **Date:** 2026-11-17 · **Status:** Accepted
+- **Decision:** As in `DESIGN.md` §2.14. One system, `world.pathogens`, after the animals: a load (0 to 1, a share of a full bloom) in every water cell and in every cell's carcass meat. Standing water blooms in warm weather and clears slowly in the cold; rivers and springs flush most of their load daily; carcasses foul nearby water; meat goes foul with degree-days above 4 °C and is diluted by weight when fresh meat joins it. Real days, like all daily physiology. No randomness: the loads are deterministic fields, and chance enters only when a body drinks or eats (Phase 2).
+- **Why loads, not organisms:** agents can never see pathogens, so only the risk matters, and a load per cell is the cheapest form a body can read. It also makes the hidden cause learnable but noisy: the same lake is safe in spring and dangerous by late summer.
+- **Checked:** lakes reach about half a bloom in late summer and fall back in winter; rivers stay near 0.005; a carcass beside a river fouls it and the river runs clean within days of it going; meat is over half foul after five summer days. Node and Bun agree over a year.
+- **Not done:** downstream transport in rivers, infection of wounds, cooking (need fire and bodies).
+
+### D-028: Chained runs until the weekly reset
+- **Date:** 2026-11-17 · **Status:** Accepted
+- **The owner's words:** "Since my reset happens on Wednesday at 7:59pm, you can calculate your token usage and whatnot and schedule as many sessions as you want in that time frame sequentially (like after you complete a task, scheduling the next for a few minutes later)."
+- **Decision:** Until 2026-11-18 at 7:59 pm Central, each run that merges a milestone schedules the next run about 5 minutes later, with the same prompt (`CLAUDE.md`, "Chained runs"). The chain stops at an [F] milestone, at an owner decision, at a usage limit, or at the reset; the nightly task (D-025) takes over from 2026-11-19.
+- **Note:** Claude can't see the owner's usage meter, so "how many sessions fit" isn't calculated in advance; the chain runs until the limit or a stopping point, and each run pushes as it goes so nothing is lost when a limit cuts it off.
