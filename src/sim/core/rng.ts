@@ -26,12 +26,15 @@ export const StreamDomain = {
   RESOLVE: 4,
   AGENT: 5,
   FIXTURE: 6,
+  /** The wind: its own stream, so adding it changed none of the other weather (Phase 1.8). */
+  WIND: 7,
+  FIRE: 8,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];
 
 /** Number of slots in the block of run-wide streams (indexed by domain number). */
-export const GLOBAL_STREAM_SLOTS = 8;
+export const GLOBAL_STREAM_SLOTS = 16;
 
 /** Offset of a run-wide stream inside the block of run-wide streams. */
 export function globalStreamOffset(domain: StreamDomainId): number {

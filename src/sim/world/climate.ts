@@ -1,6 +1,7 @@
-// Weather: seasons, daily rain, year-to-year swings, storms, lightning, and
-// soil moisture. Design: docs/DESIGN.md §2.11. Draws only from the CLIMATE
-// stream and reads only the landscape and the clock.
+// Weather: seasons, daily rain, year-to-year swings, storms, lightning, wind, and
+// soil moisture. Design: docs/DESIGN.md §2.11 (wind: §2.16). Draws only from the
+// CLIMATE stream (and the wind from its own WIND stream) and reads only the
+// landscape and the clock.
 
 import type { SimConfig } from '../config.ts';
 import type { Sink, Source } from '../core/codec.ts';
@@ -54,6 +55,15 @@ export const CLIMATE_CONSTANTS = {
   /** Water the ground holds, by soil type (rock, thin, loam, alluvium, sand), in mm. */
   soilCapacityMm: [15, 50, 120, 160, 60],
   initialMoisturePerRain: 0.6,
+  /** Wind at 10 m (docs/DESIGN.md §2.16): a prevailing westerly, m/s, and the daily AR(1) around it. */
+  prevailingWindEastMs: 2,
+  windPersistence: 0.6,
+  windSpreadMs: 2.5,
+  /** Speed swings by this share through the day, strongest at `windiestHour`. */
+  windDailySwing: 0.4,
+  windiestHour: 14,
+  /** Wind under an active storm, as a multiple of the day's wind. */
+  stormWindFactor: 2,
 } as const;
 
 const K = CLIMATE_CONSTANTS;
@@ -82,9 +92,12 @@ export const CLIMATE_FIELDS = {
   strikesTotal: 11,
   /** Days of weather so far. */
   days: 12,
+  /** Today's mean wind at 10 m toward the east and toward the south (map +x and +y), m/s. */
+  windEastMs: 13,
+  windSouthMs: 14,
 } as const;
 
-const FIELD_COUNT = 13;
+const FIELD_COUNT = 15;
 
 export const CLIMATE_PARTS = { weather: 'climate.weather', strikes: 'climate.strikes' } as const;
 export const MOISTURE_LAYER = 'water.soilMoisture';
@@ -168,6 +181,17 @@ export function stormActive(values: ArrayLike<number>, tick: number): boolean {
   return values[CLIMATE_FIELDS.stormEnd] > tick && values[CLIMATE_FIELDS.stormStart] <= tick;
 }
 
+/**
+ * Wind at 10 m at this moment, m/s, into `out` as [toward the east, toward the south]: the day's
+ * wind, stronger in the early afternoon and calmer before dawn, doubled under an active storm.
+ */
+export function windAt(config: SimConfig, tick: number, values: ArrayLike<number>, out: Float64Array): void {
+  let scale = 1 + K.windDailySwing * cosTurn(dayFraction(config, tick) - K.windiestHour / 24);
+  if (stormActive(values, tick)) scale *= K.stormWindFactor;
+  out[0] = values[CLIMATE_FIELDS.windEastMs] * scale;
+  out[1] = values[CLIMATE_FIELDS.windSouthMs] * scale;
+}
+
 /** Seasonal factor on rain: 1 ± seasonality, wettest in late spring. */
 function rainSeason(config: SimConfig, tick: number): number {
   return 1 + K.rainSeasonality * cosTurn(seasonFraction(config, tick) - K.wettestSeason);
@@ -192,6 +216,10 @@ function startWeather(sim: Sim, weather: WeatherState): void {
   v[CLIMATE_FIELDS.wetToday] = nextChance(s, o, longRunWet) ? 1 : 0;
   v[CLIMATE_FIELDS.stormStart] = -1;
   v[CLIMATE_FIELDS.stormEnd] = -1;
+  // Wind draws from its own stream, so the rest of the weather is what it was before wind existed.
+  const w = globalStreamOffset(StreamDomain.WIND);
+  v[CLIMATE_FIELDS.windEastMs] = K.prevailingWindEastMs + K.windSpreadMs * nextNormal(s, w);
+  v[CLIMATE_FIELDS.windSouthMs] = K.windSpreadMs * nextNormal(s, w);
 
   const world = state.world;
   const rainfall = world.layer<Float32Array>(TERRAIN_LAYERS.rainfall);
@@ -224,6 +252,7 @@ export const climate: SystemDef = defineSystem({
     const strikes = state.parts.find((p) => p.name === CLIMATE_PARTS.strikes) as StrikeState;
     const s = state.streams;
     const o = globalStreamOffset(StreamDomain.CLIMATE);
+    const ow = globalStreamOffset(StreamDomain.WIND);
     const v = weather.values;
     const { widthCells: W, heightCells: H, cellSizeM: cs } = config.world;
     const widthM = W * cs;
@@ -255,6 +284,8 @@ export const climate: SystemDef = defineSystem({
         v[CLIMATE_FIELDS.wetness] = ar1(s, o, v[CLIMATE_FIELDS.wetness], K.wetnessPersistence, K.wetnessSpread * variability);
       }
       v[CLIMATE_FIELDS.dailyAnomalyC] = ar1(s, o, v[CLIMATE_FIELDS.dailyAnomalyC], K.dailyAnomalyPersistence, K.dailyAnomalySpreadC);
+      v[CLIMATE_FIELDS.windEastMs] = K.prevailingWindEastMs + ar1(s, ow, v[CLIMATE_FIELDS.windEastMs] - K.prevailingWindEastMs, K.windPersistence, K.windSpreadMs);
+      v[CLIMATE_FIELDS.windSouthMs] = ar1(s, ow, v[CLIMATE_FIELDS.windSouthMs], K.windPersistence, K.windSpreadMs);
 
       const season = rainSeason(config, tick);
       const base = v[CLIMATE_FIELDS.wetToday] === 1 ? K.wetAfterWet : K.wetAfterDry;

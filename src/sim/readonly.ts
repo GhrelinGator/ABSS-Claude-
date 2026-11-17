@@ -10,7 +10,8 @@ import type { Sim } from './sim.ts';
 
 export type { SimConfig } from './config.ts';
 // Pure functions and constants for reading the weather; none of them can change the simulation.
-export { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, stormActive } from './world/climate.ts';
+export { CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, stormActive, windAt } from './world/climate.ts';
+export { FIRE_FIELDS, FIRE_LAYERS, FIRE_PARTS, FIRE_STORE, FireStage } from './world/fire.ts';
 export { BROWSE_LAYER, FORAGE_LAYER, PLANT_SPECIES, SEED_RAIN_LAYER, coverLayer, foodLayer } from './world/plants.ts';
 export { ANIMAL_FIELDS, ANIMAL_PARTS, ANIMAL_STORE, AnimalKind, AnimalMode, CARCASS_LAYER, CARCASS_LOAD_LAYER, GROUP_KINDS, HARE_LAYER } from './world/animals.ts';
 export { WATER_PATHOGEN_LAYER } from './world/pathogens.ts';
