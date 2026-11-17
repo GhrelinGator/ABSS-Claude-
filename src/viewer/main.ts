@@ -9,6 +9,7 @@ import {
   createStandardSim,
   defaultConfig,
   animals,
+  fire,
   light,
   materials,
   pathogens,
@@ -19,7 +20,7 @@ import {
 } from '../sim/index.ts';
 import type { Sim, SimConfig, SimView } from '../sim/index.ts';
 import { BUILD } from './build-info.ts';
-import { ANIMAL_DOT_COLORS, BEDROCK_NAMES, PLANT_NAMES, SHELTER_COLOR, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
+import { ANIMAL_DOT_COLORS, BEDROCK_NAMES, EMBER_COLOR, FLAME_COLOR, PLANT_NAMES, SHELTER_COLOR, SOIL_NAMES, WATER_NAMES, legendFor, paint, readLandscape } from './render.ts';
 import type { Landscape, LayerMode } from './render.ts';
 
 function element<T extends HTMLElement>(id: string): T {
@@ -67,6 +68,7 @@ let drawnTick = -1;
 let drawnMode: LayerMode | null = null;
 let inspected = -1;
 let paintedDay = -1;
+let paintedHour = -1;
 /** Tick to open the first world at; later worlds open at noon on day one. */
 let openAt = -1;
 
@@ -251,17 +253,67 @@ function updateClock(): void {
             : `heavy rain (${rain.toFixed(0)} mm today)`
         : 'dry';
   const spell = w[F.wetness] < -0.4 ? ' · in a dry spell' : w[F.wetness] > 0.4 ? ' · in a wet spell' : '';
-  weatherLine.textContent = `${Math.round(temperature)} °C at 400 m, ${today}${spell} · ${w[F.strikesTotal]} lightning strikes so far`;
+  climate.windAt(config, tick, w, windNow);
+  const speed = Math.hypot(windNow[0], windNow[1]);
+  const wind = speed < 0.5 ? 'calm' : `wind ${speed.toFixed(0)} m/s from the ${compassFrom(windNow[0], windNow[1])}`;
+  const fires = view ? view.store(fire.FIRE_STORE).count : 0;
+  const burning = fires > 0 ? ` · ${fires} patch${fires === 1 ? '' : 'es'} burning` : '';
+  weatherLine.textContent = `${Math.round(temperature)} °C at 400 m, ${today}${spell}, ${wind} · ${w[F.strikesTotal]} lightning strikes so far${burning}`;
+}
+
+const windNow = new Float64Array(2);
+const COMPASS = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'];
+
+/** The direction the wind comes from, given the direction it blows toward (map x east, y south). */
+function compassFrom(east: number, south: number): string {
+  const turns = Math.atan2(-south, -east) / (2 * Math.PI);
+  return COMPASS[((Math.round(turns * 8) % 8) + 8) % 8];
+}
+
+/** Burning cells and burning objects, drawn on every layer after the night shading, so they glow. */
+function drawFires(): void {
+  if (!view || !land) return;
+  const store = view.store(fire.FIRE_STORE);
+  if (store.count > 0) {
+    const alive = store.column('alive');
+    const cell = store.column('cell');
+    for (let s = 0; s < store.highWater; s++) {
+      if (alive[s] !== 1) continue;
+      const k = cell[s];
+      const flaming = land.fireStage[k] === fire.FireStage.FLAMING;
+      const c = flaming ? FLAME_COLOR : EMBER_COLOR;
+      context.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+      context.fillRect((k % land.W) - (flaming ? 0.25 : 0), Math.floor(k / land.W) - (flaming ? 0.25 : 0), flaming ? 1.5 : 1, flaming ? 1.5 : 1);
+    }
+  }
+  const objects = view.store(materials.OBJECT_STORE);
+  if (objects.count > 0) {
+    const burn = objects.column('burnKw');
+    const alive = objects.column('alive');
+    const x = objects.column('x');
+    const y = objects.column('y');
+    context.fillStyle = `rgb(${FLAME_COLOR.join(',')})`;
+    for (let s = 0; s < objects.highWater; s++) {
+      if (alive[s] !== 1 || !(burn[s] > 0)) continue;
+      context.beginPath();
+      context.arc(x[s] / land.cellSizeM, y[s] / land.cellSizeM, 1.2, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
 }
 
 function draw(now: number): void {
   if (!sim || !land) return;
   const day = clock.dayIndex(sim.config, sim.state.tick);
-  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe' || mode === 'animals' || mode === 'wood';
-  if (drawnMode !== mode || (daily && day !== paintedDay)) {
+  const daily = mode === 'moisture' || mode === 'plants' || mode === 'ripe' || mode === 'animals' || mode === 'wood' || mode === 'fire';
+  // The Fire layer also redraws every simulated hour while something burns, so scars grow with the fire.
+  const hour = Math.floor(sim.state.tick / (sim.config.time.ticksPerDay / 24));
+  const burningNow = mode === 'fire' && view !== null && view.store(fire.FIRE_STORE).count > 0 && hour !== paintedHour;
+  if (drawnMode !== mode || (daily && day !== paintedDay) || burningNow) {
     paintedDay = day;
+    paintedHour = hour;
     const image = offscreenContext.createImageData(land.W, land.H);
-    paint(land, mode, image.data);
+    paint(land, mode, image.data, day, sim.config.time.daysPerYear);
     offscreenContext.putImageData(image, 0, 0);
     legend.innerHTML = legendFor(mode, land);
     drawnMode = mode;
@@ -300,6 +352,7 @@ function draw(now: number): void {
     context.fillRect(0, 0, land.W, land.H);
   }
   if (mode === 'stone') drawRockShelters();
+  drawFires();
   drawAnimals();
   for (const flash of flashes) {
     const age = (now - flash.born) / FLASH_MS;
@@ -417,6 +470,34 @@ function shelterHere(i: number, j: number): Array<[string, string]> {
   return rows;
 }
 
+/** Fuel, its moisture now, how a fire would run here now, and any fire in the cell, described in words. */
+function fireHere(k: number): Array<[string, string]> {
+  if (!sim || !land) return [];
+  const rows: Array<[string, string]> = [];
+  const perHa = (land.cellSizeM * land.cellSizeM) / 10_000;
+  const r = { fine: 0, sticks: 0, poles: 0, fineTpha: 0, curing: 0, readiness: 0, headMPerMin: 0, backMPerMin: 0 };
+  fire.fireConditions(sim).read(k, r);
+  rows.push(['Fine dead fuel per hectare', `${Math.round(land.litter[k] / perHa).toLocaleString('en')} kg (cured grass, dead leaves)`]);
+  rows.push([
+    'Fuel moisture now',
+    `fine ${Math.round(r.fine * 100)}%, sticks ${Math.round(r.sticks * 100)}%, logs ${Math.round(r.poles * 100)}% of their dry weight; plants ${r.curing >= 1 ? 'fully cured' : r.curing <= 0 ? 'too green to burn' : `${Math.round(r.curing * 100)}% of the way to cured`}`,
+  ]);
+  rows.push([
+    'A fire here now',
+    r.headMPerMin > 0
+      ? `would run ${(r.headMPerMin * 0.06).toFixed(r.headMPerMin < 10 ? 2 : 1)} km/h with the wind, back ${(r.backMPerMin * 60).toFixed(0)} m/h against it`
+      : 'would not spread (too wet, too green, or too little fuel)',
+  ]);
+  const stage = land.fireStage[k];
+  if (stage !== fire.FireStage.NONE) rows.push(['Burning', stage === fire.FireStage.FLAMING ? 'flames' : 'smouldering wood']);
+  const last = land.lastBurnDay[k];
+  if (last > 0) {
+    const ago = clock.dayIndex(sim.config, sim.state.tick) + 1 - last;
+    rows.push(['Last burned', ago <= 0 ? 'today' : `${ago} day${ago === 1 ? '' : 's'} ago`]);
+  }
+  return rows;
+}
+
 /** Animal groups within `radius` metres of a point, described in words. */
 function animalsNear(px: number, py: number, radius: number): string[] {
   if (!view) return [];
@@ -504,6 +585,7 @@ function inspect(event: MouseEvent): void {
     const long = land.longWood[k] / perHa;
     rows.push(['Fallen wood per hectare', small + long < 1 ? 'none' : `${Math.round(small).toLocaleString('en')} kg of sticks, ${Math.round(long).toLocaleString('en')} kg of poles and trunks`]);
     rows.push(...shelterHere(i, j));
+    rows.push(...fireHere(k));
   }
   const near = animalsNear((i + 0.5) * land.cellSizeM, (j + 0.5) * land.cellSizeM, 500);
   rows.push(['Animals within 500 m', near.length > 0 ? near.join(', ') : 'none']);

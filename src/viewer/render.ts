@@ -2,9 +2,9 @@
 // any arithmetic, because nothing here feeds back into the simulation.
 
 import type { RoArray, SimView } from '../sim/index.ts';
-import { animals, materials, plants } from '../sim/index.ts';
+import { animals, fire, materials, plants } from '../sim/index.ts';
 
-export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe' | 'animals' | 'stone' | 'wood';
+export type LayerMode = 'land' | 'height' | 'rain' | 'soil' | 'flow' | 'moisture' | 'plants' | 'ripe' | 'animals' | 'stone' | 'wood' | 'fire';
 
 /** Display names and colours of the plant species, in catalogue order. */
 export const PLANT_NAMES: Readonly<Record<string, string>> = {
@@ -93,6 +93,10 @@ export interface Landscape {
   stone: RoArray[];
   smallWood: RoArray;
   longWood: RoArray;
+  /** Fine dead plant matter (the fuel fires spread in), kg per cell; fire stage of each cell; day + 1 it last burned. */
+  litter: RoArray;
+  fireStage: RoArray;
+  lastBurnDay: RoArray;
   /** 0 (shadow) to 1 (lit), from light falling from the north-west. */
   shade: Float32Array;
   minElevation: number;
@@ -142,6 +146,9 @@ export function readLandscape(view: SimView): Landscape {
     stone: materials.STONE_MATERIALS.map((m) => view.layer(materials.stoneLayer(m))),
     smallWood: view.layer(materials.MATERIAL_LAYERS.smallWood),
     longWood: view.layer(materials.MATERIAL_LAYERS.longWood),
+    litter: view.layer(materials.MATERIAL_LAYERS.litter),
+    fireStage: view.layer(fire.FIRE_LAYERS.stage),
+    lastBurnDay: view.layer(fire.FIRE_LAYERS.lastBurnDay),
     shade,
     minElevation,
     maxElevation,
@@ -152,8 +159,13 @@ function mix(a: [number, number, number], b: [number, number, number], t: number
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
-/** Colour every cell of the landscape for the chosen layer, into an RGBA buffer. */
-export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray): void {
+/** Colours of burning cells, drawn on every layer: flames and smouldering wood. */
+export const FLAME_COLOR: [number, number, number] = [255, 226, 80];
+export const EMBER_COLOR: [number, number, number] = [170, 34, 20];
+const SCAR: [number, number, number] = [34, 30, 28];
+
+/** Colour every cell of the landscape for the chosen layer, into an RGBA buffer. `today` is the day number (for burn scars). */
+export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray, today = 0, daysPerYear = 48): void {
   const { W, H, elevation, rainfall, soil, kind, flow, moisture, shade, minElevation, maxElevation, plantCover, plantFood } = land;
   const species = plants.PLANT_SPECIES;
   const colors = species.map((s) => PLANT_COLORS[s.name] ?? [255, 0, 255]);
@@ -271,6 +283,19 @@ export function paint(land: Landscape, mode: LayerMode, out: Uint8ClampedArray):
         c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
         break;
       }
+      case 'fire': {
+        // Fine fuel on a log scale from 0.1 to 10 t/ha; land burned within the last year in charcoal, fading as it ages.
+        const t = land.litter[k] / 1000 / ((land.cellSizeM * land.cellSizeM) / 10_000);
+        const u = t <= 0.1 ? 0 : Math.min(1, Math.log10(t / 0.1) / 2);
+        c = mix([58, 54, 46], [214, 180, 96], u);
+        const burned = land.lastBurnDay[k];
+        if (burned > 0) {
+          const age = (today + 1 - burned) / daysPerYear;
+          if (age < 1) c = mix(SCAR, c, Math.max(0, age));
+        }
+        c = [c[0] * (0.8 + 0.25 * shade[k]), c[1] * (0.8 + 0.25 * shade[k]), c[2] * (0.8 + 0.25 * shade[k])];
+        break;
+      }
       case 'ripe': {
         let kcal = 0;
         for (let s = 0; s < species.length; s++) if (ripe[s] > 0) kcal += plantFood[s][k] * ripe[s];
@@ -329,6 +354,14 @@ export function legendFor(mode: LayerMode, land: Landscape): string {
       );
     case 'wood':
       return '<span>None<span class="ramp" style="background:linear-gradient(90deg,rgb(44,42,38),rgb(84,74,56),rgb(176,112,52))"></span>30 tonnes per hectare</span><span>Fallen wood: sticks, branches and poles lying on the ground</span>' + water;
+    case 'fire':
+      return (
+        '<span>Fine dead fuel: none<span class="ramp" style="background:linear-gradient(90deg,rgb(58,54,46),rgb(214,180,96))"></span>10 tonnes per hectare</span>' +
+        swatch(SCAR, 'Burned within the last year (fades)') +
+        swatch(FLAME_COLOR, 'Flaming (every layer)') +
+        swatch(EMBER_COLOR, 'Smouldering (every layer)') +
+        water
+      );
     case 'ripe':
       return '<span>None<span class="ramp" style="background:linear-gradient(90deg,rgb(40,38,34),rgb(70,60,40),rgb(214,150,50),rgb(255,236,150))"></span>10 million kcal per hectare (from 1,000)</span><span>Fruit, seeds and nuts waiting to be picked (not roots underground, not nightshade)</span>' + water;
   }
