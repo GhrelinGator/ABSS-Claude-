@@ -67,6 +67,9 @@ for (const seed of seeds) {
   let ev: FireEvent | null = null;
   let flamingBefore = 0;
   const yearIgnited: number[] = [];
+  // Cells ignited in each eighth of the year (0 = spring equinox, 0.25 midsummer, 0.5 autumn, 0.75 midwinter).
+  const bySeason = new Float64Array(8);
+  let ignitedBefore = 0;
   const yearDistinct: number[] = [];
   const yearLitter: number[] = [];
   let ignitedYearStart = 0;
@@ -77,6 +80,10 @@ for (const seed of seeds) {
     stepSim(sim, 1);
     const tick = state.tick;
     const ignited = counts[FIRE_FIELDS.cellsIgnited];
+    if (ignited > ignitedBefore) {
+      bySeason[Math.min(7, Math.floor(seasonFraction(config, tick) * 8))] += ignited - ignitedBefore;
+      ignitedBefore = ignited;
+    }
     if (fires.count > 0 && !ev) {
       ev = {
         startTick: tick, firstFlameTick: -1, endTick: -1, ignitedAtStart: ignited, flaresAtStart: counts[FIRE_FIELDS.flareUps],
@@ -163,7 +170,9 @@ for (const seed of seeds) {
   }
   const sizes = events.map((e) => e.ignitedDay + e.ignitedNight).sort((a, b) => b - a);
   const small = sizes.filter((s) => s < 100).length;
-  const line = `seed ${seed} circ ${circ}: mean ${(100 * sumI / n).toFixed(3)}%/yr ignited, ${(100 * sumD / n).toFixed(3)}% distinct; worst year ${(100 * worstI).toFixed(1)}% (${(100 * worstD).toFixed(1)}% distinct); fires that flamed ${events.length} (under 1 km²: ${small}), holdovers that never flamed ${holdoversOnly}; largest ${sizes.slice(0, 3).join(', ')} cells`;
+  const seasonTotal = bySeason.reduce((a, b) => a + b, 0) || 1;
+  const seasons = Array.from(bySeason, (v) => `${Math.round((100 * v) / seasonTotal)}`).join('/');
+  const line = `seed ${seed} circ ${circ}: ignitions by eighth of the year ${seasons}%; mean ${(100 * sumI / n).toFixed(3)}%/yr ignited, ${(100 * sumD / n).toFixed(3)}% distinct; worst year ${(100 * worstI).toFixed(1)}% (${(100 * worstD).toFixed(1)}% distinct); fires that flamed ${events.length} (under 1 km²: ${small}), holdovers that never flamed ${holdoversOnly}; largest ${sizes.slice(0, 3).join(', ')} cells`;
   summary.push(line);
   if (!quiet) {
     console.log(`years over 1%: ${big.join('; ') || 'none'}`);
