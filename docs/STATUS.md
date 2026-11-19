@@ -6,8 +6,8 @@ Update this at the end of every session. Newest information at the top of each s
 
 - **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), and a viewer (1.9) that shows all of it.
 - **The world has weather and wind, plants, animals, stone, fallen wood and litter, and fire; no people.** The real pipeline has seven systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, the materials, and fire. Nothing has emerged, because nothing can yet.
-- **Next action:** waiting for the owner on Q9 (fire needs breaks in the fuel). After his answer: build what he approves (or nothing), then re-run the full preregistered Phase 1 exit check (`experiments/P1-ecology-review/spec.json`, about 75 minutes) and add its results to `experiments/P1-ecology-review/results.md`. The branch `milestone-1.11` and its pull request carry the fire work so far; carry on from that branch.
-- **Blocked on:** the owner (Q9). Milestone 1.11 did its diagnosis and five physical corrections to fire (T-007, D-033), but fires on open country still burn until they run out of map, and limiting them needs a new mechanism. Phase 1 has not exited. From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
+- **Next action:** Phase 1.12 [F] (runs on Opus, D-034): breaks in the fuel, (a) patchy ground fuel within a cell from the soil and rock already on the map and (b) damp ground along rivers and springs from a simple water table; then fire calibrated to the grassland band and the full preregistered Phase 1 exit check (`ROADMAP.md` 1.12; `experiments/P1-ecology-review/spec.json`; D-033, D-034). Write the design into `DESIGN.md` §2.16 before coding. The check takes about 75 minutes: push before starting it so the claim stays fresh. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
+- **Blocked on:** nothing. Phase 1 has not exited: fire on open country still burns until it runs out of map, and 1.12 adds the breaks in the fuel the owner approved (Q9, D-034). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
 
 ## What exists
 
@@ -41,15 +41,24 @@ About 15,200 lines of TypeScript including tests after session 13 (fire alone ab
 
 ## Decisions needed from the owner
 
-Q9 is blocking (2026-11-19). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
+Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
 
 | # | Question | Needed by |
 |---|---|---|
 | Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
-| Q9 | **Fires on open country spread until they run out of map** (milestone 1.11, D-033). The ground there is one unbroken carpet of fuel, so once a fire gets going nothing stops it but days of rain. Real landscapes have breaks: bare and rocky patches, wet hollows, damp strips along streams; in the walled valleys, where cliffs act as breaks, fire already behaves (0.2% of the land a year). May I add (a) patchy ground fuel, taken from the soil and rock already on the map, (b) damp ground along rivers and springs (a simple water table), or both? Both are new mechanisms, so they need your yes. My recommendation: both, (b) first, since it also fixes the riverbank plants drying out in droughts (a known risk). The other way is to leave fire as it is and let Phase 1 exit with its fire criterion failing, as a known limit. | Now: the chain waits for it |
+| Q9 | *Answered 2026-11-19 (D-034):* yes to both breaks in the fuel: patchy ground from the soil and rock already on the map, and damp ground along rivers and springs. Milestone 1.12. | — |
 | Q8 | Plants kept up on the owner's phone at "1 year per second" (answered 2026-11-16). With animals a day costs about four times as much; does it still keep up? If not, the page could skip ahead in bigger steps or cap the speed. | Whenever |
 | Q7 | *Answered 2026-11-16:* a Windows desktop, Intel Core i5-4670 (4 cores, 4 threads, 3.4 GHz, 2013), 32 GB of memory, an RTX 3080 graphics card. That means 3–4 runs side by side, and overnight batches for big experiments. The graphics card can't run the simulation: results must be bit-identical on every machine. Nothing is installed yet; in Phase 3, install Node and link the Claude desktop app so a session can run batches there, and stop the PC sleeping during runs. | Phase 3 |
 | Q1 | Player role, if observer-only turns out not to be what he wants (D-011). | Phase 9 |
+
+## For a Fable second look
+
+[F] milestones done on Opus while the owner has no Fable credits (D-034), and Opus work that leaned on [F]-type diagnosis. A Fable session starts here: re-check each judgment call listed, record what it finds in `DECISIONS.md`, and strike the entry.
+
+| Milestone | Pull request | Judgment calls to re-check |
+|---|---|---|
+| 1.10 Ecology review (2026-11-18, attended) | #14 | The diagnosis of the walled-valley collapse: a start about 3× too crowded, and hungry grazers searching 3 km (T-006 round 3, a borderline missing mechanism). Whether Phase 1 was right to stay open. The fire targets and levers written into `DESIGN.md` §2.16. |
+| 1.11 Fire regime (2026-11-19, unattended; tagged [O] but mostly diagnosis) | #15 | That fire *size*, not the number of ignitions, is the problem. The five corrections (T-007), kept although the average burned area rose. That breaks in the fuel are the missing piece. |
 
 ## Benchmarks
 
@@ -103,6 +112,7 @@ Q9 is blocking (2026-11-19). Answered on 2026-11-15 (D-012): the game gets its o
 
 ## Session log
 
+- **2026-11-19, session 16** (Opus 5.5, claude.ai; same chat). The owner answered (D-034): yes to both breaks in the fuel (Q9); scheduled runs take [F] milestones and list them for a Fable second look; new mechanisms with no social content (the world, agents' bodies) no longer wait for him; keep the chain going. Closed a gap: the weekly cap now stops wake-up runs too. Merged #15 and started the chain on 1.12.
 - **2026-11-19, session 15** (Opus 5.5, unattended run). Milestone 1.11, fire on open country. Wrote a diagnostic that logs every fire (`experiments/P1-fire-regime/diagnose.ts`) and found the problem is size, not ignitions: fires creep through nights and come back after rain. Five corrections, each logged before the change (T-007): dew; Cheney's light-wind moisture limit (a bug); rain held in litter about two-thirds of a day; storm rain heaviest at the core (`climate.ts`); lightning holdovers lasting about two days. None limits a fire's size once it is going; that needs breaks in the fuel, a new mechanism, so the run stopped for the owner (Q9, D-033). Pull request left open; full exit check not re-run.
 
 - **2026-11-18, session 14** (Opus 5.5, claude.ai; same chat). Did the ecology review (1.10, an [F] milestone) at the owner's request. Preregistered the Phase 1 exit check and ran it: 20 full-size worlds for 100 compressed years. It failed on persistence (hemmed valleys collapsed) and fire (open plains burn all-or-nothing). Fixed three causes (T-006), confirmed on 8 worlds, and wrote milestone 1.11 for the rest of the fire work (D-032). Checked big-cat, bison and hare numbers against sources (`RESEARCH.md`).

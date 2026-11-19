@@ -144,10 +144,10 @@ Use this when a phenomenon the roadmap hopes for isn't appearing.
 5. **Classify the cause:**
    - (a) **Bug.** Fix it.
    - (b) **Ecological miscalibration**, meaning a parameter is implausible against its real-world target. Move it *toward plausibility*, not toward the outcome.
-   - (c) **Missing mechanism.** Propose it with an alibi. Owner approval required.
+   - (c) **Missing mechanism.** Propose it with an alibi. Owner approval required for a mechanism in agents' minds or between agents; one in the world or in agents' bodies goes in without waiting, and the owner is told (D-034).
    - (d) **Genuine negative result.** Under these conditions the phenomenon doesn't emerge. That's a finding. Write it up in `experiments/`.
 6. **Log it in `TUNING_LOG.md` before changing code:** symptom, broken link, classification, proposed change, alibi, plausibility target.
-7. For (c), or whenever the classification is ambiguous, **tell the owner and wait.**
+7. For (c) in agents' minds or between agents, or whenever the classification is ambiguous, **tell the owner and wait.** For (c) in the world or agents' bodies, tell him and carry on (D-034).
 8. After the change, re-run the **null model** too. If the null model now also "shows" the phenomenon, the change was a nudge. Revert it.
 
 ---
