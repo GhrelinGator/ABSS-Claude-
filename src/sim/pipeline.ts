@@ -3,6 +3,8 @@
 // are added only by the roadmap phase that introduces them.
 
 import type { SystemDef } from './core/registry.ts';
+import { exposure } from './body/exposure.ts';
+import { heat } from './body/heat.ts';
 import { metabolism } from './body/metabolism.ts';
 import { climate } from './world/climate.ts';
 import { animals } from './world/animals.ts';
@@ -27,7 +29,12 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   materials,
   // Phase 1.8: lightning and other ignitions, fire spreading, smouldering, burning objects.
   fire,
-  // Phase 2.1: what agents' bodies spend, store and starve on. Systems that make agents act
-  // (Phase 3 on) go before it, so it charges what each body did in the same tick.
+  // Systems that make agents act (Phase 3 on) go here, before the bodies, so each body is
+  // exposed where it ended its acts and charged for what it did in the same tick.
+  // Phase 2.2: what each body is in, read from the world at its position.
+  exposure,
+  // Phase 2.2: body temperature, shivering and sweat, body water.
+  heat,
+  // Phase 2.1: what agents' bodies spend, store and starve on.
   metabolism,
 ]);
