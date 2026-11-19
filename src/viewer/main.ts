@@ -579,6 +579,11 @@ function inspect(event: MouseEvent): void {
       const kg = land!.stone[n][k] / perHa;
       if (kg >= 1) loose.push(`${kg < 10 ? kg.toFixed(1) : Math.round(kg).toLocaleString('en')} kg ${m.name === 'pyrite' ? 'iron sulfide' : m.name}`);
     });
+    if (view) {
+      const table = view.layer('water.tableDepth')[k];
+      rows.push(['Water table', table < 0.05 ? 'at the surface' : table >= 30 ? 'deep (its stream is off the map)' : `${table < 10 ? table.toFixed(1) : Math.round(table)} m down`]);
+      rows.push(['Bare ground', `${Math.round(view.layer('terrain.bareGround')[k] * 100)}% of the patch (rock, stones, bare soil)`]);
+    }
     rows.push(['Bedrock', BEDROCK_NAMES[land.bedrock[k]] ?? '?']);
     rows.push(['Loose stone per hectare', loose.length > 0 ? loose.join(', ') : 'none']);
     const small = land.smallWood[k] / perHa;

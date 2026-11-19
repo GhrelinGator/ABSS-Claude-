@@ -4,10 +4,10 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), and a viewer (1.9) that shows all of it.
+- **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), 1.11 and 1.12 (fire corrections, a water table, bare ground), and a viewer (1.9) that shows all of it.
 - **The world has weather and wind, plants, animals, stone, fallen wood and litter, and fire; no people.** The real pipeline has seven systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, the materials, and fire. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 1.12 [F] (runs on Opus, D-034): breaks in the fuel, (a) patchy ground fuel within a cell from the soil and rock already on the map and (b) damp ground along rivers and springs from a simple water table; then fire calibrated to the grassland band and the full preregistered Phase 1 exit check (`ROADMAP.md` 1.12; `experiments/P1-ecology-review/spec.json`; D-033, D-034). Write the design into `DESIGN.md` §2.16 before coding. The check takes about 75 minutes: push before starting it so the claim stays fresh. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
-- **Blocked on:** nothing. Phase 1 has not exited: fire on open country still burns until it runs out of map, and 1.12 adds the breaks in the fuel the owner approved (Q9, D-034). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
+- **Next action:** Phase 1.13 [F] (runs on Opus, D-034): open seed 6's deer starve beside greens they never eat; diagnose, then fix by the nudge protocol (`ROADMAP.md` 1.13; `experiments/P1-ecology-review/results.md`, last section; D-036). A full-size open world takes about 8–10 minutes for 100 compressed years on one core, so test on single seeds (`npm run experiment` with a one-seed spec, or `experiments/P1-fire-regime/diagnose.ts` for fire). Don't re-run the full exit check until the owner answers Q10. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
+- **Blocked on:** the owner, for fire only (Q10). Phase 1 has not exited: the re-run of the exit check (2026-11-19) fails on fire (mean 0.64% of land a compressed year against 0.5%, worst year 87% against 25%) and on persistence (open seed 6). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
 
 ## What exists
 
@@ -18,14 +18,14 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/sim.ts` | state container, tick loop, save/load, `spawnAgent` |
 | `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants, the animals, the pathogens, the materials, fire |
 | `src/sim/readonly.ts` | the only door the analysis layer may use |
-| `src/sim/world/terrain.ts`, `noise.ts` | the map generator (`DESIGN.md` §2.10) |
+| `src/sim/world/terrain.ts`, `noise.ts` | the map generator, with the water table and bare ground (`DESIGN.md` §2.10) |
 | `src/sim/world/light.ts` | sun, moon, and starlight (`DESIGN.md` §2.4) |
-| `src/sim/world/climate.ts` | weather, storms, lightning, soil moisture (`DESIGN.md` §2.11) |
+| `src/sim/world/climate.ts` | weather, storms, lightning, soil moisture fed by rain and the water table (`DESIGN.md` §2.11) |
 | `src/sim/world/plants.ts` | eight plant species: cover, fruit and seed seasons, roots, drought dieback, spreading, forage for grazing and browsing, seed rain (`DESIGN.md` §2.12) |
 | `src/sim/world/animals.ts` | deer, aurochs, wolf packs, big cats, hares, vultures, carcasses (`DESIGN.md` §2.13) |
 | `src/sim/world/pathogens.ts` | pathogen loads in water and carcass meat (`DESIGN.md` §2.14) |
 | `src/sim/world/materials.ts` | eight materials, bedrock, loose stone, fallen wood and litter per cell, rock shelters, objects, striking (flakes, crumbs, snapping, sparks), rotting, and shelter at a point (`DESIGN.md` §2.15) |
-| `src/sim/world/fire.ts` | fuel moisture (with dew and rain held in litter) and curing, spread by minimum travel time, smouldering, lightning holdovers, sparks and friction embers, burning objects, light and heat at a point (`DESIGN.md` §2.16); wind lives in `climate.ts` |
+| `src/sim/world/fire.ts` | fuel moisture (with dew and rain held in litter) and curing, spread by minimum travel time across patchy fuel, smouldering, lightning holdovers, sparks and friction embers, burning objects, light and heat at a point (`DESIGN.md` §2.16); wind lives in `climate.ts` |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
 | `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat), `materials` (loose stone by material, fallen wood, rock shelters, objects), `fire` (burning now, ignitions by cause, land burned in the last year, litter, wind) |
 | `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
@@ -41,10 +41,11 @@ About 15,200 lines of TypeScript including tests after session 13 (fire alone ab
 
 ## Decisions needed from the owner
 
-Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
+Q10 blocks fire, not the chain: 1.13 goes ahead without it. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
 
 | # | Question | Needed by |
 |---|---|---|
+| Q10 | **Fires on open country are still too big in dry autumns** (1.12, D-036). The water table and bare ground you approved helped: across the 20 test worlds, burned land fell from 1.24% a year to 0.64% (the limit is 0.5%), and the worst year from 174% of a world to 87% (the limit is 25%). But damp ground follows the streams, which branch like a tree and never close round anything, so a fire walks round their heads; and the open plains are one soil and one even woodland from edge to edge. Two ways on: **(a)** accept it as a known limit and let Phase 1 exit with the fire criterion failing (the open plains then have a huge autumn fire every few decades; E3, open against walled, must name fire as a difference between its conditions, as it does rock shelters); or **(b)** keep working on fire with one more world mechanism: a patchier woodland (closed groves that stay damp and calm, open glades between), or grazers that thin the grass as much as real ones do (the compressed year makes them eat about 1% of it, which reaches into D-024). My recommendation: (a) for now, with the patchier woodland parked for when the plants are next revisited; fire is backdrop for the social questions, and both (b) options reach well beyond fire. | Before Phase 1 exits; 1.13 doesn't wait |
 | Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
 | Q9 | *Answered 2026-11-19 (D-034):* yes to both breaks in the fuel: patchy ground from the soil and rock already on the map, and damp ground along rivers and springs. Milestone 1.12. | — |
 | Q8 | Plants kept up on the owner's phone at "1 year per second" (answered 2026-11-16). With animals a day costs about four times as much; does it still keep up? If not, the page could skip ahead in bigger steps or cap the speed. | Whenever |
@@ -59,6 +60,7 @@ Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-
 |---|---|---|
 | 1.10 Ecology review (2026-11-18, attended) | #14 | The diagnosis of the walled-valley collapse: a start about 3× too crowded, and hungry grazers searching 3 km (T-006 round 3, a borderline missing mechanism). Whether Phase 1 was right to stay open. The fire targets and levers written into `DESIGN.md` §2.16. |
 | 1.11 Fire regime (2026-11-19, unattended; tagged [O] but mostly diagnosis) | #15 | That fire *size*, not the number of ignitions, is the problem. The five corrections (T-007), kept although the average burned area rose. That breaks in the fuel are the missing piece. |
+| 1.12 Breaks in the fuel (2026-11-19, unattended) | #16 | The water table's design: level with the nearest drained-to water, small streams from 0.5 km², capillary rise 6 mm × e^(−depth/0.6 m) (D-035). The patchy-fuel physics (percolation of discs at 0.676, reach half the Byram flame length). Merging although open seed 6 collapsed (D-036). That no calibration round was made, and the classification of what remains in fire as ambiguous (T-008, Q10). |
 
 ## Benchmarks
 
@@ -75,6 +77,8 @@ Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-
 - Hashing the whole state or saving a snapshot took well under a millisecond at these sizes (no world layers yet).
 - Full reasoning and what it demands of Phase 3: `DECISIONS.md` D-016.
 
+**2026-11-19, Phase 1.12.** The full exit check (20 worlds × 100 compressed years) took 71 minutes on 2 cores: open worlds 6–10 minutes each (large fires cost more with the patchy-fuel spread), hemmed worlds 4–5.
+
 **2026-11-17, Phase 1.8.** Fire costs about 0.6 ms per quiet simulated day on the full map (it only checks the tick's lightning strikes); a large fire adds tens of ms per day while it burns. Materials, with the litter, about 4.4 ms. In this run's measurement a full-map day took about 87 ms in all (animals 52, plants 25); the sandbox's speed varies between sessions. Snapshots grow by about 2.3 MB.
 
 **2026-11-17, Phase 1.7.** Materials add about 5 ms per simulated day on the full map (fallen wood rotting in every cell); building a world takes about 0.1 s longer. Snapshots grow by about 8 MB.
@@ -90,8 +94,9 @@ Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-
 - **Founder viability.** Blank-slate founders may die before learning enough. Viability tuning is allowed (logged), but if it takes heavy tuning, the floor may need rethinking. That's a conversation with the owner, not a quiet fix.
 - **Floor 1 expressiveness** (`DESIGN.md` §6.7). The legitimation chain may be inexpressible with unordered token bags.
 - **Claude's drift** (`GUARDRAILS.md`). The guardrail tests catch words, imports, and bookkeeping. They can't judge whether an alibi is true or whether a number was tuned toward an outcome.
-- **Long-run plant balance** (for 1.10). In 20 seeds × 100 years on small maps, no species died out and none grew without bound, but greens and reeds fell to about a fifth of their starting cover in runs with large year-to-year swings: riverbank soil dries in a drought like any other, because the soil-moisture model has no water table (`DESIGN.md` §2.12). Animals will add grazing pressure on top.
-- **Fire regime after 1.11** (D-033). Fixed: fires creeping through the night (a bug: the light-wind moisture limit was missing), litter forgetting rain at midnight, storms soaking every strike. Still open: on open country a fire that gets going burns until it runs out of map; it needs breaks in the fuel (Q9). Hemmed valleys are fine.
+- **Long-run plant balance** (for 1.10). In 20 seeds × 100 years on small maps, no species died out and none grew without bound, but greens and reeds fell to about a fifth of their starting cover in runs with large year-to-year swings: riverbank soil dried in a drought like any other. Since 1.12 a water table keeps stream banks moist (`DESIGN.md` §2.11). Animals add grazing pressure on top: on open land, deer browse greens down to 28–66% of their start.
+- **Fire regime after 1.12** (D-036). With the water table and bare ground, open country burns 0.95% of its land a compressed year and hemmed valleys 0.32%, but a dry autumn can still burn most of an open world (worst year 87%). Q10.
+- **Open seed 6** (D-036, 1.13). Deer starve beside greens they never eat; on `main` it held at 4.4 per km² or more, with 1.12 it collapsed and the predators went.
 - **Fire regime** (for 1.10). Fires are rare and mostly small in the default climate, which fits humid temperate land, but in a severe drought on an open plain one fire can burn nearly the whole map. Limiters real landscapes have and this model lacks: moist riverbanks (no water table), patchy fuel inside a cell, and spotting (which would make fires bigger, not smaller). Eleven rounds of correction are in T-005; the next look should be by fresh eyes.
 - **Rock shelters follow the circumscription knob** (for E3, D-029). Cliffs come with walls, so a walled valley has about 34 rock shelters per 100 km² and open country about 1.5. That is real geography, but E3's preregistration has to account for it.
 - **After the ecology review (D-032):** open-country deer settle at 11–18 per km², above field densities with wolves (3–6 per km² in Białowieża); greens are browsed to a quarter to two-fifths of their start on some open seeds; predators in walled valleys number a dozen or fewer, so long runs can lose them by chance.
@@ -111,6 +116,8 @@ Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-
 - A guardrail that scans commit messages for "encourage", "boost", and similar words (`GUARDRAILS.md` §6).
 
 ## Session log
+
+- **2026-11-19, session 17** (Opus 5.5, unattended chained run). Milestone 1.12 [F] on Opus, breaks in the fuel (D-035): a water table level with the river, lake, spring or small stream each cell drains to, which keeps stream banks moist from below; bare ground by soil; fire crossing patchy fuel only where its flames bridge the gaps. The water table and bare ground show in the page's inspector. Re-ran the full preregistered exit check: fire better (mean 0.64% against 1.24%, worst year 87% against 174%) but still failing, and open seed 6 lost its deer and wolves (fragile on `main` too). No calibration round: nothing left in fire would bound fire size (T-008). Merged; 1.13 diagnoses open seed 6; fire waits for the owner (Q10, D-036).
 
 - **2026-11-19, session 16** (Opus 5.5, claude.ai; same chat). The owner answered (D-034): yes to both breaks in the fuel (Q9); scheduled runs take [F] milestones and list them for a Fable second look; new mechanisms with no social content (the world, agents' bodies) no longer wait for him; keep the chain going. Closed a gap: the weekly cap now stops wake-up runs too. Merged #15 and started the chain on 1.12.
 - **2026-11-19, session 15** (Opus 5.5, unattended run). Milestone 1.11, fire on open country. Wrote a diagnostic that logs every fire (`experiments/P1-fire-regime/diagnose.ts`) and found the problem is size, not ignitions: fires creep through nights and come back after rain. Five corrections, each logged before the change (T-007): dew; Cheney's light-wind moisture limit (a bug); rain held in litter about two-thirds of a day; storm rain heaviest at the core (`climate.ts`); lightning holdovers lasting about two days. None limits a fire's size once it is going; that needs breaks in the fuel, a new mechanism, so the run stopped for the owner (Q9, D-033). Pull request left open; full exit check not re-run.

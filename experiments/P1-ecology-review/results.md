@@ -203,3 +203,29 @@ Mean burned share across all runs: 1.1474% of land per compressed year. Worst si
 - Below 5% of start in more than 2 runs: none.
 - Plant species ending below 20% of start: none.
 - Still changing fast over the last 30 years (more than 2× or less than 0.5×): open seed 3: hare 0.34× from years 71–80 to 91–100.
+
+## Re-run after 1.11 and 1.12 (2026-11-19): Phase 1 still does not exit
+
+- **Run:** 2026-11-19, unattended, Opus 5.5; commit `d9c0cb0` on `milestone-1.12` (1.11's five fire corrections, T-007; 1.12's water table and bare ground, D-035, T-008). The preregistered spec and analysis, unchanged: 20 full-size worlds, 100 compressed years each, 71 minutes on 2 cores.
+
+| Criterion | This run (20 worlds) |
+|---|---|
+| 1. Persistence | **FAIL**: open seed 6 lost its wolves (year 80) after its deer starved (5.0 → 0.17 per km² by year 75; big cats down to one). Every other world kept every kind. |
+| 2. Bounded (≤ 5× start) | pass (open deer reach 4.0× at most) |
+| 3. Fire | **FAIL**: mean 0.64% of land per compressed year (limit 0.5%; the preregistered run had 1.24%), worst year 87% (limit 25%; was 174%) |
+| 4. Both landscape types | pass |
+| 5. Viewer | pass (`npm test` and CI) |
+
+**Fire.** Better on every measure, not good enough. Open country averages 0.95% of its land a compressed year (0.13–2.17% by world; the design band is 0.4–0.9%), hemmed valleys 0.32% (0–1.06%). Six of the ten open worlds and one hemmed world (seed 10, 29%) have a year above 25%. Fires now come in every size, but in a dry autumn one can still cross most of an open world: the damp ground along streams branches like the streams do, and a branching network never closes round anything, so a fire walks round the heads of the streams. Almost all burning happens in autumn and early winter (season 0.5–0.875), after the dying-back season has cured everything and before the cold ends the storms that light fires.
+
+**Open seed 6.** Its deer starved slowly from year 18 (hundreds a year) and collapsed by year 60; then the predators went. Its greens were never eaten down (cover 0.20 → 0.24, while on every other open world deer browsed them to 0.06–0.13), and its deer bred at a third of the rate of the other open worlds. The same world on `main` (the 1.11 merge, without 1.12; null comparison run for this) kept its deer (minimum 4.4 per km²) and its predators, but also starved 500–1,300 deer a year from year 25 to 80. So open seed 6 was already a world where deer starve beside uneaten food; 1.12's moister stream banks (more greens along streams) tipped it over. Why its deer don't reach the greens is not yet diagnosed.
+
+| run | deer per km²: start → end [min–max] | wolves per 100 km² | big cats per 100 km² | greens cover end ÷ start |
+|---|---|---|---|---|
+| open 6, this run | 5.00 → 0.37 [0.17–7.33] | 2.00 → 0.00 | 1.48 → 0.04 | 1.24 |
+| open 6, `main` | 5.00 → 5.78 [4.39–8.48] | 2.00 → 2.20 [1.52 min] | 1.48 → 0.84 | about 1.2 |
+| other open worlds, this run | 5.00 → 9.1–13.8 | 1.9–3.5 at the end | 0.7–1.3 | 0.28–0.66 |
+
+Hemmed valleys all kept every kind (deer 1.1–4.5 per km² at the end, wolves 0.3–1.7 and cats 0.2–0.8 per 100 km²). No plant species ended below 20% of its start; greens on open land ended at 28–66% of their start (79–112% on hemmed land, 124% on open seed 6), the browsed-down warning from the 1.10 review.
+
+The full tables (`node experiments/P1-ecology-review/analyze.ts runs/P1-ecology-review`) are reproducible from the commit above; the summary is here.
