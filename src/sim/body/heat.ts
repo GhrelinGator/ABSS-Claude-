@@ -114,6 +114,8 @@ export const SURROUNDINGS = {
   hideClo: { name: 'hideClo', dtype: 'f64', category: 'body' },
   /** Share of the skin against other bodies, 0 to 1. */
   contact: { name: 'contact', dtype: 'f64', category: 'body' },
+  /** 1 if the body stands in a flaming cell (fire all round it), else 0: read by body.injury for burns. */
+  inFire: { name: 'inFire', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const S = SURROUNDINGS;
 
@@ -127,6 +129,8 @@ export const HEAT_COLUMNS = {
 } as const satisfies Record<string, ColumnSpec>;
 const C = HEAT_COLUMNS;
 const B = BODY_COLUMNS;
+/** body.injury's fever column (§3.10), named here so heat need not import injury. */
+const FEVER_COLUMN = 'feverC';
 
 /** Water a body of this lean mass holds when neither short nor in surplus, kg. */
 export function fullWaterKg(leanKg: number): number {
@@ -172,6 +176,7 @@ export const heat: SystemDef = defineSystem({
     const urineLeast = (H.urineLeastKgPerDay / 86_400) * dt;
     const urineMost = (H.urineMostKgPerHour / 3600) * dt;
     const sweatMost = H.sweatMostKgPerHour / 3600;
+    const fevered = agents.hasColumn(FEVER_COLUMN);
 
     return () => {
       const tick = state.tick;
@@ -198,6 +203,8 @@ export const heat: SystemDef = defineSystem({
       const fireWm2 = agents.column<Float64Array>(S.fireWm2.name).data;
       const hideClo = agents.column<Float64Array>(S.hideClo.name).data;
       const contact = agents.column<Float64Array>(S.contact.name).data;
+      // A fever raises the temperature the body regulates toward (body.injury, §3.10).
+      const fever = fevered ? agents.column<Float64Array>(FEVER_COLUMN).data : null;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -257,7 +264,8 @@ export const heat: SystemDef = defineSystem({
 
         // 3. Regulation: insulation first, then shivering or sweat.
         const capacity = mass * H.heatCapacityJPerKgK;
-        const want = (capacity * (H.coreC - t)) / H.restoreSeconds;
+        const target = fever ? H.coreC + fever[slot] : H.coreC;
+        const want = (capacity * (target - t)) / H.restoreSeconds;
         const closed = H.tissueClosed + H.tissueClosedPerFatShare * (fatKg / mass);
         const netClosed = spare - (exposed * (t - operative)) / (closed + rHide + rAir);
         let shiverW = 0;

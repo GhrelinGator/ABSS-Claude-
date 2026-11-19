@@ -8,7 +8,8 @@ import { BODY_COLUMNS, Effort, Sex, formBody, ingest } from '../../src/sim/body/
 import type { BodySpec } from '../../src/sim/body/metabolism.ts';
 import { spawnAgent } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
-import { HEAT_COLUMNS, drink } from '../../src/sim/body/heat.ts';
+import { HEAT_COLUMNS, drink, fullWaterKg } from '../../src/sim/body/heat.ts';
+import { INJURY_COLUMNS, exposeGut, injure, waterDose } from '../../src/sim/body/injury.ts';
 
 const f64 = (sim: Sim, name: string) => sim.state.agents.column<Float64Array>(name).data;
 
@@ -51,6 +52,7 @@ export const fxBodyWork: SystemDef = defineSystem({
     const o = globalStreamOffset(StreamDomain.FIXTURE);
     const secondsPerTick = 86_400 / sim.config.time.ticksPerDay;
     const drinks = agents.hasColumn(HEAT_COLUMNS.water.name);
+    const hurts = agents.hasColumn(INJURY_COLUMNS.woundCm2.name);
     return () => {
       const sex = agents.column<Uint8Array>(BODY_COLUMNS.sex.name).data;
       const effort = agents.column<Uint8Array>(BODY_COLUMNS.effort.name).data;
@@ -74,6 +76,54 @@ export const fxBodyWork: SystemDef = defineSystem({
         if (nextChance(streams, o, mealChance)) ingest(sim, slot, nextFloat(streams, o) * 1500);
         // Water, where the pipeline keeps it (body.heat): about 4 kg a day, all the same for odd and even.
         if (drinks && nextChance(streams, o, 0.05)) drink(sim, slot, nextFloat(streams, o) * 1.1);
+        // Injuries and foul water now and then, where the pipeline keeps them (body.injury): about one
+        // wound a month, some bleeding hard, some breaking bone, and a doubtful drink every week.
+        if (hurts && nextChance(streams, o, 0.0002)) {
+          injure(sim, slot, {
+            openCm2: nextFloat(streams, o) * 30,
+            bleedMlMin: nextFloat(streams, o) * nextFloat(streams, o) * 150,
+            dirt: nextFloat(streams, o),
+            leg: nextChance(streams, o, 0.2) ? nextFloat(streams, o) : 0,
+            strain: nextChance(streams, o, 0.3) ? nextFloat(streams, o) : 0,
+          });
+        }
+        if (hurts && nextChance(streams, o, 0.001)) exposeGut(sim, slot, waterDose(1, nextFloat(streams, o) * 0.3));
+      }
+    };
+  },
+});
+
+/**
+ * Keeps every body fed and watered: each hour it drinks what it is short of full water, and every
+ * six hours it eats what it spent since the last meal, so its fat stays about where it started.
+ * Put it before the bodies' systems.
+ */
+export const fxKeeper: SystemDef = defineSystem({
+  name: 'fixture.keeper',
+  // What the body had spent at its last meal, kept in the state so a saved run resumes the same.
+  declare: (state) => state.agents.ensureColumn({ name: 'keeperMark', dtype: 'f64', category: 'body' }),
+  create(sim: Sim) {
+    const agents = sim.state.agents;
+    const perHour = sim.config.time.ticksPerDay / 24;
+    return () => {
+      const tick = sim.state.tick;
+      const sex = agents.column<Uint8Array>(BODY_COLUMNS.sex.name).data;
+      const out = f64(sim, BODY_COLUMNS.energyOut.name);
+      const lean = f64(sim, BODY_COLUMNS.leanKg.name);
+      const water = f64(sim, HEAT_COLUMNS.water.name);
+      const core = f64(sim, HEAT_COLUMNS.coreC.name);
+      const mark = f64(sim, 'keeperMark');
+      for (let slot = 0; slot < agents.highWater; slot++) {
+        if (!agents.isAlive(slot) || sex[slot] === Sex.NONE) continue;
+        if (tick % perHour === 0 && core[slot] !== 0) {
+          const short = fullWaterKg(lean[slot]) - water[slot];
+          if (short > 0) drink(sim, slot, short);
+        }
+        if (tick % (6 * perHour) === 0) {
+          const spent = out[slot] - mark[slot];
+          if (spent > 0) ingest(sim, slot, spent);
+          mark[slot] = out[slot];
+        }
       }
     };
   },

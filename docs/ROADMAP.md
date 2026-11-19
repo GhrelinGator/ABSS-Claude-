@@ -50,7 +50,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 
 - **2.1 [O]** *Done 2026-11-19 (`DESIGN.md` §3.8, D-039): Schofield basal rate, FAO activity ratios, Pandolf's costs of walking, climbing and loads, a gut, fat and lean split by Forbes's rule, starvation; the energy audit checks real bodies. Fat has no hard ceiling (D-039).* Metabolism: basal rate, per-action costs (MET-style), fat storage, starvation. Energy audit test now has teeth.
 - **2.2 [O]** *Done 2026-11-19 (`DESIGN.md` §3.9, D-041): exposure to air, sky, sun, wind, rain, fire, hides and other bodies; a one-node core temperature with Scholander's regulation; total body water as an audited stock; death by dehydration, overheating or cold. The shelter probe's third share is now the sky hidden.* Hydration and thermoregulation (shelter, fire, hides, huddling).
-- **2.3 [O]** Injury types, healing, infection.
+- **2.3 [O]** *Done 2026-11-19 (`DESIGN.md` §3.10, D-042): wounds and bleeding, shock, broken bones, strains, burns from fire, lightning, wound and gut infections with an immune response, fever, the heat of healing, mobility; doors `injure` and `exposeGut`. Strains from overexertion wait for 2.4's load model.* Injury types, healing, infection.
 - **2.4 [O]** Fitness–fatigue model, acute-vs-chronic load injury risk, muscle cost tradeoff, skill curves.
 - **2.5 [O]** Aging, senescence, death causes, carcasses.
 - **2.6 [O]** Reproduction: mutual mating, energy-dependent fertility, gestation and lactation costs, infant dependency, child development.

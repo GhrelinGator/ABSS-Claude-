@@ -19,6 +19,8 @@ export interface Weather {
   fireWm2?: number;
   hideClo?: number;
   contact?: number;
+  /** 1 inside a flaming cell. */
+  inFire?: number;
 }
 
 /** Shaded, sheltered, half-humid still air at `airC`: a room, or deep shade. */
@@ -47,6 +49,7 @@ export function fxSurroundings(weather: (tick: number, slot: number) => Weather)
       const fire = col(SURROUNDINGS.fireWm2.name);
       const hide = col(SURROUNDINGS.hideClo.name);
       const contact = col(SURROUNDINGS.contact.name);
+      const inFire = col(SURROUNDINGS.inFire.name);
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (!agents.isAlive(slot) || sex[slot] === Sex.NONE) continue;
         const w = weather(sim.state.tick, slot);
@@ -59,6 +62,7 @@ export function fxSurroundings(weather: (tick: number, slot: number) => Weather)
         fire[slot] = w.fireWm2 ?? 0;
         hide[slot] = w.hideClo ?? 0;
         contact[slot] = w.contact ?? 0;
+        inFire[slot] = w.inFire ?? 0;
       }
     },
   });

@@ -29,6 +29,8 @@ export const StreamDomain = {
   /** The wind: its own stream, so adding it changed none of the other weather (Phase 1.8). */
   WIND: 7,
   FIRE: 8,
+  /** Bodies: infections caught, their strains, lightning landing (Phase 2.3). */
+  BODY: 9,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];

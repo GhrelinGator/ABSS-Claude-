@@ -5,6 +5,7 @@
 import type { SystemDef } from './core/registry.ts';
 import { exposure } from './body/exposure.ts';
 import { heat } from './body/heat.ts';
+import { injury } from './body/injury.ts';
 import { metabolism } from './body/metabolism.ts';
 import { climate } from './world/climate.ts';
 import { animals } from './world/animals.ts';
@@ -33,6 +34,8 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   // exposed where it ended its acts and charged for what it did in the same tick.
   // Phase 2.2: what each body is in, read from the world at its position.
   exposure,
+  // Phase 2.3: wounds, bleeding, broken bones, burns, lightning, infections, healing.
+  injury,
   // Phase 2.2: body temperature, shivering and sweat, body water.
   heat,
   // Phase 2.1: what agents' bodies spend, store and starve on.

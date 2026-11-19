@@ -17,6 +17,7 @@ export { ANIMAL_FIELDS, ANIMAL_PARTS, ANIMAL_STORE, AnimalKind, AnimalMode, CARC
 export { WATER_PATHOGEN_LAYER } from './world/pathogens.ts';
 export { BODY_COLUMNS, BODY_PARTS, DeathCause, Effort, METABOLISM, Sex, basalKcalPerDay, fatKgOf } from './body/metabolism.ts';
 export { HEAT, HEAT_COLUMNS, SURROUNDINGS, fullWaterKg } from './body/heat.ts';
+export { INJURY, INJURY_COLUMNS, INJURY_PARTS, InjuryKind, bloodVolumeL } from './body/injury.ts';
 export {
   Bedrock,
   MATERIALS,

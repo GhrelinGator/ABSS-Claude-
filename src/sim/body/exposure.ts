@@ -10,7 +10,7 @@ import type { SystemDef } from '../core/registry.ts';
 import { BucketGrid } from '../core/spatial.ts';
 import type { Sim, SimState } from '../sim.ts';
 import { CLIMATE_CONSTANTS, CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC } from '../world/climate.ts';
-import { FIRE_CONSTANTS, FireConditions, airHumidity, createFireProbe } from '../world/fire.ts';
+import { FIRE_CONSTANTS, FIRE_LAYERS, FireConditions, FireStage, airHumidity, createFireProbe } from '../world/fire.ts';
 import { sunlight } from '../world/light.ts';
 import { Material, OBJECT_STORE, createShelterProbe } from '../world/materials.ts';
 import { TERRAIN_LAYERS } from '../world/terrain.ts';
@@ -58,6 +58,7 @@ export const exposure: SystemDef = defineSystem({
     const conditions = new FireConditions(sim);
     const shelter = createShelterProbe(sim);
     const fires = createFireProbe(sim);
+    const stage = state.world.layerNames().includes(FIRE_LAYERS.stage) ? state.world.layer<Uint8Array>(FIRE_LAYERS.stage) : null;
     const grid = new BucketGrid(W * cs, Hc * cs, 200);
     const share = new Float64Array(3);
     const fireOut = new Float64Array(2);
@@ -79,6 +80,7 @@ export const exposure: SystemDef = defineSystem({
       const fireWm2 = agents.column<Float64Array>(S.fireWm2.name).data;
       const hideClo = agents.column<Float64Array>(S.hideClo.name).data;
       const contact = agents.column<Float64Array>(S.contact.name).data;
+      const inFire = agents.column<Float64Array>(S.inFire.name).data;
 
       // The weather now, the same for the whole map apart from height and storms.
       conditions.refresh(tick);
@@ -129,6 +131,7 @@ export const exposure: SystemDef = defineSystem({
         sunWm2[slot] = sun * open;
         fires.at(px, py, fireOut);
         fireWm2[slot] = fireOut[1];
+        inFire[slot] = stage !== null && stage[k] === FireStage.FLAMING ? 1 : 0;
         const clo = E.hideCloPerKg * hides[slot];
         hideClo[slot] = clo < E.hideMostClo ? clo : E.hideMostClo;
         let near = 0;
