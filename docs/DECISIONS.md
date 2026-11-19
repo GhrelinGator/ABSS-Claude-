@@ -321,3 +321,10 @@ Format: ID, date, status, decision, why, alternatives considered.
 - **Why merge with a world that collapsed:** the same world on `main` already starved hundreds of deer a year beside food they never ate; 1.12 changed where greens grow and tipped it. Reverting a physically right change because a fragile world fell over would be choosing physics by outcome (D-033). Phase 2 waits for Phase 1 either way, so nothing builds on it.
 - **Why fire goes to the owner:** what remains is ambiguous between a missing mechanism (a patchier woodland; grazers as strong as real ones) and a genuine property of an unbroken grassy woodland with no people, which would mean accepting a failed preregistered criterion. Only he can accept that (`GUARDRAILS.md` T10), and the candidate mechanisms reach into the plants and the compressed year (D-024).
 - **Why no calibration round:** no number left in fire would bound a fire's size; moving the uncertain ones (smouldering, flare-ups) until the average fits would leave the worst years as they are and is the tuning T4 forbids.
+
+### D-037: Fire on the open plains is accepted as a known limit (the owner's answer to Q10)
+- **Date:** 2026-11-19 · **Status:** Accepted
+- **Who:** the owner, in the claude.ai chat, choosing the option D-036 recommended.
+- **Decision:** No more fire work in Phase 1. The preregistered fire criterion is not changed (`GUARDRAILS.md` T10): it stays failed and is reported as failed (mean 0.64% of land a compressed year against 0.5%; worst year 87% against 25%). Phase 1 exits when the other four criteria pass on the full check, after 1.13. The open plains keep a huge autumn fire every few decades. E3 (open against walled land) must name fire, like rock shelters, as a difference between its conditions. A patchier woodland is parked for when the plants are next revisited; stronger grazers are not pursued.
+- **Why:** fire is backdrop for the social questions, and both ways of bounding it further reach well beyond fire, into the plants or into the compressed year (D-024).
+
