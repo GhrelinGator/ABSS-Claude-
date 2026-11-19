@@ -10,7 +10,7 @@ import { auditConserved } from '../../src/sim/core/audit.ts';
 import { cosTurn } from '../../src/sim/core/dmath.ts';
 import { defineSystem } from '../../src/sim/core/registry.ts';
 import type { SystemDef } from '../../src/sim/core/registry.ts';
-import { EXPOSURE, exposure } from '../../src/sim/body/exposure.ts';
+import { EXPOSURE } from '../../src/sim/body/exposure.ts';
 import { HEAT, HEAT_COLUMNS, SURROUNDINGS, drink, fullWaterKg, heat, saturationKPa, skinAreaM2 } from '../../src/sim/body/heat.ts';
 import { BODY_COLUMNS, BODY_PARTS, DeathCause, Effort, Sex, basalKcalPerDay, metabolism } from '../../src/sim/body/metabolism.ts';
 import type { BodySpec } from '../../src/sim/body/metabolism.ts';
@@ -284,7 +284,7 @@ test('body.exposure reads air, wind, sky, hides, fire and neighbours from the wo
   objects.column<Uint32Array>('holder').data[hide] = sim.state.agents.id.data[together[0]];
   const stick = spawnObject(sim, Material.WOOD, 2001, 2000, 0.5, 1, 0);
   objects.column<Float32Array>('burnKw').data[stick] = 20;
-  sim.state.parts.find((p) => p.name === FIRE_PARTS.counts)!.readings!()[FIRE_FIELDS.burningObjects] += 1;
+  (sim.state.parts.find((p) => p.name === FIRE_PARTS.counts)!.readings!() as Float64Array)[FIRE_FIELDS.burningObjects] += 1;
 
   // A cave on this walled map, with a body in it.
   const shelters = sim.state.store(ROCK_SHELTER_STORE);

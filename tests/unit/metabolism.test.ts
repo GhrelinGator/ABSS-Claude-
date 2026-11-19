@@ -7,7 +7,6 @@ import { test } from 'node:test';
 import { defaultConfig } from '../../src/sim/config.ts';
 import { auditConserved } from '../../src/sim/core/audit.ts';
 import { defineSystem } from '../../src/sim/core/registry.ts';
-import type { SystemDef } from '../../src/sim/core/registry.ts';
 import {
   BODY_COLUMNS,
   BODY_PARTS,
