@@ -99,6 +99,15 @@ export const CLIMATE_FIELDS = {
 
 const FIELD_COUNT = 15;
 
+/**
+ * Share of a storm's mean rain that falls at squared distance `d2` from its centre, for a storm of
+ * squared radius `r2`: twice the mean at the centre, none at the edge, the mean over the whole
+ * circle (thunderstorm rain is heaviest under the core; lightning reaches its light-rain edge). T-007.
+ */
+export function stormRainShare(d2: number, r2: number): number {
+  return d2 >= r2 || !(r2 > 0) ? 0 : 2 * (1 - d2 / r2);
+}
+
 export const CLIMATE_PARTS = { weather: 'climate.weather', strikes: 'climate.strikes' } as const;
 export const MOISTURE_LAYER = 'water.soilMoisture';
 
@@ -341,7 +350,7 @@ export const climate: SystemDef = defineSystem({
           let rain = rainMm;
           if (stormRain > 0) {
             const dx = (i + 0.5) * cs - sx;
-            if (dx * dx + dy * dy <= r2) rain += stormRain;
+            rain += stormRain * stormRainShare(dx * dx + dy * dy, r2);
           }
           // Storms, like ordinary rain, drop less where the climate is drier.
           let held = moisture[k] * cap + rain * rainfall[k];

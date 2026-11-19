@@ -4,3 +4,4 @@ One line per scheduled run that worked on a milestone (`CLAUDE.md`, "Unattended 
 
 - 2026-11-17 14:30 CT · 1.7 · the one-shot task fired twice, 11 s apart, and both sessions built the milestone (D-030). One finished the docs and opened #10, which then conflicted with #11 and was merged from the claude.ai chat; the other version is parked on `parked/phase-1.7-materials-second-run`.
 - 2026-11-17 15:12 CT · 1.8 · built fire (wind, litter, spread by minimum travel time, smouldering, burning objects, sparks, friction, light and heat, animals keeping away); eleven calibration rounds logged (T-005); #13. The next milestone (1.10) is [F], so no chained run.
+- 2026-11-19 00:39 CT · 1.11 · diagnosed open-country fire (size, not ignitions) and made five physical corrections (T-007); fire size needs breaks in the fuel, a new mechanism, so the run stopped for the owner (Q9, D-033); pull request left open, no chained run.

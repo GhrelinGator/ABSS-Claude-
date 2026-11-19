@@ -13,7 +13,7 @@ import { StreamDomain, globalStreamOffset, nextFloat } from '../core/rng.ts';
 import { BucketGrid } from '../core/spatial.ts';
 import { spawnEntity } from '../sim.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
-import { CLIMATE_CONSTANTS, CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, dailyMeanTemperatureC, stormActive, windAt } from './climate.ts';
+import { CLIMATE_CONSTANTS, CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, dailyMeanTemperatureC, stormActive, stormRainShare, windAt } from './climate.ts';
 import { MATERIAL_CONSTANTS, MATERIAL_LAYERS, Material, OBJECT_STORE, materialById, thicknessOf } from './materials.ts';
 import { seasonFraction } from './light.ts';
 import { BROWSE_LAYER, FORAGE_LAYER, PLANT_SPECIES, coverLayer, foodLayer } from './plants.ts';
@@ -150,6 +150,8 @@ export const FIRE_CONSTANTS = {
   /** A cell needs this much wood, kg, to smoulder. Smouldering dies out by itself at this rate per hour (embers cool). */
   smoulderLeastKg: 5,
   smoulderOutPerHour: 0.06,
+  /** A lightning holdover, smouldering at the base of the struck tree, goes out by itself at this rate per hour (T-007). */
+  holdoverOutPerHour: 0.015,
   /** Chance per hour that a smouldering cell with dry, cured fine fuel flares, times the moisture factor. */
   flarePerHour: 0.3,
   /**
@@ -447,18 +449,19 @@ export class FireConditions {
     this.windUy = speed > 0 ? this.wind[1] / speed : 0;
   }
 
-  private insideStorm(k: number): boolean {
+  /** Share of today's storm's mean rain that falls on cell k (0 outside it). */
+  private stormShare(k: number): number {
     const cs = this.sim.config.world.cellSizeM;
     const i = k % this.W;
     const dx = (i + 0.5) * cs - this.stormX;
     const dy = ((k - i) / this.W + 0.5) * cs - this.stormY;
-    return dx * dx + dy * dy <= this.stormR2;
+    return stormRainShare(dx * dx + dy * dy, this.stormR2);
   }
 
   /** Rain that has fallen on cell k today so far, mm (storm rain from the storm's start). */
   rainOn(k: number): number {
     let mm = this.rainMm;
-    if (this.stormRainMm > 0 && this.insideStorm(k)) mm += this.stormRainMm;
+    if (this.stormRainMm > 0) mm += this.stormRainMm * this.stormShare(k);
     return mm * this.rainfall[k];
   }
 
@@ -475,14 +478,14 @@ export class FireConditions {
       if (!(amount > 1e-4)) continue;
       const dx = x - st[4 * n];
       const dy = y - st[4 * n + 1];
-      if (dx * dx + dy * dy <= st[4 * n + 2]) m += amount;
+      m += amount * stormRainShare(dx * dx + dy * dy, st[4 * n + 2]);
     }
     return m * this.rainfall[k];
   }
 
   /** A storm's rain falling on cell k right now, mm per hour (0 with no storm overhead). */
   stormRateNow(k: number): number {
-    return this.stormNow && this.insideStorm(k) ? this.stormMmPerHour * this.rainfall[k] : 0;
+    return this.stormNow ? this.stormMmPerHour * this.stormShare(k) * this.rainfall[k] : 0;
   }
 
   /** A wet day's ordinary rain on cell k today, mm (storms apart). */
@@ -959,6 +962,8 @@ export const fire: SystemDef = defineSystem({
     store.ensureColumn({ name: 'heat', dtype: 'f32', category: 'body' });
     // Set when something outside the fire system lit the cell; taken up on the system's next run.
     store.ensureColumn({ name: 'fresh', dtype: 'u8', category: 'body' });
+    // 1 while the cell smoulders from a lightning strike alone (a holdover), until it flares or a front arrives.
+    store.ensureColumn({ name: 'holdover', dtype: 'u8', category: 'body' });
     state.store(OBJECT_STORE).ensureColumn({ name: 'burnKw', dtype: 'f32', category: 'body' });
     state.addPart(new FireCounts());
     state.addPart(new FireWetting());
@@ -1126,6 +1131,7 @@ export const fire: SystemDef = defineSystem({
       fires.column<Float32Array>('age').data[slot] = 0;
       fires.column<Float32Array>('vigour').data[slot] = K.vigourLeast + (K.vigourMost - K.vigourLeast) * random();
       fires.column<Uint8Array>('fresh').data[slot] = 0;
+      fires.column<Uint8Array>('holdover').data[slot] = 0;
       stage[k] = FireStage.FLAMING;
       lastBurn[k] = dayIndex(config, tick) + 1;
       counts[FIRE_FIELDS.cellsIgnited] += 1;
@@ -1146,6 +1152,7 @@ export const fire: SystemDef = defineSystem({
       }
       fires.column<Float32Array>('flameLeft').data[slot] = 0;
       fires.column<Uint8Array>('fresh').data[slot] = 0;
+      fires.column<Uint8Array>('holdover').data[slot] = 0;
       stage[k] = FireStage.SMOULDERING;
       return true;
     }
@@ -1171,6 +1178,7 @@ export const fire: SystemDef = defineSystem({
         if (flame(k, tick)) {
           counts[FIRE_FIELDS.lightningIgnitions] += 1;
         } else if (stage[k] === FireStage.NONE && smoulder(k)) {
+          fires.column<Uint8Array>('holdover').data[slotOfCell[k]] = 1;
           counts[FIRE_FIELDS.lightningIgnitions] += 1;
           counts[FIRE_FIELDS.holdovers] += 1;
         }
@@ -1315,7 +1323,8 @@ export const fire: SystemDef = defineSystem({
         const poles = conditions.poleMoisture(k);
         const dry = clamp01((K.smoulderWetMoisture - poles) / (K.smoulderWetMoisture - K.smoulderDryMoisture));
         const rainOut = rainOutChance(k, K.rainOutPerMmPerHour, K.rainOutMost);
-        if (dry <= 0 || random() < rainOut + K.smoulderOutPerHour * hoursPerTick) {
+        const selfOut = fires.column<Uint8Array>('holdover').data[slot] === 1 ? K.holdoverOutPerHour : K.smoulderOutPerHour;
+        if (dry <= 0 || random() < rainOut + selfOut * hoursPerTick) {
           removeFire(slot);
           continue;
         }
