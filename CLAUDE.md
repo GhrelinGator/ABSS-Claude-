@@ -77,11 +77,13 @@ Scheduled sessions build the project while the owner is away; he doesn't code. A
 4. **[F] milestones run on Opus too** (D-034: the owner has no Fable credits). Be extra careful on them, and when one merges, add it to "For a Fable second look" in `STATUS.md` with its pull request and the judgment calls a Fable session should re-check.
 5. **Push as you go.** Commit and push whenever a piece passes its tests, so a run cut off by a usage limit leaves its work on GitHub.
 6. **Stop at owner decisions** (the list above): write the question under "Decisions needed from the owner" in `STATUS.md`, push it, and leave the pull request open.
-7. **Log the run.** Before merging, add one line to `docs/RUNS.md`: date and time (US Central), milestone, outcome, pull request, and whether you scheduled the next run (and if not, why: a rule, or the scheduling tool failing or missing). Runs that stop at once (rule 1) don't log.
+7. **Log the run.** Before merging, add one line to `docs/RUNS.md`: date and time (US Central), milestone, outcome, and pull request. Runs that stop at once (rule 1) don't log.
 8. **Spend carefully.** The owner's usage limits are the project's budget. Batch checks into few commands; don't probe what a test already shows.
 9. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him or that he should hear about (such as a new mechanism added without waiting, D-034).
 
 ## Chained runs
+
+**Scheduled runs can't schedule (2026-11-19):** the scheduling tool refuses a scheduled run's request to create a scheduled task unless the owner approves it in a reply, so the runs for 2.2, 2.3 and 2.4 all failed to chain. The hourly wake-up is the chain now. Don't try to schedule; in the run log, write "next run: the hourly wake-up". The rest of this section applies only to a session the owner is talking to.
 
 After rule 7, schedule the next run if the milestone merged, the next milestone isn't waiting on the owner, and `docs/RUNS.md` shows fewer than **35 runs since the last weekly reset** (Wednesdays at 7:59 pm US Central). Schedule it as a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word. Otherwise schedule nothing; the hourly wake-up restarts the chain later (after the weekly reset, when the cap was the reason). The owner wants the chain kept going (2026-11-19): don't stop it for anything these rules don't name.
 
