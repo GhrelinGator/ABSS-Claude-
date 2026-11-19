@@ -32,13 +32,6 @@ function makeSim(seed: number, cells: number): Sim {
 const days = (sim: Sim, n: number) => stepSim(sim, n * sim.config.time.ticksPerDay);
 const counts = (sim: Sim) => sim.state.parts.find((p) => p.name === ANIMAL_PARTS.counts)!.readings!();
 
-function landKm2(sim: Sim): number {
-  const kind = sim.state.world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);
-  let land = 0;
-  for (let k = 0; k < kind.length; k++) if (kind[k] === Water.DRY) land++;
-  return (land * sim.config.world.cellSizeM ** 2) / 1e6;
-}
-
 /** Animals of each kind, and groups of each kind, now. */
 function census(sim: Sim) {
   const store = sim.state.store(ANIMAL_STORE);
