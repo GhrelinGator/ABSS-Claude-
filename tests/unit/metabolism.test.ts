@@ -7,7 +7,6 @@ import { test } from 'node:test';
 import { defaultConfig } from '../../src/sim/config.ts';
 import { auditConserved } from '../../src/sim/core/audit.ts';
 import { defineSystem } from '../../src/sim/core/registry.ts';
-import type { SystemDef } from '../../src/sim/core/registry.ts';
 import {
   BODY_COLUMNS,
   BODY_PARTS,
@@ -25,7 +24,8 @@ import {
 import type { BodySpec } from '../../src/sim/body/metabolism.ts';
 import { createSim, hashSim, loadSim, saveSim, spawnAgent, stepSim } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
-import { HADZA_MAN, HADZA_WOMAN, fxBodyWork, spawnWithBody } from '../fixtures/bodies.ts';
+import { HADZA_MAN, HADZA_WOMAN, MAN_DAY, WOMAN_DAY, dayScript, fxBodyWork, repeat, spawnWithBody } from '../fixtures/bodies.ts';
+import type { Step } from '../fixtures/bodies.ts';
 
 const col = (sim: Sim, name: string) => sim.state.agents.column<Float64Array>(name).data;
 
@@ -41,73 +41,6 @@ function deaths(sim: Sim): number {
   const part = sim.state.parts.find((p) => p.name === BODY_PARTS.deaths);
   return part && part.readings ? part.readings()[DeathCause.STARVATION] : Number.NaN;
 }
-
-/** One step of a scripted day, by tick of day. */
-interface Step {
-  effort: number;
-  metres?: number;
-  load?: number;
-  climb?: number;
-  meal?: number;
-}
-
-/** A scripted day, repeated every day, for every agent with a body. Runs before metabolism. */
-function dayScript(plan: readonly Step[]): SystemDef {
-  return defineSystem({
-    name: 'fixture.day',
-    create: (sim) => () => {
-      const agents = sim.state.agents;
-      const step = plan[sim.state.tick % plan.length];
-      const secondsPerTick = 86_400 / sim.config.time.ticksPerDay;
-      for (let slot = 0; slot < agents.highWater; slot++) {
-        if (!agents.isAlive(slot)) continue;
-        agents.column<Uint8Array>(BODY_COLUMNS.effort.name).data[slot] = step.effort;
-        if (step.metres) {
-          col(sim, BODY_COLUMNS.movedM.name)[slot] = step.metres;
-          col(sim, BODY_COLUMNS.movingS.name)[slot] = secondsPerTick;
-        }
-        if (step.load) col(sim, BODY_COLUMNS.loadKg.name)[slot] = step.load;
-        if (step.climb) col(sim, BODY_COLUMNS.climbedM.name)[slot] = step.climb;
-        if (step.meal) ingest(sim, slot, step.meal);
-      }
-    },
-  });
-}
-
-function repeat(n: number, step: Step): Step[] {
-  return Array.from({ length: n }, () => ({ ...step }));
-}
-
-/**
- * A Hadza-like day (§9: men walk about 11 km a day, women about 6): 9 hours'
- * sleep, an outing on foot with a stretch of digging or butchering in the
- * middle and a load on the way back, the rest of the day sitting.
- */
-const MAN_DAY: Step[] = [
-  ...repeat(36, { effort: Effort.SLEEP }),
-  ...repeat(6, { effort: Effort.STILL }),
-  ...repeat(8, { effort: Effort.STILL, metres: 760, climb: 5 }),
-  ...repeat(12, { effort: Effort.MODERATE }),
-  ...repeat(7, { effort: Effort.STILL, metres: 760, climb: 5, load: 10 }),
-  ...repeat(57, { effort: Effort.STILL }),
-  ...repeat(18, { effort: Effort.SLEEP }),
-];
-MAN_DAY[40].meal = 900;
-MAN_DAY[80].meal = 900;
-MAN_DAY[120].meal = 800;
-
-const WOMAN_DAY: Step[] = [
-  ...repeat(36, { effort: Effort.SLEEP }),
-  ...repeat(6, { effort: Effort.STILL }),
-  ...repeat(5, { effort: Effort.STILL, metres: 645, climb: 5, load: 8 }),
-  ...repeat(18, { effort: Effort.MODERATE }),
-  ...repeat(4, { effort: Effort.STILL, metres: 645, climb: 5, load: 15 }),
-  ...repeat(57, { effort: Effort.STILL }),
-  ...repeat(18, { effort: Effort.SLEEP }),
-];
-WOMAN_DAY[40].meal = 700;
-WOMAN_DAY[80].meal = 600;
-WOMAN_DAY[120].meal = 600;
 
 /** A day with water and no food: sleep, sitting, a little standing about. */
 const FAST_DAY: Step[] = [

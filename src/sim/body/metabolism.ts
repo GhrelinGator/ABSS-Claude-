@@ -22,7 +22,8 @@ export const Sex = { NONE: 0, FEMALE: 1, MALE: 2 } as const;
  */
 export const Effort = { STILL: 0, SLEEP: 1, LIGHT: 2, MODERATE: 3, HEAVY: 4 } as const;
 
-export const DeathCause = { STARVATION: 1 } as const;
+/** Causes of death counted in `body.deaths` (index = cause). Starvation is metabolism's; the rest are body.heat's (§3.9). */
+export const DeathCause = { STARVATION: 1, DEHYDRATION: 2, HYPERTHERMIA: 3, HYPOTHERMIA: 4 } as const;
 
 export const METABOLISM = {
   /** Energy density of fat, kcal per kg (39.5 MJ/kg; Hall 2008). */
@@ -119,12 +120,16 @@ export const BODY_COLUMNS = {
   movingS: { name: 'movingS', dtype: 'f64', category: 'body' },
   climbedM: { name: 'climbedM', dtype: 'f64', category: 'body' },
   loadKg: { name: 'loadKg', dtype: 'f64', category: 'body' },
+  /** Heat made by shivering this tick, W: asked for by body.heat (§3.9), charged and cleared by metabolism. */
+  shiverW: { name: 'shiverW', dtype: 'f64', category: 'body' },
+  /** Heat made in the last tick apart from shivering, W: written by metabolism, read by body.heat. */
+  heatW: { name: 'heatW', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = BODY_COLUMNS;
 
 export const BODY_PARTS = { deaths: 'body.deaths' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
-const DEATH_SLOTS = 2;
+const DEATH_SLOTS = 5;
 
 function declareBody(state: SimState): void {
   for (const spec of Object.values(BODY_COLUMNS)) state.agents.ensureColumn(spec);
@@ -250,6 +255,8 @@ export const metabolism: SystemDef = defineSystem({
       const moving = agents.column<Float64Array>(C.movingS.name).data;
       const climbed = agents.column<Float64Array>(C.climbedM.name).data;
       const load = agents.column<Float64Array>(C.loadKg.name).data;
+      const shiver = agents.column<Float64Array>(C.shiverW.name).data;
+      const heat = agents.column<Float64Array>(C.heatW.name).data;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -273,7 +280,8 @@ export const metabolism: SystemDef = defineSystem({
         let movingSeconds = moving[slot];
         const metres = moved[slot];
         const carried = load[slot];
-        if (!(movingSeconds >= 0 && metres >= 0 && climbed[slot] >= 0 && carried >= 0)) {
+        const shivering = shiver[slot];
+        if (!(movingSeconds >= 0 && metres >= 0 && climbed[slot] >= 0 && carried >= 0 && shivering >= 0)) {
           throw new RangeError(`body.metabolism: agent id ${ids[slot]} reports a negative or missing movement.`);
         }
         if (movingSeconds > secondsPerTick) movingSeconds = secondsPerTick;
@@ -289,6 +297,9 @@ export const metabolism: SystemDef = defineSystem({
           const share = carried / mass;
           spent += (M.loadWattsPerKg * (mass + carried) * share * share * secondsPerTick) / JOULES_PER_KCAL;
         }
+        heat[slot] = (spent * JOULES_PER_KCAL) / secondsPerTick;
+        // Shivering: the heat body.heat asked for (DESIGN.md §3.9).
+        spent += (shivering * secondsPerTick) / JOULES_PER_KCAL;
         energy[slot] -= spent;
         energyOut[slot] += spent;
 
@@ -304,6 +315,7 @@ export const metabolism: SystemDef = defineSystem({
         moving[slot] = 0;
         climbed[slot] = 0;
         load[slot] = 0;
+        shiver[slot] = 0;
 
         // 4. Starvation.
         if (newLean < M.starveLeanShare * leanBuilt[slot]) {

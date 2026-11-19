@@ -360,12 +360,12 @@ export const MATERIAL_CONSTANTS = {
 const K = MATERIAL_CONSTANTS;
 
 /**
- * Share of protection from wind, rain, and loss of body heat, for each kind of rock shelter.
- * Rows: overhang, cave. Columns: wind, rain, heat loss.
+ * Share of wind and rain kept off, and of the sky hidden, for each kind of rock shelter.
+ * Rows: overhang, cave. Columns: wind, rain, sky.
  */
 export const ROCK_SHELTER_PROTECTION: Readonly<Record<number, readonly [number, number, number]>> = {
-  [RockShelterKind.OVERHANG]: [0.5, 0.85, 0.25],
-  [RockShelterKind.CAVE]: [0.95, 1, 0.6],
+  [RockShelterKind.OVERHANG]: [0.5, 0.85, 0.6],
+  [RockShelterKind.CAVE]: [0.95, 1, 1],
 };
 
 const SALT_BEDROCK = 0x6265_6472;
@@ -658,19 +658,21 @@ function splitInto(
 
 // ---------------------------------------------------------------- shelter
 
-/** Protection from wind, rain, and loss of body heat given by plants in a cell, each 0 to 1. */
+/** Wind and rain kept off, and sky hidden, by plants in a cell, each 0 to 1 (DESIGN.md §2.15). */
 export function canopyShelter(treeCover: number, bushCover: number, reedCover: number, season: number, out: Float64Array): void {
   // Deciduous leaves are out from mid-spring to mid-autumn (the year starts at the spring equinox).
   const leaves = season >= 0.08 && season < 0.65;
   const wind = 0.7 * treeCover + 0.35 * bushCover + 0.2 * reedCover;
   out[0] = wind < 0.9 ? wind : 0.9;
   out[1] = (leaves ? 0.3 : 0.1) * treeCover + 0.1 * bushCover;
-  out[2] = 0.25 * treeCover + 0.05 * bushCover;
+  const sky = (leaves ? 0.85 : 0.4) * treeCover + 0.3 * bushCover;
+  out[2] = sky < 1 ? sky : 1;
 }
 
 /**
  * Protection from a pile of lying objects with the given standing screen, flat covering, and
- * rain cover from standing pieces (all m²), into `out` as wind, rain, heat loss (0 to 1).
+ * rain cover from standing pieces (all m²), into `out` as wind and rain kept off and sky hidden
+ * (0 to 1). What keeps the rain off hides the sky.
  */
 export function pileShelter(standingM2: number, coveringM2: number, standingRainM2: number, out: Float64Array): void {
   const held = coveringM2 < K.coveringPerSupport * standingM2 ? coveringM2 : K.coveringPerSupport * standingM2;
@@ -680,14 +682,15 @@ export function pileShelter(standingM2: number, coveringM2: number, standingRain
   const wet = (K.pileMost * rain) / (rain + K.pileRainHalfM2);
   out[0] = wind;
   out[1] = wet;
-  out[2] = 0.3 * wind + 0.3 * wet;
+  out[2] = wet;
 }
 
 export interface ShelterProbe {
   /**
    * Protection at (x, y), metres, from rock shelters, plant cover, and lying objects, written
-   * into `out` as [wind, rain, heat loss], each the share kept off (0 to 1). Objects are seen
-   * as they were at the first query of the tick (DESIGN.md §1.6).
+   * into `out` as [wind, rain, sky]: the shares of wind and rain kept off and of the sky hidden
+   * (0 to 1; the sky keeps off sun and the cold of a clear night). Objects are seen as they
+   * were at the first query of the tick (DESIGN.md §1.6).
    */
   at(x: number, y: number, out: Float64Array): void;
 }

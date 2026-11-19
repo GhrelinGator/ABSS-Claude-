@@ -465,7 +465,7 @@ function shelterHere(i: number, j: number): Array<[string, string]> {
   shelterProbe.probe.at((i + 0.5) * cs, (j + 0.5) * cs, out);
   rows.push([
     'Shelter at the centre',
-    `keeps off ${percent(out[0])} of the wind and ${percent(out[1])} of the rain; ${percent(out[2])} less body heat lost`,
+    `keeps off ${percent(out[0])} of the wind and ${percent(out[1])} of the rain; hides ${percent(out[2])} of the sky (sun, and the cold of a clear night)`,
   ]);
   return rows;
 }
