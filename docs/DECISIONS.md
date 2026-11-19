@@ -404,7 +404,12 @@ Format: ID, date, status, decision, why, alternatives considered.
 - **Simplifications and deferrals the owner should hear about (`GUARDRAILS.md` T11):** watching a skilled agent (§3.4's last clause, §5.6) is between agents and is not built: it waits for the owner. No fatigue within a day (only the 7-day average) and no sleepiness (Phase 3's drive); no transfer of skill between kinds; no training that differs by age or sex, no heritable trainability (2.5–2.7); Schofield still charges fat at the same rate as muscle (real adipose tissue costs about a third as much), for 2.8. Most numbers are from memory (`RESEARCH.md`, *Fitness, fatigue and skill*); Koster et al. (2020) was read at the source.
 - **Cost:** about 0.3 µs per body per tick with 400 working bodies, about 5% of the ~6 µs per agent left for bodies and minds (D-016). Skills add 736 bytes per agent to snapshots.
 
-### D-044: Growth, aging, death and carcasses (2.5): a frame curve from forager growth; Gurven & Kaplan's Gompertz term as death by old age, drawn once per body; one door for every death, which leaves a carcass
+### D-044: The weekly cap on runs drops from 35 to 25
+- **Date:** 2026-11-19 · **Status:** Accepted
+- **Who:** Opus 5.5, claude.ai chat, on the owner's report of his usage.
+- **Decision:** On Thursday at 5:21 pm, about 21 hours after the weekly reset, the owner's weekly limit stood at 32%. The week so far held 7 logged runs (1.11 to 2.4), 2.5 in progress, and this chat (the end of the 1.10 review, then the owner's questions). That puts a run at about 3% of the week, double the 1.5% the cap of 35 assumed, so 35 runs would spend more than the whole week. At 25 runs (about 75–80%) plus his own chats, about 10% stays his. The hourly wake-up means the cap, not time, sets the pace: about 25 milestone runs a week.
+
+### D-045: Growth, aging, death and carcasses (2.5): a frame curve from forager growth; Gurven & Kaplan's Gompertz term as death by old age, drawn once per body; one door for every death, which leaves a carcass
 - **Date:** 2026-11-19 · **Status:** Accepted
 - **Who:** Opus 5.5, unattended run, on an [O] milestone. Mechanisms in agents' bodies and the world with no social content: they went in without waiting, and the owner is told (D-034).
 - **Decision:** As designed in `DESIGN.md` §3.12 (written before the code): pure functions of age in `src/sim/body/lifecourse.ts`, a system `body.aging` (`aging.ts`) that runs last, and a door `deathDoor` in `metabolism.ts` that every system killing a body now uses. The choices that go beyond §3.5:
