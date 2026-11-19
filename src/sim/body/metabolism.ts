@@ -136,6 +136,17 @@ export const BODY_COLUMNS = {
   shiverW: { name: 'shiverW', dtype: 'f64', category: 'body' },
   /** Heat made in the last tick apart from shivering, W: written by metabolism, read by body.heat. */
   heatW: { name: 'heatW', dtype: 'f64', category: 'body' },
+  /**
+   * What the body spent on its activity in the last tick, in multiples of its basal rate (effort,
+   * standing while moving, the motion, the load; not food's thermic effect, healing or shivering):
+   * written by metabolism, read by body.fitness (§3.11).
+   */
+  exertion: { name: 'exertion', dtype: 'f64', category: 'body' },
+  /**
+   * The daily load, in load-hours, the body was used to when it formed (§3.11): written by formBody,
+   * read once and cleared by body.fitness.
+   */
+  conditionedTo: { name: 'conditionedTo', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = BODY_COLUMNS;
 /** body.injury's heat of healing (§3.10), named here so metabolism need not import injury. */
@@ -171,6 +182,12 @@ export interface BodySpec {
   readonly ageYears: number;
   readonly leanKg: number;
   readonly fatKg: number;
+  /**
+   * The daily load, in load-hours, the body has been living at (§3.11): an adult formed after a
+   * forager's life comes with that life's fitness and trained muscle. 0, the default, is a body that
+   * has never worked, like a newborn.
+   */
+  readonly conditionedTo?: number;
 }
 
 /**
@@ -188,6 +205,8 @@ export function formBody(sim: Sim, slot: number, spec: BodySpec): void {
   if (!(spec.ageYears >= 0 && spec.ageYears < 200)) throw new RangeError(`formBody: age ${spec.ageYears}.`);
   if (!(spec.leanKg > 0 && spec.leanKg < 500)) throw new RangeError(`formBody: lean mass ${spec.leanKg}.`);
   if (!(spec.fatKg > 0 && spec.fatKg < 500)) throw new RangeError(`formBody: fat ${spec.fatKg}.`);
+  const conditioned = spec.conditionedTo ?? 0;
+  if (!(conditioned >= 0 && conditioned < 1000)) throw new RangeError(`formBody: conditioned to ${conditioned}.`);
   const energy = M.fatKcalPerKg * spec.fatKg + M.leanKcalPerKg * spec.leanKg;
   sex[slot] = spec.sex;
   agents.column<Float64Array>(C.born.name).data[slot] = sim.state.tick - spec.ageYears * ticksPerYear(sim.config);
@@ -197,6 +216,7 @@ export function formBody(sim: Sim, slot: number, spec: BodySpec): void {
   agents.column<Float64Array>(C.energy.name).data[slot] = energy;
   agents.column<Float64Array>(C.energyIn.name).data[slot] = energy;
   agents.column<Float64Array>(C.energyOut.name).data[slot] = 0;
+  agents.column<Float64Array>(C.conditionedTo.name).data[slot] = conditioned;
 }
 
 /** Put food into an agent's gut: `kcal` of metabolizable energy, which the world has already given up. */
@@ -273,6 +293,7 @@ export const metabolism: SystemDef = defineSystem({
       const load = agents.column<Float64Array>(C.loadKg.name).data;
       const shiver = agents.column<Float64Array>(C.shiverW.name).data;
       const heat = agents.column<Float64Array>(C.heatW.name).data;
+      const exertion = agents.column<Float64Array>(C.exertion.name).data;
       const heal = healing ? agents.column<Float64Array>(HEAL_COLUMN).data : null;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
@@ -306,14 +327,15 @@ export const metabolism: SystemDef = defineSystem({
           throw new RangeError(`body.metabolism: agent id ${ids[slot]} moved ${metres} m in no time.`);
         }
         const basalPerSecond = basalKcalPerDay(s, (tick - born[slot]) / perYear, mass) / 86_400;
-        let spent =
+        let active =
           basalPerSecond * (ratio * (secondsPerTick - movingSeconds) + M.movingRatio * movingSeconds) +
-          motionKcal(mass, carried, metres, movingSeconds, climbed[slot]) +
-          M.thermicShare * absorbed;
+          motionKcal(mass, carried, metres, movingSeconds, climbed[slot]);
         if (carried > 0) {
           const share = carried / mass;
-          spent += (M.loadWattsPerKg * (mass + carried) * share * share * secondsPerTick) / JOULES_PER_KCAL;
+          active += (M.loadWattsPerKg * (mass + carried) * share * share * secondsPerTick) / JOULES_PER_KCAL;
         }
+        exertion[slot] = active / (basalPerSecond * secondsPerTick);
+        let spent = active + M.thermicShare * absorbed;
         if (heal) {
           const healingW = heal[slot];
           if (!(healingW >= 0)) throw new RangeError(`body.metabolism: agent id ${ids[slot]} reports healing heat ${healingW}.`);

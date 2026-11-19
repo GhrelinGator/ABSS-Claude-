@@ -10,16 +10,20 @@ import { spawnAgent } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
 import { HEAT_COLUMNS, drink, fullWaterKg } from '../../src/sim/body/heat.ts';
 import { INJURY_COLUMNS, exposeGut, injure, waterDose } from '../../src/sim/body/injury.ts';
+import { SKILL_COLUMNS, SKILL_KINDS, practice } from '../../src/sim/body/skills.ts';
 
 const f64 = (sim: Sim, name: string) => sim.state.agents.column<Float64Array>(name).data;
+
+/** Load-hours a day of a forager's working day (§3.11): what the Hadza-like adults below are used to. */
+export const FORAGER_LOAD = 8;
 
 /**
  * Hadza-like adults, approximately as Pontzer et al. (2012) describe them
  * (body mass about 51 kg for men at about 13.5% fat, about 43 kg for women at
  * about 21%; from memory: the paper could not be fetched in session 20).
  */
-export const HADZA_MAN: BodySpec = { sex: Sex.MALE, ageYears: 28, leanKg: 44.0, fatKg: 6.9 };
-export const HADZA_WOMAN: BodySpec = { sex: Sex.FEMALE, ageYears: 28, leanKg: 34.0, fatKg: 9.0 };
+export const HADZA_MAN: BodySpec = { sex: Sex.MALE, ageYears: 28, leanKg: 44.0, fatKg: 6.9, conditionedTo: FORAGER_LOAD };
+export const HADZA_WOMAN: BodySpec = { sex: Sex.FEMALE, ageYears: 28, leanKg: 34.0, fatKg: 9.0, conditionedTo: FORAGER_LOAD };
 
 /** Spawn an agent and give it a body in one step, as founder placement will. */
 export function spawnWithBody(sim: Sim, x: number, y: number, spec: BodySpec = HADZA_MAN): number {
@@ -53,6 +57,7 @@ export const fxBodyWork: SystemDef = defineSystem({
     const secondsPerTick = 86_400 / sim.config.time.ticksPerDay;
     const drinks = agents.hasColumn(HEAT_COLUMNS.water.name);
     const hurts = agents.hasColumn(INJURY_COLUMNS.woundCm2.name);
+    const learns = agents.hasColumn(SKILL_COLUMNS.skillPractice.name);
     return () => {
       const sex = agents.column<Uint8Array>(BODY_COLUMNS.sex.name).data;
       const effort = agents.column<Uint8Array>(BODY_COLUMNS.effort.name).data;
@@ -88,6 +93,10 @@ export const fxBodyWork: SystemDef = defineSystem({
           });
         }
         if (hurts && nextChance(streams, o, 0.001)) exposeGut(sim, slot, waterDose(1, nextFloat(streams, o) * 0.3));
+        // Practice at something now and then, where the pipeline keeps skills (body.fitness).
+        if (learns && nextChance(streams, o, 0.05)) {
+          practice(sim, slot, nextInt(streams, o, 4), nextInt(streams, o, SKILL_KINDS), nextFloat(streams, o) * secondsPerTick);
+        }
       }
     };
   },

@@ -2,18 +2,21 @@
 // many, their mean mass and fat share, the energy they have eaten and spent so
 // far, their mean core temperature and water deficit, the water they have taken
 // in and lost so far, how many are wounded, burned, broken, infected or ill
-// now (§3.10), injuries so far by kind, and deaths so far by cause.
+// now (§3.10), their mean capacity for work and trained muscle (§3.11),
+// injuries so far by kind, and deaths so far by cause.
 
 import type { Measurements, Observer } from '../observer.ts';
 import {
   BODY_COLUMNS,
   BODY_PARTS,
   DeathCause,
+  FITNESS_COLUMNS,
   HEAT_COLUMNS,
   INJURY_COLUMNS,
   INJURY_PARTS,
   InjuryKind,
   Sex,
+  capacity,
   fatKgOf,
   fullWaterKg,
 } from '../../sim/readonly.ts';
@@ -43,6 +46,12 @@ export const bodies: Observer = {
     const wInf = hurt ? agents.column(INJURY_COLUMNS.woundInfection.name) : null;
     const gInf = hurt ? agents.column(INJURY_COLUMNS.gutInfection.name) : null;
     const mobility = hurt ? agents.column(INJURY_COLUMNS.mobility.name) : null;
+    const fit = agents.hasColumn(FITNESS_COLUMNS.fitness.name);
+    const fitness = fit ? agents.column(FITNESS_COLUMNS.fitness.name) : null;
+    const fatigue = fit ? agents.column(FITNESS_COLUMNS.fatigue.name) : null;
+    const trained = fit ? agents.column(FITNESS_COLUMNS.trainedKg.name) : null;
+    let able = 0;
+    let muscle = 0;
     let wounded = 0;
     let burned = 0;
     let broken = 0;
@@ -76,6 +85,10 @@ export const bodies: Observer = {
         if (gInf[slot] > 0) ill++;
         moving += mobility[slot];
       }
+      if (fitness && fatigue && trained) {
+        able += capacity(fitness[slot], fatigue[slot]);
+        muscle += trained[slot];
+      }
       if (core && water && waterIn && waterOut && core[slot] !== 0) {
         warm++;
         coreSum += core[slot];
@@ -98,6 +111,10 @@ export const bodies: Observer = {
       out.woundInfectedShare = infected / n;
       out.gutIllShare = ill / n;
       out.meanMobility = moving / n;
+    }
+    if (fit && n > 0) {
+      out.meanCapacity = able / n;
+      out.meanTrainedKg = muscle / n;
     }
     if (warm > 0) {
       out.meanCoreC = coreSum / warm;
@@ -126,6 +143,7 @@ export const bodies: Observer = {
       out['injuries.lightning'] = injuries[InjuryKind.LIGHTNING];
       out['injuries.woundInfections'] = injuries[InjuryKind.WOUND_INFECTION];
       out['injuries.gutIllnesses'] = injuries[InjuryKind.GUT_ILLNESS];
+      if (injuries.length > InjuryKind.STRAIN) out['injuries.strains'] = injuries[InjuryKind.STRAIN];
     }
     return out;
   },

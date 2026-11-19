@@ -4,6 +4,7 @@
 
 import type { SystemDef } from './core/registry.ts';
 import { exposure } from './body/exposure.ts';
+import { fitness } from './body/fitness.ts';
 import { heat } from './body/heat.ts';
 import { injury } from './body/injury.ts';
 import { metabolism } from './body/metabolism.ts';
@@ -40,4 +41,6 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   heat,
   // Phase 2.1: what agents' bodies spend, store and starve on.
   metabolism,
+  // Phase 2.4: fitness and fatigue from the tick's exertion, strains, trained muscle (skills are kept here too).
+  fitness,
 ]);
