@@ -1,0 +1,13 @@
+{
+  "name": "P1-ecology-review",
+  "description": "Phase 1 exit check (ROADMAP 1.10): the world without agents for 100 compressed years, on 10 seeds of open country and the same 10 seeds hemmed in, sampled once a compressed year.",
+  "ticks": 691200,
+  "metricsEveryTicks": 6912,
+  "seeds": { "from": 1, "count": 10 },
+  "base": {},
+  "conditions": {
+    "open": { "world": { "circumscription": 0 } },
+    "hemmed": { "world": { "circumscription": 1 } }
+  },
+  "observers": ["landscape", "weather", "vegetation", "fauna", "pathogens", "fire"]
+}
