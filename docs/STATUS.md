@@ -6,8 +6,8 @@ Update this at the end of every session. Newest information at the top of each s
 
 - **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), 1.11 and 1.12 (fire corrections, a water table, bare ground), and a viewer (1.9) that shows all of it.
 - **The world has weather and wind, plants, animals, stone, fallen wood and litter, and fire; no people.** The real pipeline has seven systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, the materials, and fire. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 1.13 [F] (runs on Opus, D-034): open seed 6's deer starve beside greens they never eat; diagnose, then fix by the nudge protocol (`ROADMAP.md` 1.13; `experiments/P1-ecology-review/results.md`, last section; D-036). A full-size open world takes about 8–10 minutes for 100 compressed years on one core, so test on single seeds (`npm run experiment` with a one-seed spec, or `experiments/P1-fire-regime/diagnose.ts` for fire). Don't re-run the full exit check until the owner answers Q10. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
-- **Blocked on:** the owner, for fire only (Q10). Phase 1 has not exited: the re-run of the exit check (2026-11-19) fails on fire (mean 0.64% of land a compressed year against 0.5%, worst year 87% against 25%) and on persistence (open seed 6). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
+- **Next action:** Phase 1.13 [F] (runs on Opus, D-034): open seed 6's deer starve beside greens they never eat; diagnose, then fix by the nudge protocol (`ROADMAP.md` 1.13; `experiments/P1-ecology-review/results.md`, last section; D-036). A full-size open world takes about 8–10 minutes for 100 compressed years on one core, so test on single seeds (`npm run experiment` with a one-seed spec, or `experiments/P1-fire-regime/diagnose.ts` for fire). Then re-run the full exit check: the owner accepted fire's failure as a known limit (Q10, D-037), so Phase 1 exits when the other four criteria pass, with fire reported as failed, not hidden. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
+- **Blocked on:** nothing. Phase 1 has not exited: the re-run of the exit check (2026-11-19) fails on fire (mean 0.64% of land a compressed year against 0.5%, worst year 87% against 25%) and on persistence (open seed 6). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
 
 ## What exists
 
@@ -41,11 +41,11 @@ About 15,200 lines of TypeScript including tests after session 13 (fire alone ab
 
 ## Decisions needed from the owner
 
-Q10 blocks fire, not the chain: 1.13 goes ahead without it. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
+Nothing is blocking: Q10 was answered on 2026-11-19 (D-037). Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
 
 | # | Question | Needed by |
 |---|---|---|
-| Q10 | **Fires on open country are still too big in dry autumns** (1.12, D-036). The water table and bare ground you approved helped: across the 20 test worlds, burned land fell from 1.24% a year to 0.64% (the limit is 0.5%), and the worst year from 174% of a world to 87% (the limit is 25%). But damp ground follows the streams, which branch like a tree and never close round anything, so a fire walks round their heads; and the open plains are one soil and one even woodland from edge to edge. Two ways on: **(a)** accept it as a known limit and let Phase 1 exit with the fire criterion failing (the open plains then have a huge autumn fire every few decades; E3, open against walled, must name fire as a difference between its conditions, as it does rock shelters); or **(b)** keep working on fire with one more world mechanism: a patchier woodland (closed groves that stay damp and calm, open glades between), or grazers that thin the grass as much as real ones do (the compressed year makes them eat about 1% of it, which reaches into D-024). My recommendation: (a) for now, with the patchier woodland parked for when the plants are next revisited; fire is backdrop for the social questions, and both (b) options reach well beyond fire. | Before Phase 1 exits; 1.13 doesn't wait |
+| Q10 | *Answered 2026-11-19 (D-037):* accept it as a known limit. Phase 1 exits with the fire criterion reported as failed; the open plains keep a huge autumn fire every few decades; E3 counts fire as a difference between open and walled land; a patchier woodland is parked. | — |
 | Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
 | Q9 | *Answered 2026-11-19 (D-034):* yes to both breaks in the fuel: patchy ground from the soil and rock already on the map, and damp ground along rivers and springs. Milestone 1.12. | — |
 | Q8 | Plants kept up on the owner's phone at "1 year per second" (answered 2026-11-16). With animals a day costs about four times as much; does it still keep up? If not, the page could skip ahead in bigger steps or cap the speed. | Whenever |
@@ -107,6 +107,7 @@ Q10 blocks fire, not the chain: 1.13 goes ahead without it. Q9 was answered on 2
 
 ## Ideas parked (not in scope until a phase claims them)
 
+- A patchier woodland (closed groves that stay damp and calm, open glades between), for when the plants are next revisited; it would also bound fire on the open plains (D-037).
 - Conquest for territory and self-sacrifice for the group (needs a higher language floor).
 - Writing emerging from marks on objects ("learning from books").
 - Containers (hide + fiber), which would change storage dynamics.
@@ -117,6 +118,7 @@ Q10 blocks fire, not the chain: 1.13 goes ahead without it. Q9 was answered on 2
 
 ## Session log
 
+- **2026-11-19, session 18** (Opus 5.5, claude.ai; same chat). The owner answered Q10: accept fire on the open plains as a known limit (D-037). Restarted the chain on 1.13, which the 1.12 run had not scheduled.
 - **2026-11-19, session 17** (Opus 5.5, unattended chained run). Milestone 1.12 [F] on Opus, breaks in the fuel (D-035): a water table level with the river, lake, spring or small stream each cell drains to, which keeps stream banks moist from below; bare ground by soil; fire crossing patchy fuel only where its flames bridge the gaps. The water table and bare ground show in the page's inspector. Re-ran the full preregistered exit check: fire better (mean 0.64% against 1.24%, worst year 87% against 174%) but still failing, and open seed 6 lost its deer and wolves (fragile on `main` too). No calibration round: nothing left in fire would bound fire size (T-008). Merged; 1.13 diagnoses open seed 6; fire waits for the owner (Q10, D-036).
 
 - **2026-11-19, session 16** (Opus 5.5, claude.ai; same chat). The owner answered (D-034): yes to both breaks in the fuel (Q9); scheduled runs take [F] milestones and list them for a Fable second look; new mechanisms with no social content (the world, agents' bodies) no longer wait for him; keep the chain going. Closed a gap: the weekly cap now stops wake-up runs too. Merged #15 and started the chain on 1.12.
