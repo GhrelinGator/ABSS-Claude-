@@ -218,6 +218,14 @@ export const ANIMAL_CONSTANTS = {
   catDisperseFarM: 15_000,
   /** Predators drift back toward their anchor beyond this distance. */
   rangeM: 6000,
+  /** How far a grazer looks for a better spot: normally, and when below `hungryBelow` (T-006). */
+  grazeSearchM: 800,
+  hungryGrazeSearchM: 3000,
+  /**
+   * Starting numbers are densities per km² of habitat: land with at least this much forage
+   * (grazing and browse) counts fully, poorer land in proportion (T-006).
+   */
+  goodHabitatForageKgHa: 100,
   /** In a flaming cell (§2.16): share of the hares that die each tick, share of carcass meat burnt, and of its pathogen load left. */
   hareFireDeathsPerTick: 0.03,
   carcassBurntPerTick: 0.05,
@@ -391,12 +399,21 @@ function addGroup(state: SimState, store: EntityStore, kind: number, x: number, 
   return slot;
 }
 
-function landKm2(sim: Sim): number {
-  const kind = sim.state.world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);
-  let land = 0;
-  for (let k = 0; k < kind.length; k++) if (kind[k] === Water.DRY) land++;
+/** Km² of habitat: land counted in proportion to its forage, fully from `goodHabitatForageKgHa` (T-006). */
+export function habitatKm2(sim: Sim): number {
+  const world = sim.state.world;
+  const kind = world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);
+  const graze = world.layer<Float32Array>(FORAGE_LAYER);
+  const browse = world.layer<Float32Array>(BROWSE_LAYER);
   const cs = sim.config.world.cellSizeM;
-  return (land * cs * cs) / 1e6;
+  const good = (A.goodHabitatForageKgHa * cs * cs) / 10_000;
+  let cells = 0;
+  for (let k = 0; k < kind.length; k++) {
+    if (kind[k] !== Water.DRY) continue;
+    const share = (graze[k] + browse[k]) / good;
+    cells += share < 1 ? share : 1;
+  }
+  return (cells * cs * cs) / 1e6;
 }
 
 /** Is there a group of this kind with its anchor within `radius` of (x, y)? */
@@ -428,25 +445,18 @@ function startAnimals(sim: Sim): void {
   const hare = world.layer<Float32Array>(HARE_LAYER);
   const store = state.store(ANIMAL_STORE);
   const counts = state.parts.find((p) => p.name === ANIMAL_PARTS.counts) as AnimalCounts;
-  const km2 = landKm2(sim);
+  const km2 = habitatKm2(sim);
   if (km2 <= 0) return;
 
   let fmax = 0;
-  let fsum = 0;
-  let land = 0;
-  for (let k = 0; k < N; k++) {
-    if (kind[k] !== Water.DRY) continue;
-    land++;
-    fsum += forage[k];
-    if (forage[k] > fmax) fmax = forage[k];
-  }
-  const fmean = fsum / land;
+  for (let k = 0; k < N; k++) if (kind[k] === Water.DRY && forage[k] > fmax) fmax = forage[k];
+  const good = (A.goodHabitatForageKgHa * cs * cs) / 10_000;
 
-  // Hares in proportion to forage, up to twice the average density.
+  // Hares in proportion to forage against the good-habitat yardstick, up to twice the density.
   const harePerCell = (HARE.startPerKm2 * cs * cs) / 1e6;
   for (let k = 0; k < N; k++) {
-    if (kind[k] !== Water.DRY || fmean <= 0) continue;
-    const share = forage[k] / fmean;
+    if (kind[k] !== Water.DRY) continue;
+    const share = forage[k] / good;
     hare[k] = harePerCell * (share < 2 ? share : 2);
   }
 
@@ -843,9 +853,11 @@ export const animals: SystemDef = defineSystem({
       }
       let best = -1;
       let bestScore = placeScore(k, dayNeed, spec, atReference) + 0.1;
+      // Hungry animals range farther (T-006).
+      const reach = c.condition[slot] < A.hungryBelow ? A.hungryGrazeSearchM : A.grazeSearchM;
       for (let t = 0; t < 5; t++) {
-        const px = clampX(c.x[slot] + (random() * 2 - 1) * 800);
-        const py = clampY(c.y[slot] + (random() * 2 - 1) * 800);
+        const px = clampX(c.x[slot] + (random() * 2 - 1) * reach);
+        const py = clampY(c.y[slot] + (random() * 2 - 1) * reach);
         const cell = cellAt(px, py);
         if (waterKind[cell] !== Water.DRY || fireTooClose(c.kind[slot], px, py) >= 0) continue;
         const sc = placeScore(cell, dayNeed, spec, atReference);

@@ -17,6 +17,7 @@ import {
   GROUP_KINDS,
   HARE,
   HARE_LAYER,
+  habitatKm2,
 } from '../../src/sim/world/animals.ts';
 import { PLANT_CONSTANTS, PLANT_SPECIES, SEED_RAIN_LAYER, coverLayer } from '../../src/sim/world/plants.ts';
 import { TERRAIN_LAYERS, Water } from '../../src/sim/world/terrain.ts';
@@ -60,15 +61,16 @@ function census(sim: Sim) {
   return { animals, groups, hares };
 }
 
-test('setup: starting densities, groups on land, predators spread out', () => {
+test('setup: starting densities per km² of habitat, groups on land, predators spread out', () => {
   const sim = makeSim(7, 192);
-  const km2 = landKm2(sim);
+  const km2 = habitatKm2(sim);
   const { animals, hares } = census(sim);
   for (const spec of GROUP_KINDS) {
     const density = animals[spec.kind] / km2;
     assert.ok(Math.abs(density - spec.startPerKm2) <= 0.25 * spec.startPerKm2 + 1 / km2, `${spec.name}: ${density} per km²`);
   }
-  assert.ok(Math.abs(hares / km2 - HARE.startPerKm2) < 0.25 * HARE.startPerKm2, `hares ${hares / km2} per km²`);
+  // Hares start in proportion to forage, up to twice the density on the richest land.
+  assert.ok(hares / km2 > 0.75 * HARE.startPerKm2 && hares / km2 < 2 * HARE.startPerKm2, `hares ${hares / km2} per km² of habitat`);
   const store = sim.state.store(ANIMAL_STORE);
   const c = (n: string) => store.column(n).data;
   const kind = sim.state.world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);
