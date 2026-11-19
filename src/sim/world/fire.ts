@@ -6,7 +6,7 @@
 
 import type { Sink, Source } from '../core/codec.ts';
 import { dayFraction, dayIndex, minutesPerTick } from '../core/clock.ts';
-import { cosTurn, exp, pow } from '../core/dmath.ts';
+import { cosTurn, exp, log, pow } from '../core/dmath.ts';
 import { defineSystem } from '../core/registry.ts';
 import type { SystemDef } from '../core/registry.ts';
 import { StreamDomain, globalStreamOffset, nextFloat } from '../core/rng.ts';
@@ -113,6 +113,22 @@ export const FIRE_CONSTANTS = {
   /** Fine fuel (litter, t/ha): no spread below `fuelFrom`, full above `fuelFull`. */
   fuelFromTpha: 0.5,
   fuelFullTpha: 2,
+  /**
+   * Patchy fuel (docs/DESIGN.md §2.16, *Breaks in the fuel*). Fuel lies in patches of about this
+   * radius, m, scattered over the share of the ground that isn't bare (an estimate: grass clumps
+   * and drifts of leaves about a metre across).
+   */
+  fuelPatchRadiusM: 0.5,
+  /**
+   * Overlapping patches scattered at random connect across a cell once they cover this share of it:
+   * the continuum percolation threshold for discs, 1 − e^(−1.128) (Quintanilla, Torquato & Ziff 2000).
+   */
+  percolationCover: 0.676,
+  /** Flame length, m, from fireline intensity I in kW/m: 0.0775 I^0.46 (Byram 1959). */
+  flameLengthCoefficient: 0.0775,
+  flameLengthExponent: 0.46,
+  /** A flame reaches across bare ground this share of its length (an estimate). */
+  reachPerFlameLength: 0.5,
   /** Under full tree cover: share of the open wind that reaches the fire, and how much slower the leaf bed burns. */
   canopyWindCut: 0.75,
   canopyBedSlowdown: 0.6,
@@ -296,6 +312,26 @@ export function fuelFactor(tonnesPerHa: number): number {
   return clamp01((tonnesPerHa - K.fuelFromTpha) / (K.fuelFullTpha - K.fuelFromTpha));
 }
 
+/** Flame length, m, of a fire front of `intensityKwPerM` (Byram 1959). */
+export function flameLengthM(intensityKwPerM: number): number {
+  return intensityKwPerM > 0 ? K.flameLengthCoefficient * pow(intensityKwPerM, K.flameLengthExponent) : 0;
+}
+
+/**
+ * How well a fire crosses ground where fuel covers `cover` of it in scattered patches, when its
+ * flames reach `reachM` across bare gaps: 0 if the patches it can reach don't connect, rising to 1
+ * on unbroken fuel. Each patch, grown by half the reach, covers 1 − (1 − cover)^((1 + reach/2r)²) of
+ * the ground (overlapping discs); fire crosses when that passes the percolation threshold, and
+ * crosses faster the further above it, along a less winding path.
+ */
+export function patchFactor(cover: number, reachM: number): number {
+  if (cover >= 1) return 1;
+  if (cover <= 0) return 0;
+  const grow = 1 + reachM / (2 * K.fuelPatchRadiusM);
+  const reached = 1 - exp(grow * grow * log(1 - cover));
+  return clamp01((reached - K.percolationCover) / (1 - K.percolationCover));
+}
+
 /** Length-to-breadth ratio of a fire spreading in a 10 m wind of `windKmh` (Alexander 1985). */
 export function lengthToBreadth(windKmh: number): number {
   const u = windKmh > 0 ? windKmh : 0;
@@ -361,6 +397,7 @@ export class FireConditions {
   private readonly water: Uint8Array;
   private readonly moisture: Float32Array;
   private readonly litter: Float32Array;
+  private readonly bare: Float32Array;
   private readonly tree: Float32Array;
   private readonly covers: Float32Array[];
   private tick = -1;
@@ -400,6 +437,7 @@ export class FireConditions {
     this.water = world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);
     this.moisture = world.layer<Float32Array>(MOISTURE_LAYER);
     this.litter = world.layer<Float32Array>(MATERIAL_LAYERS.litter);
+    this.bare = world.layer<Float32Array>(TERRAIN_LAYERS.bareGround);
     this.covers = PLANT_SPECIES.map((sp) => world.layer<Float32Array>(coverLayer(sp)));
     const nut = PLANT_SPECIES.findIndex((sp) => sp.name === 'nut');
     this.tree = this.covers[nut];
@@ -534,6 +572,11 @@ export class FireConditions {
     return this.litter[k] / 1000 / this.areaHa;
   }
 
+  /** Share of cell k's ground that carries fuel (the rest is bare). */
+  fuelledShare(k: number): number {
+    return 1 - this.bare[k];
+  }
+
   /** Fill `out` with everything about burning in cell k now. */
   read(k: number, out: FuelReading): void {
     out.fine = this.fineMoisture(k);
@@ -544,7 +587,9 @@ export class FireConditions {
     const tree = this.tree[k];
     const windKmh = this.windKmh * (1 - K.canopyWindCut * tree);
     const damp = moistureFactor(out.fine, windKmh);
-    const fuel = this.water[k] === Water.DRY ? fuelFactor(out.fineTpha) : 0;
+    // The fuel lies on the ground that isn't bare, so that is where its load counts.
+    const share = this.bare[k] < 1 ? 1 - this.bare[k] : 0;
+    const fuel = this.water[k] === Water.DRY && share > 0 ? fuelFactor(out.fineTpha / share) : 0;
     const dry = moistureFactor(0.05);
     out.readiness = fuel * out.curing * (damp >= dry ? 1 : damp / dry);
     if (out.readiness <= 0) {
@@ -971,6 +1016,7 @@ export const fire: SystemDef = defineSystem({
     world.ensureLayer(FIRE_LAYERS.stage, 'u8');
     world.ensureLayer(FIRE_LAYERS.lastBurnDay, 'f32');
     world.ensureLayer(MATERIAL_LAYERS.litter, 'f32');
+    world.ensureLayer(TERRAIN_LAYERS.bareGround, 'f32');
     world.ensureLayer(FORAGE_LAYER, 'f32');
     world.ensureLayer(BROWSE_LAYER, 'f32');
   },
@@ -989,6 +1035,7 @@ export const fire: SystemDef = defineSystem({
     const water = world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);
     const elevation = world.layer<Float32Array>(TERRAIN_LAYERS.elevation);
     const litter = world.layer<Float32Array>(MATERIAL_LAYERS.litter);
+    const bare = world.layer<Float32Array>(TERRAIN_LAYERS.bareGround);
     const small = world.layer<Float32Array>(MATERIAL_LAYERS.smallWood);
     const long = world.layer<Float32Array>(MATERIAL_LAYERS.longWood);
     const forage = world.layer<Float32Array>(FORAGE_LAYER);
@@ -1244,12 +1291,28 @@ export const fire: SystemDef = defineSystem({
         if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
         const b = nj * W + ni;
         if (stage[b] === FireStage.FLAMING || water[b] !== Water.DRY) continue;
-        // A diagonal step that would pass between water cells would have to cross the water.
-        if (DI[n] !== 0 && DJ[n] !== 0 && (water[j * W + ni] !== Water.DRY || water[nj * W + i] !== Water.DRY)) continue;
+        if (DI[n] !== 0 && DJ[n] !== 0) {
+          // A diagonal step that would pass between water cells would have to cross the water; one
+          // between two cells that can't carry flame now (damp, green or bare) would slip through a
+          // corner of the break they make together.
+          const side1 = j * W + ni;
+          const side2 = nj * W + i;
+          if (water[side1] !== Water.DRY || water[side2] !== Water.DRY) continue;
+          evaluate(side1, tick);
+          evaluate(side2, tick);
+          if (!(headRate[side1] > 0) && !(headRate[side2] > 0)) continue;
+        }
         evaluate(b, tick);
         if (!(headRate[b] > 0)) continue;
         const along = headRate[b] * toward[n];
-        const rate = (along > backRate[b] ? along : backRate[b]) * slopeFactor((elevation[b] - elevation[a]) / DIST[n]) * vigour;
+        let rate = (along > backRate[b] ? along : backRate[b]) * slopeFactor((elevation[b] - elevation[a]) / DIST[n]) * vigour;
+        // Patchy fuel: the fire crosses b only if its flames, at this rate, bridge the bare gaps.
+        if (bare[b] > 0) {
+          const share = 1 - bare[b];
+          const intensity = K.litterKjPerKg * (litter[b] / (cs * cs * share)) * (rate / 60);
+          rate *= patchFactor(share, K.reachPerFlameLength * flameLengthM(intensity));
+          if (!(rate > 0)) continue;
+        }
         let arrival = startedAt + DIST[n] / rate;
         if (arrival < 0) arrival = 0;
         if (arrival < tickMinutes && arrival <= until) heapPush(arrival, b);

@@ -18,6 +18,8 @@ export const TERRAIN_LAYERS = {
   waterDepth: 'water.depth',
   drain: 'water.drain',
   flow: 'water.flow',
+  tableDepth: 'water.tableDepth',
+  bareGround: 'terrain.bareGround',
 } as const;
 
 export const Soil = { ROCK: 0, THIN: 1, LOAM: 2, ALLUVIUM: 3, SAND: 4 } as const;
@@ -96,6 +98,24 @@ export const TERRAIN_CONSTANTS = {
   alluviumMaxSlope: 0.05,
   alluviumReachM: 200,
   sandRainfall: 0.25,
+  /**
+   * Deepest water table recorded, m. Ground whose water never meets a river, lake or spring on the
+   * map (it drains off the edge first) gets this: its stream lies beyond the map, depth unknown.
+   */
+  tableMostM: 30,
+  /**
+   * Catchment (runoff-weighted, km²) at which a small stream begins: too small to show as open water
+   * at this map's scale, but the water table meets the ground along it. An estimate; channel networks
+   * drawn from elevation data usually start at 0.1–1 km².
+   */
+  streamMinFlowKm2: 0.5,
+  /**
+   * Share of a cell's ground with no plant fuel on it (outcrops, stones, bare soil), on average by
+   * soil: rock, thin, loam, alluvium, sand (docs/DESIGN.md §2.10, step 12). Estimates.
+   */
+  bareBySoil: [0.6, 0.2, 0.03, 0.05, 0.35],
+  /** Each cell's bare share is its soil's average × (1 − spread to 1 + spread), from a hash of the seed and the cell. */
+  bareSpread: 0.5,
 } as const;
 
 const K = TERRAIN_CONSTANTS;
@@ -106,6 +126,7 @@ const SALT_BARRIER = 2;
 const SALT_RAIN = 3;
 const SALT_MEANDER = 4;
 const SALT_FLATS = 5;
+const SALT_BARE = 6;
 
 /** MurmurHash3's 32-bit finalizer. */
 function mix32(h: number): number {
@@ -525,6 +546,31 @@ function generate(sim: Sim): void {
   const soil = new Uint8Array(N);
   assignSoil(config, elevation, rainfall, kind, flow, soil);
 
+  // The water table (docs/DESIGN.md §2.10, step 11): level with the surface of the river, lake,
+  // spring or small stream that a cell's water first reaches, so its depth is the ground's height
+  // above that water.
+  // Cells come in drainage order, downstream first, so each one's outlet is already known.
+  const reference = new Float64Array(N);
+  const tableDepth = new Float32Array(N);
+  for (let n = 0; n < N; n++) {
+    const cell = order[n];
+    const down = drain[cell];
+    if (kind[cell] !== Water.DRY) {
+      reference[cell] = elevation[cell] + depth[cell];
+      tableDepth[cell] = 0;
+    } else if (flow[cell] >= K.streamMinFlowKm2) {
+      reference[cell] = elevation[cell];
+      tableDepth[cell] = 0;
+    } else if (down < 0 || !(reference[down] > -Infinity)) {
+      reference[cell] = -Infinity;
+      tableDepth[cell] = K.tableMostM;
+    } else {
+      reference[cell] = reference[down];
+      const below = elevation[cell] - reference[cell];
+      tableDepth[cell] = below <= 0 ? 0 : below >= K.tableMostM ? K.tableMostM : below;
+    }
+  }
+
   world.layer<Float32Array>(TERRAIN_LAYERS.elevation).set(elevation);
   world.layer<Float32Array>(TERRAIN_LAYERS.rainfall).set(rainfall);
   world.layer<Uint8Array>(TERRAIN_LAYERS.soil).set(soil);
@@ -532,6 +578,19 @@ function generate(sim: Sim): void {
   world.layer<Float32Array>(TERRAIN_LAYERS.waterDepth).set(depth);
   world.layer<Int32Array>(TERRAIN_LAYERS.drain).set(drain);
   world.layer<Float32Array>(TERRAIN_LAYERS.flow).set(flow);
+  world.layer<Float32Array>(TERRAIN_LAYERS.tableDepth).set(tableDepth);
+
+  // Bare ground within each cell (docs/DESIGN.md §2.10, step 12): outcrops and stones on rocky and
+  // thin ground, bare sand, a little everywhere. How much varies from cell to cell, as the rock does.
+  const bare = new Float32Array(N);
+  const bareKey = fieldKey(config.seed, SALT_BARE);
+  for (let cell = 0; cell < N; cell++) {
+    if (kind[cell] !== Water.DRY) continue;
+    const u = mix32(bareKey ^ Math.imul(cell, 0x9e3779b1)) / 4294967296;
+    const b = K.bareBySoil[soil[cell]] * (1 - K.bareSpread + 2 * K.bareSpread * u);
+    bare[cell] = b > 1 ? 1 : b;
+  }
+  world.layer<Float32Array>(TERRAIN_LAYERS.bareGround).set(bare);
 }
 
 // ALIBI: land, rain, rivers, lakes and soil are there before anything lives on them,
@@ -546,6 +605,8 @@ export const terrain: SystemDef = defineSystem({
     state.world.ensureLayer(TERRAIN_LAYERS.waterDepth, 'f32');
     state.world.ensureLayer(TERRAIN_LAYERS.drain, 'i32');
     state.world.ensureLayer(TERRAIN_LAYERS.flow, 'f32');
+    state.world.ensureLayer(TERRAIN_LAYERS.tableDepth, 'f32');
+    state.world.ensureLayer(TERRAIN_LAYERS.bareGround, 'f32');
   },
   // The landscape does not change from tick to tick (yet), so there is nothing to step.
   create: () => () => {},
