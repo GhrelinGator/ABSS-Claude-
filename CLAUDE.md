@@ -70,7 +70,7 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 
 ## Unattended runs (D-025, D-030, D-034)
 
-Scheduled sessions build the project while the owner is away; he doesn't code. A scheduled task wakes a fresh session every 2 hours (D-040), and each run that merges a milestone starts the next one about 5 minutes later (a chain). In any such run:
+Scheduled sessions build the project while the owner is away; he doesn't code. A scheduled task wakes a fresh session every hour (D-040; the owner set it hourly on 2026-11-19, the closest the app offered to 2 hours), and each run that merges a milestone starts the next one about 5 minutes later (a chain). In any such run:
 1. **Check the weekly cap, then claim before building.** If `docs/RUNS.md` already shows 35 runs since the last weekly reset ("Chained runs"), stop at once: the rest of the week is the owner's (D-034). Otherwise: the milestone's branch is `milestone-<number>` (for example `milestone-1.8`), unless `STATUS.md` names an existing branch to carry on. If that branch doesn't exist, create it from `main` with one empty commit, `claim <milestone> for session <this session's id>`, and push it. If the push is rejected, or the branch already exists and its newest commit is under 3 hours old, another run has the milestone: stop at once, commit nothing, schedule nothing. (Two sessions once fired 11 seconds apart and both built the same milestone; D-030.) An older branch holds abandoned work: merge `main` into it and carry it on.
 2. **No questions.** Take the most reasonable reading, and write down which one you took.
 3. **Do the next milestone** named in `STATUS.md` under "Next action": one milestone, or two when `STATUS.md` says they're small enough to share a run.
@@ -83,7 +83,7 @@ Scheduled sessions build the project while the owner is away; he doesn't code. A
 
 ## Chained runs
 
-After rule 7, schedule the next run if the milestone merged, the next milestone isn't waiting on the owner, and `docs/RUNS.md` shows fewer than **35 runs since the last weekly reset** (Wednesdays at 7:59 pm US Central). Schedule it as a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word. Otherwise schedule nothing; the 2-hourly wake-up restarts the chain later (after the weekly reset, when the cap was the reason). The owner wants the chain kept going (2026-11-19): don't stop it for anything these rules don't name.
+After rule 7, schedule the next run if the milestone merged, the next milestone isn't waiting on the owner, and `docs/RUNS.md` shows fewer than **35 runs since the last weekly reset** (Wednesdays at 7:59 pm US Central). Schedule it as a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word. Otherwise schedule nothing; the hourly wake-up restarts the chain later (after the weekly reset, when the cap was the reason). The owner wants the chain kept going (2026-11-19): don't stop it for anything these rules don't name.
 
 The cap keeps about 10% of the owner's weekly limit for his own use (his request, 2026-11-17). A milestone run measured about 1.5% of his weekly limit and 11% of a 5-hour window; 35 runs leave room for heavier milestones. If he reports his usage running high, lower the cap here.
 
