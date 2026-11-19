@@ -1,0 +1,13 @@
+{
+  "name": "P1-ecology-review-after-fixes",
+  "description": "Follow-up to P1-ecology-review, run after seeing its results (not preregistered): seeds 1-4 of both landscape types, which include the worst fire years and the deer collapses, after the three corrections of T-006 (no herbaceous litter on ground burned that year; starting numbers per km2 of habitat; hungry grazers search 3 km). Judged against the same preregistered criteria.",
+  "ticks": 691200,
+  "metricsEveryTicks": 6912,
+  "seeds": [1, 2, 3, 4],
+  "base": {},
+  "conditions": {
+    "open": { "world": { "circumscription": 0 } },
+    "hemmed": { "world": { "circumscription": 1 } }
+  },
+  "observers": ["landscape", "weather", "vegetation", "fauna", "pathogens", "fire"]
+}

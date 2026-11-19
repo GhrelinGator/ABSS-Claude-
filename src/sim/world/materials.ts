@@ -286,6 +286,12 @@ export function stoneLayer(material: MaterialSpec): string {
   return `materials.stone.${material.name}`;
 }
 
+/**
+ * The day (plus one) each cell last burned; 0 if never. Kept by world.fire (§2.16) and read here,
+ * named here rather than imported to avoid a circular import (a test checks the two names match).
+ */
+export const LAST_BURN_LAYER = 'fire.lastBurnDay';
+
 export const OBJECT_STORE = 'objects';
 export const ROCK_SHELTER_STORE = 'rockShelters';
 
@@ -913,6 +919,7 @@ export const materials: SystemDef = defineSystem({
     world.ensureLayer(MATERIAL_LAYERS.bedrock, 'u8');
     for (const m of STONE_MATERIALS) world.ensureLayer(stoneLayer(m), 'f32');
     world.ensureLayer(MATERIAL_LAYERS.smallWood, 'f32');
+    world.ensureLayer(LAST_BURN_LAYER, 'f32');
     world.ensureLayer(MATERIAL_LAYERS.longWood, 'f32');
     world.ensureLayer(MATERIAL_LAYERS.litter, 'f32');
     world.ensureLayer(TERRAIN_LAYERS.soil, 'u8');
@@ -958,6 +965,8 @@ export const materials: SystemDef = defineSystem({
     const litterIn = litterInputs().map((kg) => (kg * areaHa) / fallDays);
     const litterOut = K.litterDecayPerYear / daysPerYear;
     const species = litterCover.length;
+    const woody = PLANT_SPECIES.map((sp) => sp.woody);
+    const lastBurn = world.layer<Float32Array>(LAST_BURN_LAYER);
 
     return () => {
       const tick = state.tick;
@@ -965,6 +974,8 @@ export const materials: SystemDef = defineSystem({
       const atReference = dailyMeanTemperatureC(config, tick, weatherValues, reference);
       const season = seasonFraction(config, tick);
       const falling = season >= K.litterFallStart && season < K.litterFallEnd;
+      // Day (plus one, as the fire layer stores it) on which this year began.
+      const yearBegan = Math.floor(tick / ticksPerDay / daysPerYear) * daysPerYear + 1;
       for (let k = 0; k < N; k++) {
         if (water[k] !== Water.DRY) continue;
         const rot = rotFactor(atReference - lapse * (elevation[k] - reference), moisture[k]);
@@ -973,7 +984,12 @@ export const materials: SystemDef = defineSystem({
         if (small[k] < 0) small[k] = 0;
         if (long[k] < 0) long[k] = 0;
         let fine = litter[k] - litterOut * rot * litter[k];
-        if (falling) for (let sp = 0; sp < species; sp++) fine += litterIn[sp] * litterCover[sp][k];
+        if (falling) {
+          // A fire this year burned the year's dead grass and herbs where they stood: only the
+          // leaves of woody plants are left to fall (T-006).
+          const burned = lastBurn[k] >= yearBegan;
+          for (let sp = 0; sp < species; sp++) if (!burned || woody[sp]) fine += litterIn[sp] * litterCover[sp][k];
+        }
         litter[k] = fine > 0 ? fine : 0;
       }
 
