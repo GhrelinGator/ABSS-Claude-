@@ -48,13 +48,17 @@ export const INJURY = {
   /** Partial burns take in this share of an open wound's dose per cm². */
   partialBurnDoseShare: 0.25,
 
-  /** Infection courses: starting severity; virulence g (per day): log-normal median and spread; rise of the response per day; its half-life once over, days. */
-  wound: { start: 0.01, virulence: 0.5, spread: 0.5, rise: 0.1, fadeDays: 30 },
-  gut: { start: 0.03, virulence: 0.9, spread: 0.3, rise: 0.3, fadeDays: 60 },
+  /**
+   * Infection courses: starting severity; virulence g (per day): log-normal median and spread; rise
+   * of the response per day; its half-life once over, days; whether growth slows as severity nears 1
+   * (the gut's lining is finite; an infection spreading through the body is not bounded, T-010).
+   */
+  wound: { start: 0.01, virulence: 0.5, spread: 0.5, rise: 0.1, fadeDays: 30, bounded: false },
+  gut: { start: 0.03, virulence: 0.9, spread: 0.3, rise: 0.3, fadeDays: 60, bounded: true },
   /** A course below this severity that its response holds down is over. */
   overBelow: 0.0001,
   /** A wound infection at this severity kills (sepsis). */
-  fatalSeverity: 0.9,
+  fatalSeverity: 1,
   /** Nourishment rises from 0 at this fat share to 1 at this one; condition = least + (1 − least) × nourishment. */
   nourishedFrom: 0.01,
   nourishedAt: 0.06,
@@ -315,8 +319,9 @@ export const injury: SystemDef = defineSystem({
     const fatDensity = METABOLISM.fatKcalPerKg;
 
     /** The course of one infection over a tick: the new severity and response, into `out`. */
-    function course(sev: number, response: number, virulence: number, rise: number, condition: number, out: Float64Array): void {
-      let sNew = sev + days * (virulence * sev * (1 - sev) - response * sev);
+    function course(sev: number, response: number, virulence: number, rise: number, bounded: boolean, condition: number, out: Float64Array): void {
+      const growth = bounded ? virulence * (1 - sev) : virulence;
+      let sNew = sev + days * (growth - response) * sev;
       let mNew = response + days * rise * condition;
       if (sNew < K.overBelow && response > virulence) {
         sNew = 0;
@@ -495,14 +500,14 @@ export const injury: SystemDef = defineSystem({
 
         // 5. Infection courses.
         if (wInf[slot] > 0) {
-          course(wInf[slot], wResp[slot], wVir[slot], K.wound.rise, condition, pair);
+          course(wInf[slot], wResp[slot], wVir[slot], K.wound.rise, K.wound.bounded, condition, pair);
           wInf[slot] = pair[0];
           wResp[slot] = pair[1];
         } else if (wResp[slot] > 0) {
           wResp[slot] *= woundFade;
         }
         if (gInf[slot] > 0) {
-          course(gInf[slot], gResp[slot], gVir[slot], K.gut.rise, condition, pair);
+          course(gInf[slot], gResp[slot], gVir[slot], K.gut.rise, K.gut.bounded, condition, pair);
           gInf[slot] = pair[0];
           gResp[slot] = pair[1];
         } else if (gResp[slot] > 0) {
