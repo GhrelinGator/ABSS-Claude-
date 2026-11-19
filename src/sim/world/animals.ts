@@ -3,6 +3,7 @@
 // much meat and danger the land holds per day runs on real days (D-026).
 
 import type { Sink, Source } from '../core/codec.ts';
+import { cosTurn, sinTurn } from '../core/dmath.ts';
 import { defineSystem } from '../core/registry.ts';
 import type { SystemDef } from '../core/registry.ts';
 import { StreamDomain, globalStreamOffset, nextChance, nextFloat } from '../core/rng.ts';
@@ -579,8 +580,7 @@ export const animals: SystemDef = defineSystem({
       const dx = c.x[slot] - points.x[p];
       const dy = c.y[slot] - points.y[p];
       const d = Math.sqrt(dx * dx + dy * dy);
-      const ux = d > 0 ? dx / d : 1;
-      const uy = d > 0 ? dy / d : 0;
+      const [ux, uy] = d > 0 ? [dx / d, dy / d] : anyDirection();
       const away = 2 * avoidDistanceM(points.kw[p]) + 200;
       setTarget(slot, c.x[slot] + ux * away, c.y[slot] + uy * away, points.kw[p] >= A.runFromFireKw ? AnimalMode.FLEE : AnimalMode.MOVE);
     }
@@ -663,6 +663,14 @@ export const animals: SystemDef = defineSystem({
     const chance = (p: number) => nextChance(s, o, p);
     const clampX = (x: number) => (x < 0 ? 0 : x >= widthM ? widthM - 0.01 : x);
     const clampY = (y: number) => (y < 0 ? 0 : y >= heightM ? heightM - 0.01 : y);
+    /**
+     * A unit vector in a random direction: the way an animal bolts from something at its own
+     * position, where "away" has no direction (T-009; it was due east, which trapped deer).
+     */
+    const anyDirection = (): [number, number] => {
+      const turn = random();
+      return [cosTurn(turn), sinTurn(turn)];
+    };
 
     function tallCover(k: number, season: number): number {
       const grassTall = season >= 0.3 && season < 0.75 ? 1 : 0.3;
@@ -716,8 +724,7 @@ export const animals: SystemDef = defineSystem({
       const dx = c.x[slot] - fromX;
       const dy = c.y[slot] - fromY;
       const d = Math.sqrt(dx * dx + dy * dy);
-      const ux = d > 0 ? dx / d : 1;
-      const uy = d > 0 ? dy / d : 0;
+      const [ux, uy] = d > 0 ? [dx / d, dy / d] : anyDirection();
       setTarget(slot, c.x[slot] + ux * A.fleeM, c.y[slot] + uy * A.fleeM, AnimalMode.FLEE);
     }
 

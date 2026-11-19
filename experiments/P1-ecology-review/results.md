@@ -229,3 +229,33 @@ Mean burned share across all runs: 1.1474% of land per compressed year. Worst si
 Hemmed valleys all kept every kind (deer 1.1–4.5 per km² at the end, wolves 0.3–1.7 and cats 0.2–0.8 per 100 km²). No plant species ended below 20% of its start; greens on open land ended at 28–66% of their start (79–112% on hemmed land, 124% on open seed 6), the browsed-down warning from the 1.10 review.
 
 The full tables (`node experiments/P1-ecology-review/analyze.ts runs/P1-ecology-review`) are reproducible from the commit above; the summary is here.
+
+## Re-run after 1.13 (2026-11-19): Phase 1 exits, with fire reported as failed
+
+- **Run:** 2026-11-19, unattended, Opus 5.5; commit `6fc9b76` on `milestone-1.13` (T-009: deer at a predator's exact position bolt in a random direction, not due east). The preregistered spec and analysis, unchanged: 20 full-size worlds, 100 compressed years each, 85 minutes on 2 cores.
+- **The rule for exit** is the owner's (Q10, D-037): Phase 1 exits when the other four criteria pass, with fire reported as failed. The fire criterion itself is not changed.
+
+| Criterion | This run (20 worlds) |
+|---|---|
+| 1. Persistence | **pass**: every kind present at every yearly sample in all 20 worlds. Open seed 6 ends at 11.4 deer per km² (minimum 5.0), 1.72 wolves and 1.00 big cats per 100 km². |
+| 2. Bounded (≤ 5× start) | pass (open deer reach 3.9× at most) |
+| 3. Fire | **FAIL**: mean 0.68% of land per compressed year (limit 0.5%; 0.64% in the 1.12 run), worst year 102% (limit 25%; open seed 2; was 87%) |
+| 4. Both landscape types | pass |
+| 5. Viewer | pass (`npm test` locally, 187 tests; GitHub's checks on the fix commit) |
+
+Warnings: none (no kind below 5% of its start in more than 2 runs, no plant species below 20% of its start, nothing still changing more than 2× over the last 30 years).
+
+**Fire**, as accepted (D-037): open country 1.18% of its land a compressed year (0.58–2.45% by world), hemmed valleys 0.18% (0–0.48%); nine of the ten open worlds have a year above 25%, no hemmed world does (worst 17.9%). Slightly worse than the 1.12 run on open land (0.95%). Weather and fire draw on their own random streams, so the difference comes through the plants and animals: a changed herd changes the fuel a little, and in a regime where one dry autumn decides a world's total, a little is enough. Not a trend to read anything into.
+
+**Open seed 6** now behaves like the other open worlds: deer 5.0 → 11.4 per km² [5.0–18.6], greens browsed to 36% of their start (other open worlds 28–69%). Its diagnosis: `experiments/P1-open-seed-6/results.md`.
+
+**What to watch.** Hemmed seed 5's deer are still falling at year 100 (1.39 per km² at year 70, 0.49 at year 100, the run's minimum). Hunger deaths there are low (20–55 a decade from year 70); wolves and big cats kill 1,800–2,300 deer a decade while births fall from 2,400 to 1,100, and the predators are held up by hares and aurochs. That is a predator pit, an ordinary dynamic, not a fault found; but this world's persistence beyond 100 compressed years is not shown. Hemmed deer elsewhere end at 1.3–5.0 per km².
+
+| run | deer per km²: start → end [min–max] | wolves per 100 km² | big cats per 100 km² |
+|---|---|---|---|
+| open 6, this run | 5.00 → 11.44 [5.00–18.59] | 2.00 → 1.72 | 1.48 → 1.00 |
+| open 6, 1.12 run | 5.00 → 0.37 [0.17–7.33] | 2.00 → 0.00 | 1.48 → 0.04 |
+| other open worlds, this run | 5.00 → 9.5–13.7 | 1.6–2.8 at the end | 0.8–1.4 |
+| hemmed worlds, this run | 1.5–1.9 → 0.49–5.01 | 0.4–1.2 | 0.2–1.2 |
+
+The full tables (`node experiments/P1-ecology-review/analyze.ts runs/P1-ecology-review`) are reproducible from the commit above; the summary is here.
