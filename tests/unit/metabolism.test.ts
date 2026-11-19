@@ -153,7 +153,7 @@ test('moving costs what walking, running, climbing and carrying cost', () => {
   assert.ok(ratio > 2.7 && ratio < 3.7, `walking ${ratio} × basal`);
 });
 
-test("a Hadza-like day costs about what Hadza adults spend (§9: ~2,600 kcal men, ~1,900 women)", () => {
+test("a Hadza-like day costs about what Hadza adults spend (§9: ~2,600 kcal men, ~1,900 women)", (t) => {
   for (const [label, plan, spec, target] of [
     ['man', MAN_DAY, HADZA_MAN, 2600],
     ['woman', WOMAN_DAY, HADZA_WOMAN, 1900],
@@ -163,12 +163,13 @@ test("a Hadza-like day costs about what Hadza adults spend (§9: ~2,600 kcal men
     const before = col(sim, BODY_COLUMNS.energyOut.name)[slot];
     stepSim(sim, 144);
     const spent = col(sim, BODY_COLUMNS.energyOut.name)[slot] - before;
+    t.diagnostic(`${label}: ${spent.toFixed(0)} kcal a day`);
     assert.ok(Math.abs(spent / target - 1) < 0.15, `${label}: ${spent.toFixed(0)} kcal a day against ${target}`);
     assert.deepEqual(auditConserved(sim.state.agents), []);
   }
 });
 
-test('a lean adult with no food dies of starvation in 30–80 days, having lost 30–50% of body mass', () => {
+test('a lean adult with no food dies of starvation in 30–80 days, having lost 30–50% of body mass', (t) => {
   for (const spec of [HADZA_MAN, HADZA_WOMAN]) {
     const { sim, slot } = bodySim(FAST_DAY, spec);
     const startMass = spec.leanKg + spec.fatKg;
@@ -182,6 +183,7 @@ test('a lean adult with no food dies of starvation in 30–80 days, having lost 
       day++;
     }
     const lost = 1 - lastMass / startMass;
+    t.diagnostic(`sex ${spec.sex}: died on day ${day}, ${(lost * 100).toFixed(0)}% of body mass lost, ${lastFat.toFixed(2)} kg of fat left`);
     assert.ok(day >= 30 && day <= 80, `died on day ${day}`);
     assert.ok(lost > 0.3 && lost < 0.5, `lost ${(lost * 100).toFixed(0)}% of body mass`);
     assert.ok(lastFat > 0 && lastFat < 0.5 * spec.fatKg, `fat at death ${lastFat.toFixed(2)} kg`);

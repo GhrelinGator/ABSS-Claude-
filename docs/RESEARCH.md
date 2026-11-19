@@ -61,6 +61,13 @@ Grouped by the part of the design they inform. **✓** means checked against a s
 - Gabbett (2016), "The training–injury prevention paradox," *British Journal of Sports Medicine*. Acute-vs-chronic workload and injury (§3.4).
 - Wrangham (2009), *Catching Fire*. Cooking and human evolution (§2.9).
 
+### Metabolism (✓ checked 2026-11-19 by web search, Phase 2.1)
+- ✓ Schofield equations, kcal a day from weight in kg, FAO/WHO/UNU (2004), *Human energy requirements*, Table 5.2 (fao.org/3/y5686e/y5686e07.htm), cross-checked against Wikipedia's "Schofield equation": men 18–30 15.057W + 692.2, 30–60 11.472W + 873.1, over 60 11.711W + 587.7; women 18–30 14.818W + 486.6, 30–60 8.126W + 845.6, over 60 9.082W + 658.5; children's bands (under 3, 3–10, 10–18) likewise.
+- ✓ Physical activity ratios (multiples of the basal rate), same report, Table 5.1: sleeping 1; light leisure 1.4; sitting 1.5; standing and carrying light loads 2.2; walking at varying paces 3.2; non-mechanised farm work (planting, weeding, gathering) 4.1; collecting water or wood 4.4. Heavy work is named without a value. Lifestyle PALs: sedentary 1.40–1.69, active 1.70–1.99, vigorous 2.00–2.40.
+- ✓ Hall (2008), "What is the required energy deficit per unit weight loss?", *International Journal of Obesity* (PMC2376744): fat 39.5 MJ/kg, lean-tissue change 7.6 MJ/kg; Forbes's relation with C = 10.4 kg (from Forbes's fit in 166 women); people with more fat lose less of a deficit from lean tissue.
+- ✓ Leiter & Marliss (1982), "Survival during fasting may depend on fat as well as protein stores," *JAMA* 248:2306 (abstract only): death came as fat stores approached exhaustion.
+- **Not checked:** Pontzer et al. (2012) returned a bot check, so the Hadza bodies (about 51 kg and 13.5% fat for men, 43 kg and 21% for women) and §9's figures are still from memory; Pandolf et al. (1977)'s load-carriage equation and terrain factors; the net cost of running (about 1 kcal per kg per km); the thermic effect of food (about 10%); gastric emptying (1–4 kcal a minute); the 1981 hunger strikers' 46–73 days (Scientific American's page refuses fetching).
+
 ## Plants and foraging (✓ checked 2026-11-15 by web search)
 
 - ✓ Einkorn yields: about 1–2 t/ha (2000m2.eu crop profile); about 832 lb/acre (≈ 930 kg/ha) in low-input Wyoming trials (University of Wyoming Extension, via sciencesocieties.org). Wild stands are put below these (§2.12).
