@@ -13,6 +13,7 @@ import { SimState, createSim, spawnAgent, stepSim } from '../../src/sim/sim.ts';
 import type { Sim, StatePart } from '../../src/sim/sim.ts';
 import { FIXTURE_PIPELINE, fxBurn, fxChurn, fxLearn, fxSeedKnowledge, fxWander } from '../fixtures/systems.ts';
 import { checkSpawnSites, readSources } from './lib/scan.ts';
+import { populateWithBodies } from '../fixtures/bodies.ts';
 
 function liveSlots(sim: Sim): number[] {
   const slots: number[] = [];
@@ -74,7 +75,7 @@ for (const [label, pipeline] of [
 ] as const) {
   test(`${label}: no agent holds learned content during the tick it was spawned`, () => {
     const sim = createSim(defaultConfig(6), pipeline);
-    if (pipeline === SIM_PIPELINE) for (let i = 0; i < 50; i++) spawnAgent(sim, 100 + i, 100);
+    if (pipeline === SIM_PIPELINE) populateWithBodies(sim, 50, 100, 100);
     assert.deepEqual(freshSpawnProblems(sim.state, 0), []);
     for (let t = 0; t < 2_000; t++) {
       stepSim(sim, 1);

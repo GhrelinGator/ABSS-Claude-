@@ -492,6 +492,7 @@ A cell flames until the fire has left it in every direction: 1.5 cell widths ÷ 
 ## 3. Bodies
 
 ### 3.1 Metabolism
+As built in Phase 2.1: §3.8.
 - Basal rate from body mass, sex, and age, using a standard equation (Schofield or Mifflin–St Jeor) [provisional].
 - **Activity cost per action**, scaled by body mass, carried load, terrain slope, and gait, using MET-style multipliers (Compendium of Physical Activities). It doesn't have to be exact; it has to be consistent, so efficiency is something agents can learn.
 - **Muscle is expensive:** more muscle raises strength *and* basal cost.
@@ -525,6 +526,32 @@ Growth, maturity, senescence (rising hazard with age), and death from starvation
 - Separately, a set of **recessive deleterious loci** causes inbreeding depression when two copies match (§7.5).
 - The genealogy is tracked for genetics and for the analysis layer. **Agents can't read it.**
 - Dial list (each with an alibi at its definition in code): body size, basal efficiency, hiddenCauseBias, learning rate, exploration temperature, risk tolerance, curiosity weight, attachment strength, separation sensitivity, disclosure tendency, copying biases (success, attended-model, conformity), aggression threshold, co-reared mate aversion, signal coining propensity.
+
+### 3.8 Metabolism (Phase 2.1)
+What §3.1 became when it was built (D-039). `src/sim/body/metabolism.ts`, the system `body.metabolism`, which runs after the world systems; systems that make agents act (Phase 3 on) run before it, so it charges what the body did in the same tick.
+
+**What a body holds, for energy**
+- **Sex** (genome: 1 female, 2 male; 0 means no body) and **birth tick** (identity; founders are born before tick 0). Age in years is in compressed years (§1.1), like every age in the sim.
+- **Lean mass** *L* and **fat** *F*, in kg. Body mass *W* = *L* + *F*.
+- **Built lean mass** *L*₀, in kg: the lean mass the body has grown to. Set when the body forms; growth (2.5) and training (2.4) will move it.
+- **Gut**: food eaten and not yet absorbed, in kcal.
+- **Energy**, the conserved stock (kcal) = gut + ρ_F *F* + ρ_L *L*, with ρ_F = 9,441 kcal/kg and ρ_L = 1,816 kcal/kg, the energy densities of fat and of lean-tissue change (39.5 and 7.6 MJ/kg; Hall 2008). Fat is not stored separately: it is what the stock leaves after the gut and the lean mass, so no part of the body can gain energy the stock didn't. Inflow: the body when it forms, then everything eaten. Outflow: heat.
+
+**Each tick**
+1. **Absorption.** The gut passes at most 3 kcal a minute into the tissues [estimate; gastric emptying is remembered as 1–4 kcal a minute, unsourced]. A tenth of what is absorbed is spent as heat: the thermic effect of food [estimate, the usual 10%]. The FAO activity ratios below were measured on people who were eating, so this may count part of that cost twice; the calibration fixture checks the total.
+2. **Spending.** The basal rate *B* comes from the Schofield equations (FAO/WHO/UNU 2004, Table 5.2) by sex, age band (under 3, 3–10, 10–18, 18–30, 30–60, over 60) and *W*. The tick splits into time spent moving and the rest:
+   - The rest costs *B* × the **physical activity ratio** (PAR, multiples of the basal rate) of the effort the body held: sleep 1.0; still, lying or sitting awake 1.4 (FAO "light leisure"); light, standing and handling light things 2.2; moderate, digging, gathering, collecting wood 4.1 (FAO's 4.1–4.4); heavy 6.0 [estimate: FAO names heavy work without a value]. Still is the effort of a tick nobody describes.
+   - Time moving costs *B* × 1.4 for the body upright, plus the motion itself (Pandolf et al. 1977, with *W*_t = *W* + load): walking, below 2 m/s, η *W*_t 1.5 *v*² watts; running, at 2 m/s or more, 1 kcal per kg of *W*_t per km (the net cost of running). Climbing costs 0.35 η *W*_t *v G* watts with *G* in percent, which is 35 η J per kg per metre climbed (about 25% efficient work). Going down saves nothing [simplification: real walking down a gentle slope is a little cheaper]. η = 1.2, Pandolf's terrain factor for light brush, everywhere [simplification].
+   - A load costs 2.0 *W*_t (load ÷ *W*)² watts for the whole tick (Pandolf's load term).
+   - Check: walking at 1.25 m/s comes to about 3.1 × *B* in all, against FAO's 3.2 for "walking at varying paces".
+3. **Tissues.** Absorbed minus spent is split between fat and lean mass by **Forbes's rule**, dL/dF = C/F with C = 10.4 kg (Hall 2008, after Forbes): lean people lose more of a deficit from lean tissue, and gain more of a surplus there. The body moves along the curve L = C ln F + constant in both directions, so refeeding restores what a famine took, and fat can approach zero but never reach it. There is no hard ceiling on fat: a ceiling would have to throw energy away. Fat is bounded by how fast the gut absorbs (about 4,300 kcal a day at most) and by what a heavier body costs to carry.
+4. **Starvation.** A body whose lean mass falls below two-thirds of its built lean mass dies of starvation [estimate; Leiter & Marliss 1982 found that death in fasting came as fat stores approached exhaustion, and with Forbes's rule a lean adult at that point has 1.5–3 kg of fat left and has lost about 40% of body mass]. The agent is removed and the death counted by cause (`body.deaths`). Its carcass waits for 2.5.
+
+**What tells the body what it did.** Five columns, written during the tick by whatever makes the agent act (Phase 3 on; fixtures in `tests/` until then) and cleared by metabolism after it charges them: effort, metres moved, seconds spent moving, metres climbed, load carried in kg. Doors: `formBody(sim, slot, …)`, right after `spawnAgent`, sets sex, age, lean mass and fat, and records the body as the first inflow; `ingest(sim, slot, kcal)` puts food in the gut. A live agent without a body stops the run with an error, so a forgotten `formBody` can't pass unnoticed.
+
+**Calibration (scripted bodies in `tests/`, §9).** A Hadza-like day of sleep, sitting, digging and walking, with the travel distances of §9, spends within 15% of §9's ~2,600 kcal (men) and ~1,900 kcal (women). A lean adult with water and no food dies in 30–80 days having lost 30–50% of body mass.
+
+**Not in this version.** Adaptive thermogenesis (in real starvation the metabolic rate falls further than lost tissue explains, so these bodies starve somewhat sooner); terrain surface (sand, snow, brush all cost η = 1.2); savings walking downhill; stomach capacity (it needs the mass of food, which arrives with eating in Phase 3); the cost of heat and cold (2.2), injury and illness (2.3), fitness and muscle (2.4: more muscle will raise *B*), growth (2.5), pregnancy and lactation (2.6); the heritable `basalEfficiency` and body-size dials (2.7); carcasses (2.5).
 
 ---
 

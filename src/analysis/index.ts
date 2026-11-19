@@ -1,6 +1,7 @@
 // Registry of observers, looked up by name from experiment specs.
 
 import type { Observer } from './observer.ts';
+import { bodies } from './observers/bodies.ts';
 import { census } from './observers/census.ts';
 import { landscape } from './observers/landscape.ts';
 import { fauna } from './observers/fauna.ts';
@@ -14,7 +15,7 @@ export type { Measurements, Observer } from './observer.ts';
 export { HABITABLE, summarizeLandscape } from './observers/landscape.ts';
 export type { LandscapeSummary } from './observers/landscape.ts';
 
-const OBSERVERS: readonly Observer[] = [census, landscape, weather, vegetation, fauna, pathogens, materials, fire];
+const OBSERVERS: readonly Observer[] = [census, landscape, weather, vegetation, fauna, pathogens, materials, fire, bodies];
 
 export function observerNames(): string[] {
   return OBSERVERS.map((observer) => observer.name);
