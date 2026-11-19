@@ -22,8 +22,20 @@ export const Sex = { NONE: 0, FEMALE: 1, MALE: 2 } as const;
  */
 export const Effort = { STILL: 0, SLEEP: 1, LIGHT: 2, MODERATE: 3, HEAVY: 4 } as const;
 
-/** Causes of death counted in `body.deaths` (index = cause). Starvation is metabolism's; the rest are body.heat's (§3.9). */
-export const DeathCause = { STARVATION: 1, DEHYDRATION: 2, HYPERTHERMIA: 3, HYPOTHERMIA: 4 } as const;
+/**
+ * Causes of death counted in `body.deaths` (index = cause). Starvation is metabolism's;
+ * dehydration, hyperthermia and hypothermia body.heat's (§3.9); shock (blood or plasma lost),
+ * infection and lightning body.injury's (§3.10).
+ */
+export const DeathCause = {
+  STARVATION: 1,
+  DEHYDRATION: 2,
+  HYPERTHERMIA: 3,
+  HYPOTHERMIA: 4,
+  SHOCK: 5,
+  INFECTION: 6,
+  LIGHTNING: 7,
+} as const;
 
 export const METABOLISM = {
   /** Energy density of fat, kcal per kg (39.5 MJ/kg; Hall 2008). */
@@ -126,10 +138,12 @@ export const BODY_COLUMNS = {
   heatW: { name: 'heatW', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = BODY_COLUMNS;
+/** body.injury's heat of healing (§3.10), named here so metabolism need not import injury. */
+const HEAL_COLUMN = 'healW';
 
 export const BODY_PARTS = { deaths: 'body.deaths' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
-const DEATH_SLOTS = 5;
+const DEATH_SLOTS = 8;
 
 function declareBody(state: SimState): void {
   for (const spec of Object.values(BODY_COLUMNS)) state.agents.ensureColumn(spec);
@@ -238,6 +252,8 @@ export const metabolism: SystemDef = defineSystem({
     const deaths = state.parts.find((part) => part.name === BODY_PARTS.deaths);
     if (!deaths || !deaths.readings) throw new Error('body.metabolism: its death tally is missing.');
     const deathCounts = deaths.readings() as Float64Array;
+    // The heat of healing and fighting infection, when the pipeline holds body.injury (§3.10).
+    const healing = agents.hasColumn(HEAL_COLUMN);
 
     return () => {
       const tick = state.tick;
@@ -257,6 +273,7 @@ export const metabolism: SystemDef = defineSystem({
       const load = agents.column<Float64Array>(C.loadKg.name).data;
       const shiver = agents.column<Float64Array>(C.shiverW.name).data;
       const heat = agents.column<Float64Array>(C.heatW.name).data;
+      const heal = healing ? agents.column<Float64Array>(HEAL_COLUMN).data : null;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -296,6 +313,12 @@ export const metabolism: SystemDef = defineSystem({
         if (carried > 0) {
           const share = carried / mass;
           spent += (M.loadWattsPerKg * (mass + carried) * share * share * secondsPerTick) / JOULES_PER_KCAL;
+        }
+        if (heal) {
+          const healingW = heal[slot];
+          if (!(healingW >= 0)) throw new RangeError(`body.metabolism: agent id ${ids[slot]} reports healing heat ${healingW}.`);
+          spent += (healingW * secondsPerTick) / JOULES_PER_KCAL;
+          heal[slot] = 0;
         }
         heat[slot] = (spent * JOULES_PER_KCAL) / secondsPerTick;
         // Shivering: the heat body.heat asked for (DESIGN.md §3.9).
