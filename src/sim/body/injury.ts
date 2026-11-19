@@ -18,7 +18,7 @@ import type { Sink, Source } from '../core/codec.ts';
 import { ticksPerYear } from '../core/clock.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { CLIMATE_PARTS } from '../world/climate.ts';
-import { BODY_COLUMNS, BODY_PARTS, DeathCause, METABOLISM, Sex, basalKcalPerDay, fatKgOf } from './metabolism.ts';
+import { BODY_COLUMNS, DeathCause, METABOLISM, Sex, basalKcalPerDay, deathDoor, fatKgOf } from './metabolism.ts';
 import { HEAT, HEAT_COLUMNS, SURROUNDINGS, fullWaterKg, skinAreaM2 } from './heat.ts';
 
 /** Every number injury uses, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Bodies*). */
@@ -299,9 +299,7 @@ export const injury: SystemDef = defineSystem({
     const { config, state } = sim;
     const agents = state.agents;
     if (!agents.hasColumn(HEAT_COLUMNS.water.name)) throw new Error('body.injury needs body.heat in the pipeline.');
-    const deaths = state.parts.find((part) => part.name === BODY_PARTS.deaths);
-    if (!deaths || !deaths.readings) throw new Error('body.injury needs body.metabolism in the pipeline.');
-    const deathCounts = deaths.readings() as Float64Array;
+    const dies = deathDoor(sim, 'body.injury');
     const tally = tallyOf(state);
     const strikes = state.parts.find((part) => part.name === CLIMATE_PARTS.strikes);
     const { widthCells: W, heightCells: Hc, cellSizeM: cs } = config.world;
@@ -409,8 +407,7 @@ export const injury: SystemDef = defineSystem({
             const near = d2 <= K.strikeNearM * K.strikeNearM ? 1 : (K.strikeNearM * K.strikeNearM) / d2;
             tally[InjuryKind.LIGHTNING] += 1;
             if (nextFloat(s, o) < K.strikeArrest * near) {
-              deathCounts[DeathCause.LIGHTNING] += 1;
-              agents.remove(slot);
+              dies(slot, DeathCause.LIGHTNING);
               continue;
             }
             const burned = K.strikeBurn * near;
@@ -585,10 +582,7 @@ export const injury: SystemDef = defineSystem({
         let cause = 0;
         if (lost[slot] >= K.fatalVolumeShare * bloodVolumeL(leanKg)) cause = DeathCause.SHOCK;
         else if (wInf[slot] >= K.fatalSeverity) cause = DeathCause.INFECTION;
-        if (cause !== 0) {
-          deathCounts[cause] += 1;
-          agents.remove(slot);
-        }
+        if (cause !== 0) dies(slot, cause);
       }
     };
   },

@@ -8,6 +8,7 @@
 // physiology (D-024, D-026). It runs after body.metabolism, which writes the
 // tick's exertion.
 
+import { ticksPerYear } from '../core/clock.ts';
 import { exp, pow } from '../core/dmath.ts';
 import { defineSystem } from '../core/registry.ts';
 import type { SystemDef } from '../core/registry.ts';
@@ -16,6 +17,7 @@ import type { ColumnSpec } from '../core/store.ts';
 import type { Sim, SimState } from '../sim.ts';
 import { INJURY, INJURY_COLUMNS, injure } from './injury.ts';
 import { BODY_COLUMNS, METABOLISM, Sex, fatKgOf } from './metabolism.ts';
+import { capacityAtAge, strengthAtAge } from './lifecourse.ts';
 import { declareSkills } from './skills.ts';
 
 /** Every number fitness uses, in one place. Estimates unless a source is named (docs/RESEARCH.md). */
@@ -104,18 +106,23 @@ function bodySlot(sim: Sim, slot: number, door: string): void {
   }
 }
 
-/** A body's capacity now, for the acts of Phase 3 to read beside mobility. */
+/** A body's age in years now. */
+function ageOf(sim: Sim, slot: number): number {
+  return (sim.state.tick - sim.state.agents.column<Float64Array>(B.born.name).data[slot]) / ticksPerYear(sim.config);
+}
+
+/** A body's capacity now, less what age has taken (§3.12), for the acts of Phase 3 to read beside mobility. */
 export function capacityOf(sim: Sim, slot: number): number {
   bodySlot(sim, slot, 'capacityOf');
   const f64 = (name: string) => sim.state.agents.column<Float64Array>(name).data;
-  return capacity(f64(C.fitness.name)[slot], f64(C.fatigue.name)[slot]);
+  return capacity(f64(C.fitness.name)[slot], f64(C.fatigue.name)[slot]) * capacityAtAge(ageOf(sim, slot));
 }
 
-/** A body's strength now, for the acts of Phase 3 to read. */
+/** A body's strength now, less what age has taken beyond its shrinking frame (§3.12), for the acts of Phase 3 to read. */
 export function strengthOf(sim: Sim, slot: number): number {
   bodySlot(sim, slot, 'strengthOf');
   const f64 = (name: string) => sim.state.agents.column<Float64Array>(name).data;
-  return strength(f64(B.leanKg.name)[slot], f64(INJURY_COLUMNS.strain.name)[slot]);
+  return strength(f64(B.leanKg.name)[slot], f64(INJURY_COLUMNS.strain.name)[slot]) * strengthAtAge(ageOf(sim, slot));
 }
 
 // ALIBI: a body that works hard grows fitter and stronger, tires, tears muscle when it works far
