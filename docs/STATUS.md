@@ -4,9 +4,9 @@ Update this at the end of every session. Newest information at the top of each s
 
 ## Current state
 
-- **Done:** Phase 0 (foundations) and **Phase 1 (world and ecology), exited 2026-11-19 with the fire criterion failed and accepted as a known limit (D-037, D-038)**: 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), 1.11 and 1.12 (fire corrections, a water table, bare ground), 1.13 (open seed 6's deer trap), and a viewer (1.9) that shows all of it.
-- **The world has weather and wind, plants, animals, stone, fallen wood and litter, and fire; no people.** The real pipeline has seven systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, the materials, and fire. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 2.1 [O], metabolism (`ROADMAP.md` Phase 2; `DESIGN.md` §3.1): basal rate, per-action costs (MET-style), fat storage, starvation; the energy audit gets teeth. The first agents' bodies: a new mechanism in agents' bodies, which goes in without waiting for the owner, who is told (D-034). Read `GUARDRAILS.md` first: bodies are where blank-slate founders and the energy audit start to matter. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
+- **Done:** Phase 0 (foundations), **Phase 1 (world and ecology), exited 2026-11-19 with the fire criterion failed and accepted as a known limit (D-037, D-038)**, and **2.1 (metabolism, D-039)**. Phase 1 was 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), 1.11 and 1.12 (fire corrections, a water table, bare ground), 1.13 (open seed 6's deer trap), and a viewer (1.9) that shows all of it.
+- **The world has weather and wind, plants, animals, stone, fallen wood and litter, and fire. Agents can have bodies that spend, store and starve (2.1), but no real run places any agents yet:** founders come with minds (Phase 3). The real pipeline has eight systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, the materials, fire, and metabolism. Nothing has emerged, because nothing can yet.
+- **Next action:** Phase 2.2 [O], hydration and thermoregulation (`ROADMAP.md` Phase 2; `DESIGN.md` §3.2): a body water stock with its own audit (drinking, sweating and breathing losses that scale with heat, activity and later illness; dehydration killing faster than starvation, §9's ~3 days in heat), and the energy cost of heat and cold, reduced by shelter, fire, hides and huddling. It plugs into `body.metabolism` (§3.8: a new outflow term, and a `water` conserved quantity beside `energy`). A mechanism in agents' bodies: it goes in without waiting for the owner, who is told (D-034). Heat from a huddled neighbour is body physics, like heat from a fire; whether agents *choose* to huddle is Phase 3–4's. Read `GUARDRAILS.md` first. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
 - **Blocked on:** nothing. Phase 1's last exit check (2026-11-19, after 1.13) passed persistence, bounds, both landscape types and the viewer, and failed fire (mean 0.68% of land a compressed year against 0.5%, worst year 102% against 25%), which the owner accepted in advance (D-037). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
 
 ## What exists
@@ -16,7 +16,7 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/core/` | random streams, state hash, snapshot encoding, entity stores, grid layers, spatial index, calendar, mechanism registry, run-time audits |
 | `src/sim/core/dmath.ts`, `selfcheck.ts` | portable `exp`, `log`, `pow`, `sinTurn`, `cosTurn`; the arithmetic self-check |
 | `src/sim/sim.ts` | state container, tick loop, save/load, `spawnAgent` |
-| `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants, the animals, the pathogens, the materials, fire |
+| `src/sim/pipeline.ts` | the real update order: the landscape, the climate, the plants, the animals, the pathogens, the materials, fire, metabolism |
 | `src/sim/readonly.ts` | the only door the analysis layer may use |
 | `src/sim/world/terrain.ts`, `noise.ts` | the map generator, with the water table and bare ground (`DESIGN.md` §2.10) |
 | `src/sim/world/light.ts` | sun, moon, and starlight (`DESIGN.md` §2.4) |
@@ -26,18 +26,20 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/world/pathogens.ts` | pathogen loads in water and carcass meat (`DESIGN.md` §2.14) |
 | `src/sim/world/materials.ts` | eight materials, bedrock, loose stone, fallen wood and litter per cell, rock shelters, objects, striking (flakes, crumbs, snapping, sparks), rotting, and shelter at a point (`DESIGN.md` §2.15) |
 | `src/sim/world/fire.ts` | fuel moisture (with dew and rain held in litter) and curing, spread by minimum travel time across patchy fuel, smouldering, lightning holdovers, sparks and friction embers, burning objects, light and heat at a point (`DESIGN.md` §2.16); wind lives in `climate.ts` |
+| `src/sim/body/metabolism.ts` | agents' bodies, for energy: sex, birth tick, lean mass and fat, a gut; the Schofield basal rate, effort ratios, Pandolf's walking, climbing and load costs, Forbes's split, starvation; `formBody` and `ingest` (`DESIGN.md` §3.8) |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
-| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat), `materials` (loose stone by material, fallen wood, rock shelters, objects), `fire` (burning now, ignitions by cause, land burned in the last year, litter, wind) |
+| `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat), `materials` (loose stone by material, fallen wood, rock shelters, objects), `fire` (burning now, ignitions by cause, land burned in the last year, litter, wind), `bodies` (agents with bodies, mean mass and fat share, energy eaten and spent, deaths by cause) |
 | `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
 | `src/harness/` | experiment specs, batch runner on worker threads, manifests, JSONL metrics, command line |
 | `bench/` | speed benchmark with a scripted stand-in load; timing of the math functions |
 | `tests/guardrails/` | the nine guardrail tests (`GUARDRAILS.md` §1) |
 | `tests/cross-engine/` | prints digests so two JavaScript engines can be compared |
-| `tests/unit/`, `tests/harness/` | tests of the kernel pieces and the harness |
+| `tests/unit/`, `tests/harness/` | tests of the kernel pieces, the world and body systems, and the harness |
+| `tests/fixtures/bodies.ts` | scripted bodies: Hadza-like adults, `spawnWithBody`, and a system that makes bodies eat, work and starve at random (tests only) |
 | `experiments/C0-smoke/` | a plumbing check for the harness, not an experiment |
 | `experiments/P1-ecology-review/`, `experiments/P1-fire-regime/`, `experiments/P1-open-seed-6/` | the Phase 1 exit check (preregistered), the 1.11 fire diagnosis (`diagnose.ts` logs every fire), and the 1.13 deer diagnosis (`diagnose.ts` samples where deer and their food are; `follow.ts` follows starving groups hour by hour from a saved moment) |
 
-About 16,700 lines of TypeScript including tests and experiment scripts after session 19; about 15,200 after session 13 (fire alone about 1,950); about 9,600 after session 7 (7,800 after session 5 ; 6,000 after Phase 1.0; Phase 0 alone was about 4,900, where the roadmap guessed 1,500–2,500), so **treat the roadmap's size estimates as low by roughly half.**
+About 17,500 lines of TypeScript including tests and experiment scripts after session 20 (metabolism about 720 with its tests); about 16,700 after session 19; about 15,200 after session 13 (fire alone about 1,950); about 9,600 after session 7 (7,800 after session 5 ; 6,000 after Phase 1.0; Phase 0 alone was about 4,900, where the roadmap guessed 1,500–2,500), so **treat the roadmap's size estimates as low by roughly half.**
 
 ## Decisions needed from the owner
 
@@ -64,6 +66,8 @@ Nothing is blocking: Q10 was answered on 2026-11-19 (D-037). Q9 was answered on 
 | 1.12 Breaks in the fuel (2026-11-19, unattended) | #16 | The water table's design: level with the nearest drained-to water, small streams from 0.5 km², capillary rise 6 mm × e^(−depth/0.6 m) (D-035). The patchy-fuel physics (percolation of discs at 0.676, reach half the Byram flame length). Merging although open seed 6 collapsed (D-036). That no calibration round was made, and the classification of what remains in fire as ambiguous (T-008, Q10). |
 
 ## Benchmarks
+
+**2026-11-19, Phase 2.1.** Metabolism's unit tests (nine, including 60-day fasts and a 4,000-tick save-and-load run of 30 working bodies) take about 0.3 s together; a body costs a few dozen arithmetic operations a tick. Not yet measured against the per-agent budget (`DESIGN.md` §1.7); Phase 3.1 measures the whole agent.
 
 **2026-11-15, Phase 0.4.** Cloud sandbox: Intel Xeon 2.30 GHz, 2 virtual cores, Node 22.23. Two runs; they differed by about 12%.
 
@@ -92,6 +96,8 @@ Nothing is blocking: Q10 was answered on 2026-11-19 (D-037). Q9 was answered on 
 
 ## Known risks
 
+- **Energy spending runs high** (D-039). Scripted Hadza-like days cost 2,798 kcal (men) and 2,150 (women) against §9's ~2,600 and ~1,900: inside the ±15% tolerance, the women near its edge. Candidates for 2.8's calibration pass: the thermic effect of food counted twice (FAO's activity ratios were measured on fed people), Hadza basal rates below Schofield's, and the scripted days. Pontzer et al. (2012) still has to be read at the source (a bot check blocked it).
+- **No adaptive thermogenesis** (D-039). Real starving bodies slow their metabolism more than lost tissue explains; these don't, so they starve somewhat sooner (43 and 57 days for the lean test bodies).
 - **Compute budget** (`DECISIONS.md` D-016). About 6 microseconds per agent per tick is left for bodies and minds. That is tight. Phase 3.1 has to design for it and measure a prototype before building on.
 - **Portable math is in place** (D-014, D-018), and measurement showed it was needed: two engines' built-in `exp` disagreed on 10% of inputs. What remains a risk is discipline: a system that needs a function `dmath.ts` lacks (`atan2`, say) has to add it properly, with tests and a digest, not reach for the built-in. The guardrail test blocks the built-ins.
 - **Founder viability.** Blank-slate founders may die before learning enough. Viability tuning is allowed (logged), but if it takes heavy tuning, the floor may need rethinking. That's a conversation with the owner, not a quiet fix.
@@ -122,6 +128,7 @@ Nothing is blocking: Q10 was answered on 2026-11-19 (D-037). Q9 was answered on 
 
 ## Session log
 
+- **2026-11-19, session 20** (Opus 5.5, unattended chained run). Milestone 2.1 [O], metabolism (`DESIGN.md` §3.8, D-039): agents' bodies spend energy by the Schofield basal rate, FAO activity ratios and Pandolf's costs of walking, climbing and loads; food is absorbed over hours; gains and losses split between fat and lean by Forbes's rule; a body starves when a third of its lean mass is gone. The energy audit now checks real bodies, with a positive control. Scripted Hadza-like days land at +8% (men) and +13% (women) of §9's targets; total fasting kills lean test bodies in 43 and 57 days. Fat has no hard ceiling, a simplification of §3.1 the owner is told about. No tuning. A `bodies` observer. No agents in real runs yet, so nothing new on the page.
 - **2026-11-19, session 19** (Opus 5.5, unattended chained run). Milestone 1.13 [F] on Opus: open seed 6's deer were trapped, not short of food. Every starving deer stood on one row of cells by the east map edge, shuttling between a fed wolf pack (fleeing due east, the fallback direction at distance zero) and the map edge (walking back toward water). Fixed: animals bolt in a random direction at distance zero (T-009). The full exit check, re-run, passes everything but fire (mean 0.68%, worst year 102%), so Phase 1 exits under the owner's rule (D-037, D-038). Phase 2 is next.
 - **2026-11-19, session 18** (Opus 5.5, claude.ai; same chat). The owner answered Q10: accept fire on the open plains as a known limit (D-037). Restarted the chain on 1.13, which the 1.12 run had not scheduled.
 - **2026-11-19, session 17** (Opus 5.5, unattended chained run). Milestone 1.12 [F] on Opus, breaks in the fuel (D-035): a water table level with the river, lake, spring or small stream each cell drains to, which keeps stream banks moist from below; bare ground by soil; fire crossing patchy fuel only where its flames bridge the gaps. The water table and bare ground show in the page's inspector. Re-ran the full preregistered exit check: fire better (mean 0.64% against 1.24%, worst year 87% against 174%) but still failing, and open seed 6 lost its deer and wolves (fragile on `main` too). No calibration round: nothing left in fire would bound fire size (T-008). Merged; 1.13 diagnoses open seed 6; fire waits for the owner (Q10, D-036).

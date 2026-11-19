@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { defaultConfig, validateConfig } from '../../src/sim/config.ts';
 import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
 import { viewOf } from '../../src/sim/readonly.ts';
-import { createSim, hashSim, loadSim, saveSim, spawnAgent, stepSim } from '../../src/sim/sim.ts';
+import { createSim, hashSim, loadSim, saveSim, stepSim } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
 import {
   CLIMATE_CONSTANTS,
@@ -19,6 +19,7 @@ import {
   stormActive,
 } from '../../src/sim/world/climate.ts';
 import { TERRAIN_LAYERS, Water } from '../../src/sim/world/terrain.ts';
+import { populateWithBodies } from '../fixtures/bodies.ts';
 
 function makeSim(seed: number, variability: number, cells = 96, circumscription = 0.5): Sim {
   const raw = JSON.parse(JSON.stringify(defaultConfig(seed)));
@@ -213,7 +214,7 @@ test('a snapshot taken mid-storm resumes exactly', () => {
 test('nothing agents do can change the weather', () => {
   const quiet = makeSim(14, 1);
   const busy = makeSim(14, 1);
-  for (let i = 0; i < 200; i++) spawnAgent(busy, 100 + i * 20, 300);
+  populateWithBodies(busy, 200, 100, 300, 20);
   stepSim(quiet, 3000);
   stepSim(busy, 3000);
   assert.deepEqual(Array.from(weather(busy)), Array.from(weather(quiet)));

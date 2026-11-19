@@ -1,8 +1,8 @@
 // Guardrail: conserved quantities balance for every live entity
-// (docs/GUARDRAILS.md §1 and T11). Real energy and water arrive in Phase 2;
-// until then the audit runs against the fixture's bookkeeping, and a tripwire
-// makes sure body columns that look like energy or water cannot appear
-// without the bookkeeping the audit needs.
+// (docs/GUARDRAILS.md §1 and T11). Since Phase 2.1 the audit checks real
+// bodies (docs/DESIGN.md §3.8) as well as the fixture's bookkeeping, and a
+// tripwire makes sure body columns that look like energy or water cannot
+// appear without the bookkeeping the audit needs.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -10,7 +10,10 @@ import { auditConserved, conservedLayoutProblems } from '../../src/sim/core/audi
 import { EntityStore } from '../../src/sim/core/store.ts';
 import { defaultConfig } from '../../src/sim/config.ts';
 import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
-import { createSim, spawnAgent, stepSim } from '../../src/sim/sim.ts';
+import { createSim, stepSim } from '../../src/sim/sim.ts';
+import { defineSystem } from '../../src/sim/core/registry.ts';
+import { BODY_COLUMNS, metabolism } from '../../src/sim/body/metabolism.ts';
+import { fxBodyWork, populateWithBodies } from '../fixtures/bodies.ts';
 import { FIXTURE_PIPELINE, FX_KCAL, fxBurn, fxChurn, fxLeak, fxWander } from '../fixtures/systems.ts';
 import { splitWords } from './lib/scan.ts';
 
@@ -53,10 +56,24 @@ test('a conserved quantity needs a stock, an inflow, and an outflow', () => {
   assert.ok(conservedLayoutProblems(store).length > 0, 'an f32 column should be rejected');
 });
 
-test('the real pipeline balances, and cannot hold untracked energy or water', () => {
-  const sim = createSim(defaultConfig(13), SIM_PIPELINE);
-  for (let i = 0; i < 50; i++) spawnAgent(sim, 100 + i, 100);
-  stepSim(sim, 5_000);
+test('the real pipeline balances bodies that eat, work, fatten and starve, and cannot hold untracked energy or water', () => {
+  const sim = createSim(defaultConfig(13), [...SIM_PIPELINE, fxBodyWork]);
+  populateWithBodies(sim, 50, 100, 100);
+  for (let t = 0; t < 6_000; t += 500) {
+    stepSim(sim, 500);
+    assert.deepEqual(auditConserved(sim.state.agents), [], `at tick ${sim.state.tick}`);
+  }
+  const agents = sim.state.agents;
+  const eaten = agents.column<Float64Array>(BODY_COLUMNS.energyIn.name).data;
+  const spent = agents.column<Float64Array>(BODY_COLUMNS.energyOut.name).data;
+  let fed = 0;
+  let burned = 0;
+  for (let slot = 0; slot < agents.highWater; slot++) {
+    if (!agents.isAlive(slot)) continue;
+    if (spent[slot] > 50_000) burned++;
+    if (eaten[slot] > 160_000) fed++;
+  }
+  assert.ok(burned > 10 && fed > 5, `the bodies should actually be spending and eating (${burned}, ${fed})`);
   const suspicious = new Set(['kcal', 'energy', 'calorie', 'calories', 'joule', 'joules', 'fat', 'water', 'hydration']);
   for (const store of sim.state.stores) {
     assert.deepEqual(auditConserved(store), []);
@@ -69,4 +86,20 @@ test('the real pipeline balances, and cannot hold untracked energy or water', ()
       );
     }
   }
+});
+
+test('the audit catches a body system that conjures energy', () => {
+  const leak = defineSystem({
+    name: 'fixture.bodyLeak',
+    create: (sim) => () => {
+      const energy = sim.state.agents.column<Float64Array>(BODY_COLUMNS.energy.name).data;
+      if (sim.state.agents.isAlive(0)) energy[0] += 1;
+    },
+  });
+  const sim = createSim(defaultConfig(13), [metabolism, leak]);
+  populateWithBodies(sim, 3, 100, 100);
+  stepSim(sim, 3);
+  const problems = auditConserved(sim.state.agents);
+  assert.ok(problems.length > 0);
+  assert.match(problems[0], /energy does not balance/);
 });

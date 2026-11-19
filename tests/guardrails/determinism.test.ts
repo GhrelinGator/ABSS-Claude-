@@ -14,15 +14,16 @@ import { Hasher } from '../../src/sim/core/hash.ts';
 import type { SystemDef } from '../../src/sim/core/registry.ts';
 import { defaultConfig, validateConfig } from '../../src/sim/config.ts';
 import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
-import { createSim, hashSim, loadSim, saveSim, spawnAgent, stepSim } from '../../src/sim/sim.ts';
+import { createSim, hashSim, loadSim, saveSim, stepSim } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
 import { FIXTURE_PIPELINE, fxChurn, fxWander, makeClimateRecorder } from '../fixtures/systems.ts';
+import { populateWithBodies } from '../fixtures/bodies.ts';
 
 const TICKS = 10_000;
 const CHECK_EVERY = 1_000;
 
 function populate(sim: Sim, n: number): void {
-  for (let i = 0; i < n; i++) spawnAgent(sim, 1000 + i * 37.5, 2000 + i * 11.25);
+  populateWithBodies(sim, n, 1000, 2000, 37.5, 11.25);
 }
 
 function hashesOver(sim: Sim, ticks: number, every: number): string[] {

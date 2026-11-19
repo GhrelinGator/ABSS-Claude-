@@ -15,6 +15,7 @@ export { FIRE_FIELDS, FIRE_LAYERS, FIRE_PARTS, FIRE_STORE, FireStage } from './w
 export { BROWSE_LAYER, FORAGE_LAYER, PLANT_SPECIES, SEED_RAIN_LAYER, coverLayer, foodLayer } from './world/plants.ts';
 export { ANIMAL_FIELDS, ANIMAL_PARTS, ANIMAL_STORE, AnimalKind, AnimalMode, CARCASS_LAYER, CARCASS_LOAD_LAYER, GROUP_KINDS, HARE_LAYER } from './world/animals.ts';
 export { WATER_PATHOGEN_LAYER } from './world/pathogens.ts';
+export { BODY_COLUMNS, BODY_PARTS, DeathCause, Effort, METABOLISM, Sex, basalKcalPerDay, fatKgOf } from './body/metabolism.ts';
 export {
   Bedrock,
   MATERIALS,
