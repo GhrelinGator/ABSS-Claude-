@@ -13,7 +13,7 @@ import { defineSystem } from '../core/registry.ts';
 import type { SystemDef } from '../core/registry.ts';
 import type { ColumnSpec } from '../core/store.ts';
 import type { Sim, SimState } from '../sim.ts';
-import { BODY_COLUMNS, BODY_PARTS, DeathCause, Effort, METABOLISM, Sex, basalKcalPerDay, fatKgOf } from './metabolism.ts';
+import { BODY_COLUMNS, DeathCause, Effort, METABOLISM, Sex, basalKcalPerDay, deathDoor, fatKgOf } from './metabolism.ts';
 
 export const HEAT = {
   /** Core temperature a body starts at and returns to, °C. */
@@ -169,9 +169,7 @@ export const heat: SystemDef = defineSystem({
     const agents = state.agents;
     const dt = 86_400 / config.time.ticksPerDay;
     const perYear = ticksPerYear(config);
-    const deaths = state.parts.find((part) => part.name === BODY_PARTS.deaths);
-    if (!deaths || !deaths.readings) throw new Error('body.heat needs body.metabolism in the pipeline.');
-    const deathCounts = deaths.readings() as Float64Array;
+    const dies = deathDoor(sim, 'body.heat');
     const restingRatio = METABOLISM.effortRatio[Effort.STILL];
     const urineLeast = (H.urineLeastKgPerDay / 86_400) * dt;
     const urineMost = (H.urineMostKgPerHour / 3600) * dt;
@@ -321,10 +319,7 @@ export const heat: SystemDef = defineSystem({
         if (full - water[slot] >= H.fatalDeficitShare * mass) cause = DeathCause.DEHYDRATION;
         else if (newCore >= H.hyperthermiaC) cause = DeathCause.HYPERTHERMIA;
         else if (newCore <= H.hypothermiaC) cause = DeathCause.HYPOTHERMIA;
-        if (cause !== 0) {
-          deathCounts[cause] += 1;
-          agents.remove(slot);
-        }
+        if (cause !== 0) dies(slot, cause);
       }
     };
   },

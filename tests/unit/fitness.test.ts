@@ -280,7 +280,8 @@ test('skill climbs with practice, keeps through use, and fades slowly with disus
     },
   });
   const learner = createSim(defaultConfig(5), [...sim.pipeline, daily]);
-  const pupil = spawnWithBody(learner, 100, 100, HADZA_MAN);
+  // The pupil is 5 when it starts, so its ages are the ones compared (age takes nothing from skill before 50, §3.12).
+  const pupil = spawnWithBody(learner, 100, 100, { ...HADZA_MAN, ageYears: 5 });
   assert.equal(pupil, slot);
   stepSim(learner, 13 * perYear);
   const at18 = skillLevel(learner, pupil, SkillAct.PICK_UP, tuber);

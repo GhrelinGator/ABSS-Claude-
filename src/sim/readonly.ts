@@ -20,6 +20,8 @@ export { HEAT, HEAT_COLUMNS, SURROUNDINGS, fullWaterKg } from './body/heat.ts';
 export { INJURY, INJURY_COLUMNS, INJURY_PARTS, InjuryKind, bloodVolumeL } from './body/injury.ts';
 export { FITNESS, FITNESS_COLUMNS, capacity, strength } from './body/fitness.ts';
 export { SKILLS, SKILL_COLUMNS, SKILL_PAIRS, skillOf } from './body/skills.ts';
+export { LIFECOURSE, capacityAtAge, frameShare, oldAgeHazard, skillAtAge, strengthAtAge } from './body/lifecourse.ts';
+export { AGING_COLUMNS } from './body/aging.ts';
 export {
   Bedrock,
   MATERIALS,

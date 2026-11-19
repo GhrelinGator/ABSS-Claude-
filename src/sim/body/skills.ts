@@ -12,6 +12,7 @@ import type { Sim, SimState } from '../sim.ts';
 import { AnimalKind } from '../world/animals.ts';
 import { Material } from '../world/materials.ts';
 import { PLANT_SPECIES } from '../world/plants.ts';
+import { skillAtAge } from './lifecourse.ts';
 import { BODY_COLUMNS, Sex } from './metabolism.ts';
 
 /**
@@ -144,7 +145,13 @@ export function practiceHours(sim: Sim, slot: number, act: number, kind: number)
   return kept(sim, hours, sim.state.tick - last);
 }
 
-/** A body's skill now at an act on a kind: 0 for a novice, toward 1 for an expert. */
+/**
+ * A body's skill now at an act on a kind: 0 for a novice, toward 1 for an expert, less what age has
+ * taken of its expression (§3.12).
+ */
 export function skillLevel(sim: Sim, slot: number, act: number, kind: number): number {
-  return skillOf(practiceHours(sim, slot, act, kind));
+  const practised = skillOf(practiceHours(sim, slot, act, kind));
+  const perYear = sim.config.time.ticksPerDay * sim.config.time.daysPerYear;
+  const age = (sim.state.tick - sim.state.agents.column<Float64Array>(BODY_COLUMNS.born.name).data[slot]) / perYear;
+  return practised * skillAtAge(age);
 }

@@ -8,6 +8,7 @@
 
 import { ticksPerYear } from '../core/clock.ts';
 import { defineSystem } from '../core/registry.ts';
+import { CARCASS_LAYER, CARCASS_LOAD_LAYER, dilutedLoad } from '../world/animals.ts';
 import type { SystemDef } from '../core/registry.ts';
 import type { ColumnSpec } from '../core/store.ts';
 import type { Sink, Source } from '../core/codec.ts';
@@ -25,7 +26,7 @@ export const Effort = { STILL: 0, SLEEP: 1, LIGHT: 2, MODERATE: 3, HEAVY: 4 } as
 /**
  * Causes of death counted in `body.deaths` (index = cause). Starvation is metabolism's;
  * dehydration, hyperthermia and hypothermia body.heat's (§3.9); shock (blood or plasma lost),
- * infection and lightning body.injury's (§3.10).
+ * infection and lightning body.injury's (§3.10); old age body.aging's (§3.12).
  */
 export const DeathCause = {
   STARVATION: 1,
@@ -35,6 +36,7 @@ export const DeathCause = {
   SHOCK: 5,
   INFECTION: 6,
   LIGHTNING: 7,
+  OLD_AGE: 8,
 } as const;
 
 export const METABOLISM = {
@@ -69,6 +71,10 @@ export const METABOLISM = {
   climbJoulesPerKgM: 35,
   /** Pandolf's load term: watts per kg of body and load per (load ÷ body mass)². */
   loadWattsPerKg: 2.0,
+  /** Share of a body's mass left as carcass meat when it dies [estimate: muscle, fat and organs of a large mammal; deer here give 55 kg]. */
+  carcassShare: 0.5,
+  /** Ages at death are counted in one-year bins from 0 to this; older deaths go in the last bin. */
+  oldestDeathBinYears: 120,
 } as const;
 const M = METABOLISM;
 const JOULES_PER_KCAL = 4184;
@@ -147,23 +153,35 @@ export const BODY_COLUMNS = {
    * read once and cleared by body.fitness.
    */
   conditionedTo: { name: 'conditionedTo', dtype: 'f64', category: 'body' },
+  /**
+   * The frame (built lean mass less trained muscle, kg) the body grows toward and ages from (§3.12):
+   * written by formBody when the spec gives it, otherwise set by body.aging the first tick it sees the
+   * body. 0 until then.
+   */
+  adultFrameKg: { name: 'adultFrameKg', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = BODY_COLUMNS;
 /** body.injury's heat of healing (§3.10), named here so metabolism need not import injury. */
 const HEAL_COLUMN = 'healW';
+/** body.fitness's trained muscle (§3.11), named here so metabolism need not import fitness. */
+const TRAINED_COLUMN = 'trainedKg';
 
-export const BODY_PARTS = { deaths: 'body.deaths' } as const;
+export const BODY_PARTS = { deaths: 'body.deaths', deathAges: 'body.deathAges' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
-const DEATH_SLOTS = 8;
+const DEATH_SLOTS = 9;
 
 function declareBody(state: SimState): void {
   for (const spec of Object.values(BODY_COLUMNS)) state.agents.ensureColumn(spec);
+  // Where a dead body's flesh goes (§3.12), so a pipeline without animals still holds it.
+  state.world.ensureLayer(CARCASS_LAYER, 'f32');
+  state.world.ensureLayer(CARCASS_LOAD_LAYER, 'f32');
 }
 
-function deathTally(): StatePart {
-  const counts = new Float64Array(DEATH_SLOTS);
+/** A tally kept in the state: `body.deaths` (by cause) or `body.deathAges` (by whole years of age). */
+function tally(name: string, length: number): StatePart {
+  const counts = new Float64Array(length);
   return {
-    name: BODY_PARTS.deaths,
+    name,
     holdsLearned: false,
     readings: () => counts,
     write(sink: Sink) {
@@ -171,9 +189,50 @@ function deathTally(): StatePart {
     },
     read(source: Source) {
       const saved = source.array('f64');
-      if (saved.length !== counts.length) throw new Error('body.deaths: snapshot has the wrong length.');
+      if (saved.length !== counts.length) throw new Error(`${name}: snapshot has the wrong length.`);
       counts.set(saved);
     },
+  };
+}
+
+function readings(state: SimState, name: string, who: string): Float64Array {
+  const part = state.parts.find((p) => p.name === name);
+  if (!part || !part.readings) throw new Error(`${who} needs body.metabolism in the pipeline (${name} is missing).`);
+  return part.readings() as Float64Array;
+}
+
+/**
+ * The one door every body's death goes through (§3.12). A system that kills bodies makes it in its
+ * `create`; the door counts the death by cause (DeathCause) and by age, leaves half the body's mass as
+ * carcass meat, fresh and clean, in the cell where it lay (§2.13–§2.16), and removes the agent.
+ */
+export function deathDoor(sim: Sim, who: string): (slot: number, cause: number) => void {
+  const { config, state } = sim;
+  const agents = state.agents;
+  const byCause = readings(state, BODY_PARTS.deaths, who);
+  const byAge = readings(state, BODY_PARTS.deathAges, who);
+  const meat = state.world.layer<Float32Array>(CARCASS_LAYER);
+  const meatLoad = state.world.layer<Float32Array>(CARCASS_LOAD_LAYER);
+  const { widthCells: W, heightCells: H, cellSizeM: cs } = config.world;
+  const perYear = ticksPerYear(config);
+  const oldest = M.oldestDeathBinYears;
+  return (slot: number, cause: number) => {
+    if (!(cause > 0 && cause < byCause.length)) throw new RangeError(`${who}: no such cause of death ${cause}.`);
+    const f64 = (name: string) => agents.column<Float64Array>(name).data;
+    const lean = f64(C.leanKg.name)[slot];
+    const mass = lean + fatKgOf(f64(C.energy.name)[slot], f64(C.gut.name)[slot], lean);
+    const age = (state.tick - f64(C.born.name)[slot]) / perYear;
+    byCause[cause] += 1;
+    byAge[age >= oldest ? oldest : age > 0 ? Math.floor(age) : 0] += 1;
+    let i = Math.floor(f64('x')[slot] / cs);
+    let j = Math.floor(f64('y')[slot] / cs);
+    i = i < 0 ? 0 : i >= W ? W - 1 : i;
+    j = j < 0 ? 0 : j >= H ? H - 1 : j;
+    const k = j * W + i;
+    const kg = mass > 0 ? M.carcassShare * mass : 0;
+    meatLoad[k] = dilutedLoad(meatLoad[k], meat[k], kg);
+    meat[k] += kg;
+    agents.remove(slot);
   };
 }
 
@@ -188,6 +247,11 @@ export interface BodySpec {
    * has never worked, like a newborn.
    */
   readonly conditionedTo?: number;
+  /**
+   * The frame (lean mass, kg, without trained muscle) the body grows toward and ages from (§3.12).
+   * Left out, body.aging sets it from the body's frame and the frame curve at its age.
+   */
+  readonly adultFrameKg?: number;
 }
 
 /**
@@ -207,6 +271,8 @@ export function formBody(sim: Sim, slot: number, spec: BodySpec): void {
   if (!(spec.fatKg > 0 && spec.fatKg < 500)) throw new RangeError(`formBody: fat ${spec.fatKg}.`);
   const conditioned = spec.conditionedTo ?? 0;
   if (!(conditioned >= 0 && conditioned < 1000)) throw new RangeError(`formBody: conditioned to ${conditioned}.`);
+  const adultFrame = spec.adultFrameKg ?? 0;
+  if (!(adultFrame >= 0 && adultFrame < 500)) throw new RangeError(`formBody: adult frame ${adultFrame}.`);
   const energy = M.fatKcalPerKg * spec.fatKg + M.leanKcalPerKg * spec.leanKg;
   sex[slot] = spec.sex;
   agents.column<Float64Array>(C.born.name).data[slot] = sim.state.tick - spec.ageYears * ticksPerYear(sim.config);
@@ -217,6 +283,7 @@ export function formBody(sim: Sim, slot: number, spec: BodySpec): void {
   agents.column<Float64Array>(C.energyIn.name).data[slot] = energy;
   agents.column<Float64Array>(C.energyOut.name).data[slot] = 0;
   agents.column<Float64Array>(C.conditionedTo.name).data[slot] = conditioned;
+  agents.column<Float64Array>(C.adultFrameKg.name).data[slot] = adultFrame;
 }
 
 /** Put food into an agent's gut: `kcal` of metabolizable energy, which the world has already given up. */
@@ -257,7 +324,8 @@ export const metabolism: SystemDef = defineSystem({
   name: 'body.metabolism',
   declare(state: SimState) {
     declareBody(state);
-    state.addPart(deathTally());
+    state.addPart(tally(BODY_PARTS.deaths, DEATH_SLOTS));
+    state.addPart(tally(BODY_PARTS.deathAges, M.oldestDeathBinYears + 1));
   },
   create(sim: Sim) {
     const { config, state } = sim;
@@ -269,11 +337,11 @@ export const metabolism: SystemDef = defineSystem({
     const leanDensity = M.leanKcalPerKg;
     const forbes = M.forbesKg;
     const ratios = M.effortRatio;
-    const deaths = state.parts.find((part) => part.name === BODY_PARTS.deaths);
-    if (!deaths || !deaths.readings) throw new Error('body.metabolism: its death tally is missing.');
-    const deathCounts = deaths.readings() as Float64Array;
+    const dies = deathDoor(sim, 'body.metabolism');
     // The heat of healing and fighting infection, when the pipeline holds body.injury (§3.10).
     const healing = agents.hasColumn(HEAL_COLUMN);
+    // Trained muscle, when the pipeline holds body.fitness (§3.11): the frame is built lean mass less it.
+    const training = agents.hasColumn(TRAINED_COLUMN);
 
     return () => {
       const tick = state.tick;
@@ -295,6 +363,8 @@ export const metabolism: SystemDef = defineSystem({
       const heat = agents.column<Float64Array>(C.heatW.name).data;
       const exertion = agents.column<Float64Array>(C.exertion.name).data;
       const heal = healing ? agents.column<Float64Array>(HEAL_COLUMN).data : null;
+      const trained = training ? agents.column<Float64Array>(TRAINED_COLUMN).data : null;
+      const adultFrame = agents.column<Float64Array>(C.adultFrameKg.name).data;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -348,9 +418,16 @@ export const metabolism: SystemDef = defineSystem({
         energy[slot] -= spent;
         energyOut[slot] += spent;
 
-        // 3. Tissues: Forbes's rule splits the net change between fat and lean.
+        // 3. Tissues: Forbes's rule splits the net change between fat and lean. Its constant is for
+        // a grown body; a body short of its adult frame (growing, or shrunk with age) scales it (§3.12).
         const net = absorbed - spent;
-        const leanPerFat = forbes / fatKg;
+        let scale = 1;
+        const adult = adultFrame[slot];
+        if (adult > 0) {
+          const frame = leanBuilt[slot] - (trained ? trained[slot] : 0);
+          if (frame < adult) scale = frame / adult;
+        }
+        const leanPerFat = (forbes * scale) / fatKg;
         const fatChange = net / (fatDensity + leanDensity * leanPerFat);
         const newLean = leanKg + leanPerFat * fatChange;
         lean[slot] = newLean;
@@ -363,10 +440,7 @@ export const metabolism: SystemDef = defineSystem({
         shiver[slot] = 0;
 
         // 4. Starvation.
-        if (newLean < M.starveLeanShare * leanBuilt[slot]) {
-          deathCounts[DeathCause.STARVATION] += 1;
-          agents.remove(slot);
-        }
+        if (newLean < M.starveLeanShare * leanBuilt[slot]) dies(slot, DeathCause.STARVATION);
       }
     };
   },

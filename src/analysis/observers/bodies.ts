@@ -2,8 +2,9 @@
 // many, their mean mass and fat share, the energy they have eaten and spent so
 // far, their mean core temperature and water deficit, the water they have taken
 // in and lost so far, how many are wounded, burned, broken, infected or ill
-// now (§3.10), their mean capacity for work and trained muscle (§3.11),
-// injuries so far by kind, and deaths so far by cause.
+// now (§3.10), their mean capacity for work and trained muscle (§3.11), their
+// mean age (§3.12), injuries so far by kind, deaths so far by cause, and the
+// modal age of the deaths after 15 so far.
 
 import type { Measurements, Observer } from '../observer.ts';
 import {
@@ -17,6 +18,7 @@ import {
   InjuryKind,
   Sex,
   capacity,
+  capacityAtAge,
   fatKgOf,
   fullWaterKg,
 } from '../../sim/readonly.ts';
@@ -33,6 +35,8 @@ export const bodies: Observer = {
     const energyOut = agents.column(BODY_COLUMNS.energyOut.name);
     const gut = agents.column(BODY_COLUMNS.gut.name);
     const lean = agents.column(BODY_COLUMNS.leanKg.name);
+    const born = agents.column(BODY_COLUMNS.born.name);
+    const perYear = view.config.time.ticksPerDay * view.config.time.daysPerYear;
     const heat = agents.hasColumn(HEAT_COLUMNS.water.name);
     const core = heat ? agents.column(HEAT_COLUMNS.coreC.name) : null;
     const water = heat ? agents.column(HEAT_COLUMNS.water.name) : null;
@@ -64,6 +68,7 @@ export const bodies: Observer = {
     let drunk = 0;
     let lost = 0;
     let n = 0;
+    let ages = 0;
     let mass = 0;
     let fatShare = 0;
     let eaten = 0;
@@ -72,7 +77,9 @@ export const bodies: Observer = {
       if (alive[slot] !== 1 || sex[slot] === Sex.NONE) continue;
       const fat = fatKgOf(energy[slot], gut[slot], lean[slot]);
       const m = fat + lean[slot];
+      const age = (view.tick - born[slot]) / perYear;
       n++;
+      ages += age;
       mass += m;
       fatShare += fat / m;
       eaten += energyIn[slot];
@@ -86,7 +93,7 @@ export const bodies: Observer = {
         moving += mobility[slot];
       }
       if (fitness && fatigue && trained) {
-        able += capacity(fitness[slot], fatigue[slot]);
+        able += capacity(fitness[slot], fatigue[slot]) * capacityAtAge(age);
         muscle += trained[slot];
       }
       if (core && water && waterIn && waterOut && core[slot] !== 0) {
@@ -99,6 +106,7 @@ export const bodies: Observer = {
     }
     const out: Measurements = { withBodies: n };
     if (n > 0) {
+      out.meanAgeYears = ages / n;
       out.meanMassKg = mass / n;
       out.meanFatShare = fatShare / n;
       out.meanKcalIn = eaten / n;
@@ -135,6 +143,19 @@ export const bodies: Observer = {
         out['deaths.infection'] = deaths[DeathCause.INFECTION];
         out['deaths.lightning'] = deaths[DeathCause.LIGHTNING];
       }
+      if (deaths.length > DeathCause.OLD_AGE) out['deaths.oldAge'] = deaths[DeathCause.OLD_AGE];
+    }
+    // Ages at death, in whole years (§3.12): deaths before 15, and the modal age of those after.
+    const byAge = view.readings(BODY_PARTS.deathAges);
+    if (byAge) {
+      let young = 0;
+      let mode = -1;
+      for (let year = 0; year < byAge.length; year++) {
+        if (year < 15) young += byAge[year];
+        else if (byAge[year] > 0 && (mode < 0 || byAge[year] > byAge[mode])) mode = year;
+      }
+      out['deaths.under15'] = young;
+      if (mode >= 0) out['deaths.modalAdultAge'] = mode;
     }
     const injuries = view.readings(INJURY_PARTS.injuries);
     if (injuries) {

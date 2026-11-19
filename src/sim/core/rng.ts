@@ -33,6 +33,8 @@ export const StreamDomain = {
   BODY: 9,
   /** Strains from overexertion (Phase 2.4): their own stream, so adding them changed none of the draws above. */
   LOAD: 10,
+  /** The age each body dies of old age, drawn once per body (Phase 2.5): its own stream, so no draw above changed. */
+  AGING: 11,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];

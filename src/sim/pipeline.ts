@@ -3,6 +3,7 @@
 // are added only by the roadmap phase that introduces them.
 
 import type { SystemDef } from './core/registry.ts';
+import { aging } from './body/aging.ts';
 import { exposure } from './body/exposure.ts';
 import { fitness } from './body/fitness.ts';
 import { heat } from './body/heat.ts';
@@ -43,4 +44,6 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   metabolism,
   // Phase 2.4: fitness and fatigue from the tick's exertion, strains, trained muscle (skills are kept here too).
   fitness,
+  // Phase 2.5: growth along the frame curve, shrinking with age, death by old age.
+  aging,
 ]);
