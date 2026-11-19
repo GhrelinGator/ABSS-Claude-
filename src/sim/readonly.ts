@@ -18,6 +18,8 @@ export { WATER_PATHOGEN_LAYER } from './world/pathogens.ts';
 export { BODY_COLUMNS, BODY_PARTS, DeathCause, Effort, METABOLISM, Sex, basalKcalPerDay, fatKgOf } from './body/metabolism.ts';
 export { HEAT, HEAT_COLUMNS, SURROUNDINGS, fullWaterKg } from './body/heat.ts';
 export { INJURY, INJURY_COLUMNS, INJURY_PARTS, InjuryKind, bloodVolumeL } from './body/injury.ts';
+export { FITNESS, FITNESS_COLUMNS, capacity, strength } from './body/fitness.ts';
+export { SKILLS, SKILL_COLUMNS, SKILL_PAIRS, skillOf } from './body/skills.ts';
 export {
   Bedrock,
   MATERIALS,

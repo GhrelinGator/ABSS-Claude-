@@ -114,9 +114,13 @@ export const INJURY = {
 const K = INJURY;
 const JOULES_PER_KCAL = 4184;
 
-/** What an injury tally counts (`body.injuries`, index = kind). */
-export const InjuryKind = { WOUND: 1, BURN: 2, LIGHTNING: 3, WOUND_INFECTION: 4, GUT_ILLNESS: 5 } as const;
-const INJURY_SLOTS = 6;
+/**
+ * What an injury tally counts (`body.injuries`, index = kind): wounds dealt through `injure` (an
+ * open wound, bleeding or a broken bone), burns, bodies struck by lightning, infections caught, and
+ * strains dealt through `injure` with nothing else (overexertion, §3.11).
+ */
+export const InjuryKind = { WOUND: 1, BURN: 2, LIGHTNING: 3, WOUND_INFECTION: 4, GUT_ILLNESS: 5, STRAIN: 6 } as const;
+const INJURY_SLOTS = 7;
 export const INJURY_PARTS = { injuries: 'body.injuries' } as const;
 
 export const INJURY_COLUMNS = {
@@ -264,7 +268,8 @@ export function injure(sim: Sim, slot: number, injury: Injury): void {
   arms[slot] = 1 - (1 - arms[slot]) * (1 - arm);
   const strains = col(C.strain.name);
   strains[slot] = 1 - (1 - strains[slot]) * (1 - strain);
-  tallyOf(sim.state)[InjuryKind.WOUND] += 1;
+  if (open > 0 || bleed > 0 || leg > 0 || arm > 0) tallyOf(sim.state)[InjuryKind.WOUND] += 1;
+  else if (strain > 0) tallyOf(sim.state)[InjuryKind.STRAIN] += 1;
 }
 
 /** Pathogens swallowed: `dose` infectious units (waterDose, meatDose), from what the world has already given up. */

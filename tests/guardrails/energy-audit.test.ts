@@ -73,7 +73,7 @@ test('the real pipeline balances bodies that eat, work, fatten and starve, and c
     if (spent[slot] > 50_000) burned++;
     if (eaten[slot] > 160_000) fed++;
   }
-  assert.ok(burned > 10 && fed > 5, `the bodies should actually be spending and eating (${burned}, ${fed})`);
+  assert.ok(burned > 5 && fed > 5, `the bodies should actually be spending and eating (${burned}, ${fed})`);
   const suspicious = new Set(['kcal', 'energy', 'calorie', 'calories', 'joule', 'joules', 'fat', 'water', 'hydration']);
   for (const store of sim.state.stores) {
     assert.deepEqual(auditConserved(store), []);

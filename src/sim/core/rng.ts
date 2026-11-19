@@ -31,6 +31,8 @@ export const StreamDomain = {
   FIRE: 8,
   /** Bodies: infections caught, their strains, lightning landing (Phase 2.3). */
   BODY: 9,
+  /** Strains from overexertion (Phase 2.4): their own stream, so adding them changed none of the draws above. */
+  LOAD: 10,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];
