@@ -13,7 +13,7 @@ import { StreamDomain, globalStreamOffset, nextFloat } from '../core/rng.ts';
 import { BucketGrid } from '../core/spatial.ts';
 import { spawnEntity } from '../sim.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
-import { CLIMATE_CONSTANTS, CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, dailyMeanTemperatureC, stormActive, windAt } from './climate.ts';
+import { CLIMATE_CONSTANTS, CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC, dailyMeanTemperatureC, stormActive, stormRainShare, windAt } from './climate.ts';
 import { MATERIAL_CONSTANTS, MATERIAL_LAYERS, Material, OBJECT_STORE, materialById, thicknessOf } from './materials.ts';
 import { seasonFraction } from './light.ts';
 import { BROWSE_LAYER, FORAGE_LAYER, PLANT_SPECIES, coverLayer, foodLayer } from './plants.ts';
@@ -33,7 +33,7 @@ export const FIRE_LAYERS = {
 
 /** One entity per burning cell. */
 export const FIRE_STORE = 'fires';
-export const FIRE_PARTS = { counts: 'fire.counts' } as const;
+export const FIRE_PARTS = { counts: 'fire.counts', wetting: 'fire.wetting' } as const;
 
 /** Running totals since the start of the run, plus the burning objects now. Indices are fixed. */
 export const FIRE_FIELDS = {
@@ -67,18 +67,37 @@ export const FIRE_CONSTANTS = {
   humidityDailySwing: 0.2,
   /** Fine fuel under full tree cover is shaded: this much more moisture. */
   shadeMoisture: 0.05,
+  /**
+   * Dew on fine fuel under open sky: none at an estimated humidity of `dewFrom`, `dewMoisture` more
+   * moisture from `dewFull` (surfaces are wet with dew at about 90%; Sentelhas et al. 2008). T-007.
+   */
+  dewFrom: 0.88,
+  dewFull: 0.92,
+  dewMoisture: 0.15,
   /** Hour the air is driest. */
   driestHour: 15,
   /** Points of moisture (as a share) added per mm of rain on the cell today: fine fuel, sticks. Poles follow the soil instead. */
   fineWetPerMm: 0.06,
   stickWetPerMm: 0.03,
+  /**
+   * Rain water held in the fine fuel after the day it fell shrinks by e every this many hours
+   * (the Fine Fuel Moisture Code's nominal time lag of two-thirds of a day; Van Wagner 1987). The
+   * fire system remembers the last `wettingStorms` storms for this. T-007.
+   */
+  wettingLagHours: 16,
+  wettingStorms: 4,
   /** Sticks sit this far above the fine fuel's daily-mean equilibrium. */
   stickAboveEquilibrium: 0.02,
   /** Poles and trunks follow the soil: base + slope × soil moisture. */
   logMoistureBase: 0.08,
   logMoisturePerSoil: 0.25,
-  /** Fine fuel this wet or wetter does not carry flame (Cheney et al. 1998). */
+  /**
+   * Fine fuel this wet or wetter does not carry flame (Cheney et al. 1998): 24% in a wind of
+   * `lightWindKmh` or more at 10 m, 20% in a lighter one (T-007).
+   */
   extinctionMoisture: 0.24,
+  extinctionMoistureLightWind: 0.2,
+  lightWindKmh: 10,
   /** Moisture damping: exp(−dampPerPoint × M%) up to `dampLinearFrom`%, then linear to 0 at extinction. */
   dampPerPoint: 0.108,
   dampLinearFrom: 12,
@@ -131,6 +150,8 @@ export const FIRE_CONSTANTS = {
   /** A cell needs this much wood, kg, to smoulder. Smouldering dies out by itself at this rate per hour (embers cool). */
   smoulderLeastKg: 5,
   smoulderOutPerHour: 0.06,
+  /** A lightning holdover, smouldering at the base of the struck tree, goes out by itself at this rate per hour (T-007). */
+  holdoverOutPerHour: 0.015,
   /** Chance per hour that a smouldering cell with dry, cured fine fuel flares, times the moisture factor. */
   flarePerHour: 0.3,
   /**
@@ -241,10 +262,19 @@ export function airHumidity(soilMoisture: number, wetDay: boolean, hourCos: numb
   return h < 0.1 ? 0.1 : h > 1 ? 1 : h;
 }
 
-/** How much fuel moisture slows a fire: about 1 when bone dry, 0 at the moisture of extinction. */
-export function moistureFactor(moisture: number): number {
+/** Moisture added to fine fuel under open sky by dew at an estimated relative humidity (0 to 1). */
+export function dewMoisture(humidity: number): number {
+  return K.dewMoisture * clamp01((humidity - K.dewFrom) / (K.dewFull - K.dewFrom));
+}
+
+/**
+ * How much fuel moisture slows a fire: about 1 when bone dry, 0 at the moisture of extinction,
+ * which is lower in a light wind (Cheney et al. 1998; Eq. 3.7 in Cruz et al. 2015). `windKmh` is
+ * the wind reaching the fire; leave it out for a strong wind.
+ */
+export function moistureFactor(moisture: number, windKmh: number = K.lightWindKmh): number {
   const m = moisture * 100;
-  const x = K.extinctionMoisture * 100;
+  const x = (windKmh < K.lightWindKmh ? K.extinctionMoistureLightWind : K.extinctionMoisture) * 100;
   if (m >= x) return 0;
   if (m <= K.dampLinearFrom) return exp(-K.dampPerPoint * (m < 0 ? 0 : m));
   return (exp(-K.dampPerPoint * K.dampLinearFrom) * (x - m)) / (x - K.dampLinearFrom);
@@ -346,6 +376,10 @@ export class FireConditions {
   private stormR2 = 0;
   private stormNow = false;
   private stormMmPerHour = 0;
+  private readonly wetting: ArrayLike<number> | null;
+  /** Earlier days' rain still in the fine fuel now: the map-wide amount, and each kept storm's (x, y, radius², amount). */
+  private carriedDay = 0;
+  private readonly carriedStorms = new Float64Array(4 * K.wettingStorms);
   /** Wind at 10 m now, km/h, and its direction as a unit vector (toward which it blows). */
   windKmh = 0;
   windUx = 1;
@@ -369,6 +403,8 @@ export class FireConditions {
     this.covers = PLANT_SPECIES.map((sp) => world.layer<Float32Array>(coverLayer(sp)));
     const nut = PLANT_SPECIES.findIndex((sp) => sp.name === 'nut');
     this.tree = this.covers[nut];
+    const wetting = state.parts.find((p) => p.name === FIRE_PARTS.wetting);
+    this.wetting = wetting && wetting.readings ? wetting.readings() : null;
   }
 
   /** Re-read the weather for this tick (cheap; does nothing if already current). */
@@ -394,6 +430,18 @@ export class FireConditions {
     this.stormNow = stormActive(v, tick);
     const hours = ((v[CLIMATE_FIELDS.stormEnd] - start) * minutesPerTick(config)) / 60;
     this.stormMmPerHour = this.stormNow && hours > 0 ? v[CLIMATE_FIELDS.stormRainMm] / hours : 0;
+    const w = this.wetting;
+    if (w) {
+      const perTick = minutesPerTick(config);
+      this.carriedDay = w[0] * wettingLeft(tick - w[1], perTick);
+      for (let n = 0; n < K.wettingStorms; n++) {
+        const o = 2 + 5 * n;
+        this.carriedStorms[4 * n] = w[o];
+        this.carriedStorms[4 * n + 1] = w[o + 1];
+        this.carriedStorms[4 * n + 2] = w[o + 2] * w[o + 2];
+        this.carriedStorms[4 * n + 3] = w[o + 3] * wettingLeft(tick - w[o + 4], perTick);
+      }
+    }
     windAt(config, tick, v, this.wind);
     const speed = Math.sqrt(this.wind[0] * this.wind[0] + this.wind[1] * this.wind[1]);
     this.windKmh = speed * 3.6;
@@ -401,24 +449,43 @@ export class FireConditions {
     this.windUy = speed > 0 ? this.wind[1] / speed : 0;
   }
 
-  private insideStorm(k: number): boolean {
+  /** Share of today's storm's mean rain that falls on cell k (0 outside it). */
+  private stormShare(k: number): number {
     const cs = this.sim.config.world.cellSizeM;
     const i = k % this.W;
     const dx = (i + 0.5) * cs - this.stormX;
     const dy = ((k - i) / this.W + 0.5) * cs - this.stormY;
-    return dx * dx + dy * dy <= this.stormR2;
+    return stormRainShare(dx * dx + dy * dy, this.stormR2);
   }
 
   /** Rain that has fallen on cell k today so far, mm (storm rain from the storm's start). */
   rainOn(k: number): number {
     let mm = this.rainMm;
-    if (this.stormRainMm > 0 && this.insideStorm(k)) mm += this.stormRainMm;
+    if (this.stormRainMm > 0) mm += this.stormRainMm * this.stormShare(k);
     return mm * this.rainfall[k];
+  }
+
+  /** Moisture (share of dry mass) the fine fuel in cell k still holds from earlier days' rain. */
+  carriedWater(k: number): number {
+    let m = this.carriedDay;
+    const cs = this.sim.config.world.cellSizeM;
+    const i = k % this.W;
+    const x = (i + 0.5) * cs;
+    const y = ((k - i) / this.W + 0.5) * cs;
+    const st = this.carriedStorms;
+    for (let n = 0; n < K.wettingStorms; n++) {
+      const amount = st[4 * n + 3];
+      if (!(amount > 1e-4)) continue;
+      const dx = x - st[4 * n];
+      const dy = y - st[4 * n + 1];
+      m += amount * stormRainShare(dx * dx + dy * dy, st[4 * n + 2]);
+    }
+    return m * this.rainfall[k];
   }
 
   /** A storm's rain falling on cell k right now, mm per hour (0 with no storm overhead). */
   stormRateNow(k: number): number {
-    return this.stormNow && this.insideStorm(k) ? this.stormMmPerHour * this.rainfall[k] : 0;
+    return this.stormNow ? this.stormMmPerHour * this.stormShare(k) * this.rainfall[k] : 0;
   }
 
   /** A wet day's ordinary rain on cell k today, mm (storms apart). */
@@ -433,7 +500,9 @@ export class FireConditions {
   /** Moisture of the fine fuel in cell k now, share of dry mass. */
   fineMoisture(k: number): number {
     const h = airHumidity(this.moisture[k], this.wet, this.hourCos);
-    const m = equilibriumMoisture(this.airAt(k), h) + K.shadeMoisture * this.tree[k] + K.fineWetPerMm * this.rainOn(k);
+    const tree = this.tree[k];
+    // Dew settles where the ground sees the open sky; a canopy keeps the ground below it warmer.
+    const m = equilibriumMoisture(this.airAt(k), h) + K.shadeMoisture * tree + dewMoisture(h) * (1 - (tree > 1 ? 1 : tree)) + K.fineWetPerMm * this.rainOn(k) + this.carriedWater(k);
     return m > 0.6 ? 0.6 : m;
   }
 
@@ -472,7 +541,9 @@ export class FireConditions {
     out.poles = this.poleMoisture(k);
     out.fineTpha = this.fineTpha(k);
     out.curing = this.water[k] === Water.DRY ? this.curing(k) : 0;
-    const damp = moistureFactor(out.fine);
+    const tree = this.tree[k];
+    const windKmh = this.windKmh * (1 - K.canopyWindCut * tree);
+    const damp = moistureFactor(out.fine, windKmh);
     const fuel = this.water[k] === Water.DRY ? fuelFactor(out.fineTpha) : 0;
     const dry = moistureFactor(0.05);
     out.readiness = fuel * out.curing * (damp >= dry ? 1 : damp / dry);
@@ -482,10 +553,9 @@ export class FireConditions {
       out.backMPerMin = 0;
       return;
     }
-    const tree = this.tree[k];
     const base = damp * out.curing * fuel * (1 - K.canopyBedSlowdown * tree);
     const toMPerMin = 1000 / 60;
-    out.headMPerMin = openSpreadKmh(this.windKmh * (1 - K.canopyWindCut * tree)) * base * toMPerMin;
+    out.headMPerMin = openSpreadKmh(windKmh) * base * toMPerMin;
     out.backMPerMin = K.noWindKmh * base * toMPerMin;
   }
 }
@@ -517,6 +587,38 @@ export class FireCounts implements StatePart {
     if (values.length !== FIELD_COUNT) throw new Error('Snapshot fire counts have the wrong length.');
     this.values.set(values);
   }
+}
+
+/**
+ * Rain water still held in the fine fuel from earlier days (T-007): the ordinary rain of wet days
+ * as one amount for the whole map (times each cell's share of mean rainfall), and each of the last
+ * few storms with its place, size and amount. Amounts are in moisture (share of dry mass) as of
+ * the tick stamped beside them, and shrink with `wettingLagHours` from then.
+ */
+export class FireWetting implements StatePart {
+  readonly name = FIRE_PARTS.wetting;
+  readonly holdsLearned = false;
+  /** [day amount, its tick, then per storm: x, y, radius, amount, tick]. */
+  readonly values = new Float64Array(2 + 5 * K.wettingStorms);
+
+  readings(): Float64Array {
+    return this.values;
+  }
+
+  write(sink: Sink): void {
+    sink.array(this.values);
+  }
+
+  read(source: Source): void {
+    const values = source.array('f64');
+    if (values.length !== this.values.length) throw new Error('Snapshot fire wetting has the wrong length.');
+    this.values.set(values);
+  }
+}
+
+/** Share of a wetting left `ticks` after it was stamped. */
+function wettingLeft(ticks: number, minutesEachTick: number): number {
+  return ticks < 0 ? 0 : exp(-(ticks * minutesEachTick) / 60 / K.wettingLagHours);
 }
 
 function countsOf(state: SimState): Float64Array {
@@ -860,8 +962,11 @@ export const fire: SystemDef = defineSystem({
     store.ensureColumn({ name: 'heat', dtype: 'f32', category: 'body' });
     // Set when something outside the fire system lit the cell; taken up on the system's next run.
     store.ensureColumn({ name: 'fresh', dtype: 'u8', category: 'body' });
+    // 1 while the cell smoulders from a lightning strike alone (a holdover), until it flares or a front arrives.
+    store.ensureColumn({ name: 'holdover', dtype: 'u8', category: 'body' });
     state.store(OBJECT_STORE).ensureColumn({ name: 'burnKw', dtype: 'f32', category: 'body' });
     state.addPart(new FireCounts());
+    state.addPart(new FireWetting());
     const world = state.world;
     world.ensureLayer(FIRE_LAYERS.stage, 'u8');
     world.ensureLayer(FIRE_LAYERS.lastBurnDay, 'f32');
@@ -1026,6 +1131,7 @@ export const fire: SystemDef = defineSystem({
       fires.column<Float32Array>('age').data[slot] = 0;
       fires.column<Float32Array>('vigour').data[slot] = K.vigourLeast + (K.vigourMost - K.vigourLeast) * random();
       fires.column<Uint8Array>('fresh').data[slot] = 0;
+      fires.column<Uint8Array>('holdover').data[slot] = 0;
       stage[k] = FireStage.FLAMING;
       lastBurn[k] = dayIndex(config, tick) + 1;
       counts[FIRE_FIELDS.cellsIgnited] += 1;
@@ -1046,6 +1152,7 @@ export const fire: SystemDef = defineSystem({
       }
       fires.column<Float32Array>('flameLeft').data[slot] = 0;
       fires.column<Uint8Array>('fresh').data[slot] = 0;
+      fires.column<Uint8Array>('holdover').data[slot] = 0;
       stage[k] = FireStage.SMOULDERING;
       return true;
     }
@@ -1071,6 +1178,7 @@ export const fire: SystemDef = defineSystem({
         if (flame(k, tick)) {
           counts[FIRE_FIELDS.lightningIgnitions] += 1;
         } else if (stage[k] === FireStage.NONE && smoulder(k)) {
+          fires.column<Uint8Array>('holdover').data[slotOfCell[k]] = 1;
           counts[FIRE_FIELDS.lightningIgnitions] += 1;
           counts[FIRE_FIELDS.holdovers] += 1;
         }
@@ -1215,7 +1323,8 @@ export const fire: SystemDef = defineSystem({
         const poles = conditions.poleMoisture(k);
         const dry = clamp01((K.smoulderWetMoisture - poles) / (K.smoulderWetMoisture - K.smoulderDryMoisture));
         const rainOut = rainOutChance(k, K.rainOutPerMmPerHour, K.rainOutMost);
-        if (dry <= 0 || random() < rainOut + K.smoulderOutPerHour * hoursPerTick) {
+        const selfOut = fires.column<Uint8Array>('holdover').data[slot] === 1 ? K.holdoverOutPerHour : K.smoulderOutPerHour;
+        if (dry <= 0 || random() < rainOut + selfOut * hoursPerTick) {
           removeFire(slot);
           continue;
         }
@@ -1336,8 +1445,41 @@ export const fire: SystemDef = defineSystem({
       counts[FIRE_FIELDS.burningObjects] = burning;
     }
 
-    return () => {
-      const tick = state.tick;
+    const wetting = (state.parts.find((p) => p.name === FIRE_PARTS.wetting) as FireWetting).values;
+    const weatherPart = state.parts.find((p) => p.name === CLIMATE_PARTS.weather);
+    if (!weatherPart || !weatherPart.readings) throw new Error('world.fire needs world.climate earlier in the pipeline.');
+    const weather = weatherPart.readings();
+
+    /** At the end of each day, today's rain joins the water the fine fuel carries into the next days. */
+    function carryRain(tick: number): void {
+      const end = tick + 1;
+      if (weather[CLIMATE_FIELDS.wetToday] === 1 && weather[CLIMATE_FIELDS.rainTodayMm] > 0) {
+        wetting[0] = wetting[0] * wettingLeft(end - wetting[1], tickMinutes) + K.fineWetPerMm * weather[CLIMATE_FIELDS.rainTodayMm];
+        wetting[1] = end;
+      }
+      const start = weather[CLIMATE_FIELDS.stormStart];
+      if (start >= 0 && start <= tick && weather[CLIMATE_FIELDS.stormRainMm] > 0) {
+        // Replace the storm with the least water left.
+        let slot = 0;
+        let least = Infinity;
+        for (let n = 0; n < K.wettingStorms; n++) {
+          const o = 2 + 5 * n;
+          const left = wetting[o + 3] * wettingLeft(end - wetting[o + 4], tickMinutes);
+          if (left < least) {
+            least = left;
+            slot = n;
+          }
+        }
+        const o = 2 + 5 * slot;
+        wetting[o] = weather[CLIMATE_FIELDS.stormX];
+        wetting[o + 1] = weather[CLIMATE_FIELDS.stormY];
+        wetting[o + 2] = weather[CLIMATE_FIELDS.stormRadiusM];
+        wetting[o + 3] = K.fineWetPerMm * weather[CLIMATE_FIELDS.stormRainMm];
+        wetting[o + 4] = end;
+      }
+    }
+
+    function burn(tick: number): void {
       const struck = strikeCells().length > 0;
       const anyObjects = objects.count > 0 && counts[FIRE_FIELDS.burningObjects] > 0;
       if (!struck && fires.count === 0 && !anyObjects) return;
@@ -1348,6 +1490,12 @@ export const fire: SystemDef = defineSystem({
       if (struck) lightning(tick);
       if (fires.count > 0) cellFires(tick);
       if (objects.count > 0 && (counts[FIRE_FIELDS.burningObjects] > 0 || fires.count > 0)) objectFires(tick);
+    }
+
+    return () => {
+      const tick = state.tick;
+      burn(tick);
+      if (tick % ticksPerDay === ticksPerDay - 1) carryRain(tick);
     };
   },
 });

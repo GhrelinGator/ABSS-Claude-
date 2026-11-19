@@ -62,28 +62,28 @@ docs/          design, roadmap, status, decisions, research, tuning log.
 - Check that GitHub's run of the tests comes back green: `gh api "repos/GhrelinGator/ABSS-Claude-/actions/runs?branch=<branch>&per_page=3"`. Report its result, not just the local one.
 - When it's green, merge it yourself (D-025): `gh api repos/GhrelinGator/ABSS-Claude-/pulls/<n>/merge -X PUT -f merge_method=merge`. Leave it open, and say why, only if it waits on one of the owner decisions below.
 
-## Owner's standing instructions (2026-11-16, D-025)
+## Owner's standing instructions (2026-11-16, D-025; 2026-11-19, D-034)
 
 - **Decide as much as you want, as long as it serves the primary goal** (the Prime Directive). Don't ask about choices inside a milestone; record them in `DECISIONS.md` instead.
-- **Still ask the owner, and wait,** before: a nudge-protocol change classified (c) or ambiguous (`GUARDRAILS.md` §4); adding a drive (`GUARDRAILS.md`); and merging any work that reports a social phenomenon emerged (he sees the claim and its null model first).
-- **Tell him, without waiting,** about removing or simplifying a designed mechanism (`GUARDRAILS.md`), and about anything surprising.
+- **Still ask the owner, and wait,** before: a missing mechanism (nudge-protocol (c), `GUARDRAILS.md` §4) in agents' minds (perception, learning, memory, choice, drives, biases) or between agents (signals, imitation, giving, mate choice); a classification that is ambiguous; adding a drive (`GUARDRAILS.md`); and merging any work that reports a social phenomenon emerged (he sees the claim and its null model first).
+- **Tell him, without waiting,** about a new mechanism with no social content: in the world (land, water, weather, plants, animals, pathogens, materials, fire) or in agents' bodies (energy and water, injury, illness, aging, growth, pregnancy and birth) (D-034); about removing or simplifying a designed mechanism (`GUARDRAILS.md`); and about anything surprising. The alibi rule, the banned terms, logging before a change and preregistration still apply to all of it; only the wait is gone.
 
-## Unattended runs (D-025, D-030)
+## Unattended runs (D-025, D-030, D-034)
 
 Scheduled sessions build the project while the owner is away; he doesn't code. A scheduled task wakes a fresh session every 6 hours, and each run that merges a milestone starts the next one about 5 minutes later (a chain). In any such run:
-1. **Claim before building.** The milestone's branch is `milestone-<number>` (for example `milestone-1.8`), unless `STATUS.md` names an existing branch to carry on. If that branch doesn't exist, create it from `main` with one empty commit, `claim <milestone> for session <this session's id>`, and push it. If the push is rejected, or the branch already exists and its newest commit is under 3 hours old, another run has the milestone: stop at once, commit nothing, schedule nothing. (Two sessions once fired 11 seconds apart and both built the same milestone; D-030.) An older branch holds abandoned work: merge `main` into it and carry it on.
+1. **Check the weekly cap, then claim before building.** If `docs/RUNS.md` already shows 35 runs since the last weekly reset ("Chained runs"), stop at once: the rest of the week is the owner's (D-034). Otherwise: the milestone's branch is `milestone-<number>` (for example `milestone-1.8`), unless `STATUS.md` names an existing branch to carry on. If that branch doesn't exist, create it from `main` with one empty commit, `claim <milestone> for session <this session's id>`, and push it. If the push is rejected, or the branch already exists and its newest commit is under 3 hours old, another run has the milestone: stop at once, commit nothing, schedule nothing. (Two sessions once fired 11 seconds apart and both built the same milestone; D-030.) An older branch holds abandoned work: merge `main` into it and carry it on.
 2. **No questions.** Take the most reasonable reading, and write down which one you took.
 3. **Do the next milestone** named in `STATUS.md` under "Next action": one milestone, or two when `STATUS.md` says they're small enough to share a run.
-4. **[F] milestones wait for a Fable session.** If the next one is tagged [F] and this session isn't Fable, don't start it; make sure `STATUS.md` says "waiting for a Fable session: <milestone>" under "Blocked on" (commit only if it doesn't already), and stop.
+4. **[F] milestones run on Opus too** (D-034: the owner has no Fable credits). Be extra careful on them, and when one merges, add it to "For a Fable second look" in `STATUS.md` with its pull request and the judgment calls a Fable session should re-check.
 5. **Push as you go.** Commit and push whenever a piece passes its tests, so a run cut off by a usage limit leaves its work on GitHub.
 6. **Stop at owner decisions** (the list above): write the question under "Decisions needed from the owner" in `STATUS.md`, push it, and leave the pull request open.
-7. **Log the run.** Before merging, add one line to `docs/RUNS.md`: date and time (US Central), milestone, outcome, pull request. Runs that stop at once (rules 1 and 4) don't log.
+7. **Log the run.** Before merging, add one line to `docs/RUNS.md`: date and time (US Central), milestone, outcome, pull request. Runs that stop at once (rule 1) don't log.
 8. **Spend carefully.** The owner's usage limits are the project's budget. Batch checks into few commands; don't probe what a test already shows.
-9. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him.
+9. **End with three plain sentences at most:** what was built, what to look at on the page, and anything that needs him or that he should hear about (such as a new mechanism added without waiting, D-034).
 
 ## Chained runs
 
-After rule 7, schedule the next run if the milestone merged, the next milestone isn't [F] and isn't waiting on the owner, and `docs/RUNS.md` shows fewer than **35 runs since the last weekly reset** (Wednesdays at 7:59 pm US Central). Schedule it as a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word. Otherwise schedule nothing; the 6-hourly wake-up restarts the chain later.
+After rule 7, schedule the next run if the milestone merged, the next milestone isn't waiting on the owner, and `docs/RUNS.md` shows fewer than **35 runs since the last weekly reset** (Wednesdays at 7:59 pm US Central). Schedule it as a one-shot scheduled task (`create_trigger` with `run_once_at` about 5 minutes from now, `initiation` human_schedule, push notifications on) whose prompt is this run's own prompt, word for word. Otherwise schedule nothing; the 6-hourly wake-up restarts the chain later (after the weekly reset, when the cap was the reason). The owner wants the chain kept going (2026-11-19): don't stop it for anything these rules don't name.
 
 The cap keeps about 10% of the owner's weekly limit for his own use (his request, 2026-11-17). A milestone run measured about 1.5% of his weekly limit and 11% of a 5-hour window; 35 runs leave room for heavier milestones. If he reports his usage running high, lower the cap here.
 
@@ -95,7 +95,7 @@ The owner picks the model per session. Each roadmap milestone is tagged:
 - **[F] Fable 5.2:** architecture, cross-system integration, diagnosing why something did or didn't emerge, designing experiments, reviewing guardrail compliance.
 - **[O] Opus 5.5:** implementing well-specified modules, tests, tooling, viewer work.
 
-If the session's model doesn't match the tag, proceed anyway, but say so at the start and be extra careful on [F] work. Unattended runs are the exception: they leave [F] milestones for a Fable session.
+If the session's model doesn't match the tag, proceed anyway, but say so at the start and be extra careful on [F] work. Unattended runs take [F] milestones too while the owner has no Fable credits, and list them in `STATUS.md` under "For a Fable second look"; a Fable session starts with that list (D-034).
 
 ## Honesty requirements
 

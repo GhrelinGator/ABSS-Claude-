@@ -6,8 +6,8 @@ Update this at the end of every session. Newest information at the top of each s
 
 - **Done:** Phase 0 (foundations), 1.0 (portable math), 1.1 (map generator), 1.2 (climate and soil moisture), 1.3 (sun, moon, and fire light), 1.4 (plants), 1.5 (animals, with grazing, browsing, seeds carried by animals, and keeping away from fire), 1.6 (pathogens in water and carcasses), 1.7 (materials and objects), 1.8 (fire, with wind and litter), and a viewer (1.9) that shows all of it.
 - **The world has weather and wind, plants, animals, stone, fallen wood and litter, and fire; no people.** The real pipeline has seven systems: the landscape (built before tick 0), the climate, the plants, the animals, the pathogens, the materials, and fire. Nothing has emerged, because nothing can yet.
-- **Next action:** Phase 1.11 [O], the fire regime on open country, then the full Phase 1 exit check again (`DESIGN.md` §2.16, end; `experiments/P1-ecology-review/results.md`; D-032). One milestone per run; the check alone takes about 75 minutes. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`, D-030).
-- **Blocked on:** nothing. Phase 1 has not exited: the ecology review (1.10) failed its preregistered check on persistence and fire; persistence is fixed on the worlds re-run, fire is 1.11 (D-032). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass (D-025, `CLAUDE.md`).
+- **Next action:** Phase 1.12 [F] (runs on Opus, D-034): breaks in the fuel, (a) patchy ground fuel within a cell from the soil and rock already on the map and (b) damp ground along rivers and springs from a simple water table; then fire calibrated to the grassland band and the full preregistered Phase 1 exit check (`ROADMAP.md` 1.12; `experiments/P1-ecology-review/spec.json`; D-033, D-034). Write the design into `DESIGN.md` §2.16 before coding. The check takes about 75 minutes: push before starting it so the claim stays fresh. Runs chain one after another, up to 35 a week, and a scheduled task wakes every 6 hours (`CLAUDE.md`).
+- **Blocked on:** nothing. Phase 1 has not exited: fire on open country still burns until it runs out of map, and 1.12 adds the breaks in the fuel the owner approved (Q9, D-034). From 2026-11-16 Claude merges its own pull requests once GitHub's checks pass, except work waiting on an owner decision (D-025, `CLAUDE.md`).
 
 ## What exists
 
@@ -25,7 +25,7 @@ Update this at the end of every session. Newest information at the top of each s
 | `src/sim/world/animals.ts` | deer, aurochs, wolf packs, big cats, hares, vultures, carcasses (`DESIGN.md` §2.13) |
 | `src/sim/world/pathogens.ts` | pathogen loads in water and carcass meat (`DESIGN.md` §2.14) |
 | `src/sim/world/materials.ts` | eight materials, bedrock, loose stone, fallen wood and litter per cell, rock shelters, objects, striking (flakes, crumbs, snapping, sparks), rotting, and shelter at a point (`DESIGN.md` §2.15) |
-| `src/sim/world/fire.ts` | fuel moisture and curing, spread by minimum travel time, smouldering, lightning holdovers, sparks and friction embers, burning objects, light and heat at a point (`DESIGN.md` §2.16); wind lives in `climate.ts` |
+| `src/sim/world/fire.ts` | fuel moisture (with dew and rain held in litter) and curing, spread by minimum travel time, smouldering, lightning holdovers, sparks and friction embers, burning objects, light and heat at a point (`DESIGN.md` §2.16); wind lives in `climate.ts` |
 | `src/sim/signal/layer.ts` | the `SignalLayer` interface, as a stub for Phase 5 |
 | `src/analysis/` | observer interface; `census` (a head count), `landscape` (the E3 manipulation check), `weather` (the E1 manipulation check), `vegetation` (cover per species and calories standing), `fauna` (animals per km², kills, births, deaths), `pathogens` (loads by kind of water, and in carcass meat), `materials` (loose stone by material, fallen wood, rock shelters, objects), `fire` (burning now, ignitions by cause, land burned in the last year, litter, wind) |
 | `src/viewer/`, `scripts/build-site.ts` | the viewer page and its no-install build (`DESIGN.md` §10.1) |
@@ -35,19 +35,30 @@ Update this at the end of every session. Newest information at the top of each s
 | `tests/cross-engine/` | prints digests so two JavaScript engines can be compared |
 | `tests/unit/`, `tests/harness/` | tests of the kernel pieces and the harness |
 | `experiments/C0-smoke/` | a plumbing check for the harness, not an experiment |
+| `experiments/P1-ecology-review/`, `experiments/P1-fire-regime/` | the Phase 1 exit check (preregistered) and the 1.11 fire diagnosis (`diagnose.ts` logs every fire) |
 
 About 15,200 lines of TypeScript including tests after session 13 (fire alone about 1,950); about 9,600 after session 7 (7,800 after session 5 ; 6,000 after Phase 1.0; Phase 0 alone was about 4,900, where the roadmap guessed 1,500–2,500), so **treat the roadmap's size estimates as low by roughly half.**
 
 ## Decisions needed from the owner
 
-Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
+Nothing is blocking. Q9 was answered on 2026-11-19 (D-034). Answered on 2026-11-15 (D-012): the game gets its own page. Everything else was left to Claude and took the defaults: observer, TypeScript, long runs on the owner's computer, the name ABSS.
 
 | # | Question | Needed by |
 |---|---|---|
 | Q6 | *Resolved 2026-11-15:* Pages publishes from GitHub Actions, at https://ghrelingator.github.io/ABSS-Claude-/. If a "pages build and deployment" run (GitHub's README build) ever appears after a merge again, the source has been switched back. | — |
+| Q9 | *Answered 2026-11-19 (D-034):* yes to both breaks in the fuel: patchy ground from the soil and rock already on the map, and damp ground along rivers and springs. Milestone 1.12. | — |
 | Q8 | Plants kept up on the owner's phone at "1 year per second" (answered 2026-11-16). With animals a day costs about four times as much; does it still keep up? If not, the page could skip ahead in bigger steps or cap the speed. | Whenever |
 | Q7 | *Answered 2026-11-16:* a Windows desktop, Intel Core i5-4670 (4 cores, 4 threads, 3.4 GHz, 2013), 32 GB of memory, an RTX 3080 graphics card. That means 3–4 runs side by side, and overnight batches for big experiments. The graphics card can't run the simulation: results must be bit-identical on every machine. Nothing is installed yet; in Phase 3, install Node and link the Claude desktop app so a session can run batches there, and stop the PC sleeping during runs. | Phase 3 |
 | Q1 | Player role, if observer-only turns out not to be what he wants (D-011). | Phase 9 |
+
+## For a Fable second look
+
+[F] milestones done on Opus while the owner has no Fable credits (D-034), and Opus work that leaned on [F]-type diagnosis. A Fable session starts here: re-check each judgment call listed, record what it finds in `DECISIONS.md`, and strike the entry.
+
+| Milestone | Pull request | Judgment calls to re-check |
+|---|---|---|
+| 1.10 Ecology review (2026-11-18, attended) | #14 | The diagnosis of the walled-valley collapse: a start about 3× too crowded, and hungry grazers searching 3 km (T-006 round 3, a borderline missing mechanism). Whether Phase 1 was right to stay open. The fire targets and levers written into `DESIGN.md` §2.16. |
+| 1.11 Fire regime (2026-11-19, unattended; tagged [O] but mostly diagnosis) | #15 | That fire *size*, not the number of ignitions, is the problem. The five corrections (T-007), kept although the average burned area rose. That breaks in the fuel are the missing piece. |
 
 ## Benchmarks
 
@@ -80,6 +91,7 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 - **Floor 1 expressiveness** (`DESIGN.md` §6.7). The legitimation chain may be inexpressible with unordered token bags.
 - **Claude's drift** (`GUARDRAILS.md`). The guardrail tests catch words, imports, and bookkeeping. They can't judge whether an alibi is true or whether a number was tuned toward an outcome.
 - **Long-run plant balance** (for 1.10). In 20 seeds × 100 years on small maps, no species died out and none grew without bound, but greens and reeds fell to about a fifth of their starting cover in runs with large year-to-year swings: riverbank soil dries in a drought like any other, because the soil-moisture model has no water table (`DESIGN.md` §2.12). Animals will add grazing pressure on top.
+- **Fire regime after 1.11** (D-033). Fixed: fires creeping through the night (a bug: the light-wind moisture limit was missing), litter forgetting rain at midnight, storms soaking every strike. Still open: on open country a fire that gets going burns until it runs out of map; it needs breaks in the fuel (Q9). Hemmed valleys are fine.
 - **Fire regime** (for 1.10). Fires are rare and mostly small in the default climate, which fits humid temperate land, but in a severe drought on an open plain one fire can burn nearly the whole map. Limiters real landscapes have and this model lacks: moist riverbanks (no water table), patchy fuel inside a cell, and spotting (which would make fires bigger, not smaller). Eleven rounds of correction are in T-005; the next look should be by fresh eyes.
 - **Rock shelters follow the circumscription knob** (for E3, D-029). Cliffs come with walls, so a walled valley has about 34 rock shelters per 100 km² and open country about 1.5. That is real geography, but E3's preregistration has to account for it.
 - **After the ecology review (D-032):** open-country deer settle at 11–18 per km², above field densities with wolves (3–6 per km² in Białowieża); greens are browsed to a quarter to two-fifths of their start on some open seeds; predators in walled valleys number a dozen or fewer, so long runs can lose them by chance.
@@ -99,6 +111,9 @@ Nothing is blocking. Answered on 2026-11-15 (D-012): the game gets its own page.
 - A guardrail that scans commit messages for "encourage", "boost", and similar words (`GUARDRAILS.md` §6).
 
 ## Session log
+
+- **2026-11-19, session 16** (Opus 5.5, claude.ai; same chat). The owner answered (D-034): yes to both breaks in the fuel (Q9); scheduled runs take [F] milestones and list them for a Fable second look; new mechanisms with no social content (the world, agents' bodies) no longer wait for him; keep the chain going. Closed a gap: the weekly cap now stops wake-up runs too. Merged #15 and started the chain on 1.12.
+- **2026-11-19, session 15** (Opus 5.5, unattended run). Milestone 1.11, fire on open country. Wrote a diagnostic that logs every fire (`experiments/P1-fire-regime/diagnose.ts`) and found the problem is size, not ignitions: fires creep through nights and come back after rain. Five corrections, each logged before the change (T-007): dew; Cheney's light-wind moisture limit (a bug); rain held in litter about two-thirds of a day; storm rain heaviest at the core (`climate.ts`); lightning holdovers lasting about two days. None limits a fire's size once it is going; that needs breaks in the fuel, a new mechanism, so the run stopped for the owner (Q9, D-033). Pull request left open; full exit check not re-run.
 
 - **2026-11-18, session 14** (Opus 5.5, claude.ai; same chat). Did the ecology review (1.10, an [F] milestone) at the owner's request. Preregistered the Phase 1 exit check and ran it: 20 full-size worlds for 100 compressed years. It failed on persistence (hemmed valleys collapsed) and fire (open plains burn all-or-nothing). Fixed three causes (T-006), confirmed on 8 worlds, and wrote milestone 1.11 for the rest of the fire work (D-032). Checked big-cat, bison and hare numbers against sources (`RESEARCH.md`).
 - **2026-11-17, session 13** (Opus 5.5, unattended chained run). Built Phase 1.8: fire (`DESIGN.md` §2.16, D-031), with wind added to the weather on its own stream, fine dead fuel (litter) added to the materials, fire light and heat at a point, and animals keeping away from fire. Spread uses minimum travel time and an elliptical fire shape after a random-roll version let fronts outrun their rate. Eleven calibration rounds, each logged before the change (T-005): fires first never started, then burned half the map, then settled at rare and mostly small. A `fire` observer, a Fire layer on the page, live fire on every layer, wind in the weather line, fuel in the inspector. The next milestone (1.10) is [F], so the chain stops here.
