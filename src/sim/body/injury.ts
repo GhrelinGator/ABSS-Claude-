@@ -457,7 +457,7 @@ export const injury: SystemDef = defineSystem({
           if (burned > 0 || through > 0) {
             if (before < K.partialBurnDose) tally[InjuryKind.BURN] += 1;
             let partial = burns[slot] + burned - through;
-            if (partial < 0) partial = 0;
+            partial = partial < 0 ? 0 : partial > 1 ? 1 : partial;
             burns[slot] = partial;
             wound[slot] += through * skinCm2;
             leak[slot] += K.burnLeakLPerKg * mass * burned;
