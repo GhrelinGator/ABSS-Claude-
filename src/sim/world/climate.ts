@@ -55,6 +55,13 @@ export const CLIMATE_CONSTANTS = {
   /** Water the ground holds, by soil type (rock, thin, loam, alluvium, sand), in mm. */
   soilCapacityMm: [15, 50, 120, 160, 60],
   initialMoisturePerRain: 0.6,
+  /**
+   * Water drawn up from the water table into the soil, mm per day: this much where the table is at
+   * the surface, shrinking by e for every `tableSupplyDepthM` deeper (docs/DESIGN.md §2.11). An
+   * estimate after the steep fall of capillary rise with depth (Gardner 1958).
+   */
+  tableSupplyMm: 6,
+  tableSupplyDepthM: 0.6,
   /** Wind at 10 m (docs/DESIGN.md §2.16): a prevailing westerly, m/s, and the daily AR(1) around it. */
   prevailingWindEastMs: 2,
   windPersistence: 0.6,
@@ -251,6 +258,7 @@ export const climate: SystemDef = defineSystem({
     state.world.ensureLayer(TERRAIN_LAYERS.rainfall, 'f32');
     state.world.ensureLayer(TERRAIN_LAYERS.soil, 'u8');
     state.world.ensureLayer(TERRAIN_LAYERS.waterKind, 'u8');
+    state.world.ensureLayer(TERRAIN_LAYERS.tableDepth, 'f32');
   },
   init(sim: Sim) {
     startWeather(sim, sim.state.parts.find((p) => p.name === CLIMATE_PARTS.weather) as WeatherState);
@@ -277,6 +285,16 @@ export const climate: SystemDef = defineSystem({
     const moisture = world.layer<Float32Array>(MOISTURE_LAYER);
     const capacity = new Float64Array(5);
     for (let t = 0; t < 5; t++) capacity[t] = K.soilCapacityMm[t];
+    // Water each cell draws up from the water table a day, mm. Derived from the landscape on first
+    // use (the landscape is built after systems are created) and never saved (§1.5).
+    let fromBelow: Float64Array | null = null;
+    function tableSupply(): Float64Array {
+      if (fromBelow) return fromBelow;
+      const table = world.layer<Float32Array>(TERRAIN_LAYERS.tableDepth);
+      fromBelow = new Float64Array(table.length);
+      for (let k = 0; k < table.length; k++) fromBelow[k] = K.tableSupplyMm * exp(-table[k] / K.tableSupplyDepthM);
+      return fromBelow;
+    }
 
     // Poisson draws of strikes per tick (Knuth's method); the threshold is fixed for the run.
     const strikeMean = K.strikesPerMinute * minutesPerTick(config);
@@ -338,6 +356,7 @@ export const climate: SystemDef = defineSystem({
       const sy = v[CLIMATE_FIELDS.stormY];
       const r2 = v[CLIMATE_FIELDS.stormRadiusM] * v[CLIMATE_FIELDS.stormRadiusM];
       const meanAtReference = dailyMeanTemperatureC(config, tick, v, K.referenceElevationM);
+      const supply = tableSupply();
       for (let j = 0; j < H; j++) {
         const dy = (j + 0.5) * cs - sy;
         for (let i = 0; i < W; i++) {
@@ -352,8 +371,9 @@ export const climate: SystemDef = defineSystem({
             const dx = (i + 0.5) * cs - sx;
             rain += stormRain * stormRainShare(dx * dx + dy * dy, r2);
           }
-          // Storms, like ordinary rain, drop less where the climate is drier.
-          let held = moisture[k] * cap + rain * rainfall[k];
+          // Storms, like ordinary rain, drop less where the climate is drier. A shallow water table
+          // tops the soil up from below.
+          let held = moisture[k] * cap + rain * rainfall[k] + supply[k];
           if (held > cap) held = cap;
           const temperature = meanAtReference - K.lapseRatePerM * (elevation[k] - K.referenceElevationM);
           let demand = K.evaporationPerDegreeMm * (temperature + K.evaporationOffsetC);
