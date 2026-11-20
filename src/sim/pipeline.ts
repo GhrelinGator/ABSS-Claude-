@@ -6,6 +6,7 @@ import type { SystemDef } from './core/registry.ts';
 import { aging } from './body/aging.ts';
 import { exposure } from './body/exposure.ts';
 import { fitness } from './body/fitness.ts';
+import { genetics } from './body/genetics.ts';
 import { heat } from './body/heat.ts';
 import { injury } from './body/injury.ts';
 import { metabolism } from './body/metabolism.ts';
@@ -49,4 +50,6 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   fitness,
   // Phase 2.5: growth along the frame curve, shrinking with age, death by old age.
   aging,
+  // Phase 2.7: every body has a genome; deaths of recessive disorders. Conception and birth call it from reproduction.
+  genetics,
 ]);

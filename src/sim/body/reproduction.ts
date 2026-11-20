@@ -25,6 +25,7 @@ import { HEAT, HEAT_COLUMNS } from './heat.ts';
 import { INJURY, injure } from './injury.ts';
 import { fecundityAtAge, frameShare } from './lifecourse.ts';
 import { BODY_COLUMNS, METABOLISM, Sex, basalKcalPerDay, fatKgOf, forbesKgOf, formBody, leanShiftKg } from './metabolism.ts';
+import { GENETICS_COLUMNS, adultFrameFor, bearGenome, conceiveGenome } from './genetics.ts';
 
 /** Every number of reproduction, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Reproduction*). */
 export const REPRODUCTION = {
@@ -43,8 +44,6 @@ export const REPRODUCTION = {
   balanceFloorPerDay: 150,
   /** Not fertile for this long after a birth or a lost pregnancy, compressed years [estimate: about six weeks]. */
   restYears: 0.1,
-  /** A male's adult frame ÷ a female's, for a fetus's adult frame from its parents' until 2.7 (44 ÷ 34 kg, §3.8). */
-  frameRatio: 44 / 34,
   /** Fat share of a newborn at term [estimate: about 12–15%]. */
   birthFatShare: 0.14,
   /** The fetus's mass, share of its birth mass, by share of gestation [estimate: the usual fetal weights by week]. */
@@ -222,17 +221,6 @@ function bodyOf(sim: Sim, slot: number, door: string): void {
   }
 }
 
-/** The adult frame a body grows toward (§3.12), or its estimate from its frame now if body.aging has not set it yet. */
-function adultFrameOf(sim: Sim, slot: number): number {
-  const agents = sim.state.agents;
-  const f64 = (name: string) => agents.column<Float64Array>(name).data;
-  const set = f64(B.adultFrameKg.name)[slot];
-  if (set > 0) return set;
-  const trained = agents.hasColumn('trainedKg') ? f64('trainedKg')[slot] : 0;
-  const age = (sim.state.tick - f64(B.born.name)[slot]) / ticksPerYear(sim.config);
-  return (f64(B.leanBuiltKg.name)[slot] - trained) / frameShare(agents.column<Uint8Array>(B.sex.name).data[slot], age);
-}
-
 /**
  * Two bodies mate: what the acts of Phase 4 call when both have chosen the mate act toward each other
  * (§3.6, §5.5). Nothing here decides who mates. If they are of opposite sex and the female can
@@ -270,10 +258,16 @@ export function mate(sim: Sim, a: number, b: number): void {
   // Conceived: the fetus's sex, whether and when the pregnancy will be lost, its adult frame.
   const fetusSex = nextFloat(s, o) < K.maleShare ? Sex.MALE : Sex.FEMALE;
   const lost = nextFloat(s, o) < lossChanceAt(herAge);
-  const lossAt = lost ? K.lossFrom + (K.lossTo - K.lossFrom) * nextFloat(s, o) : 0;
-  const herFrame = adultFrameOf(sim, female);
-  const hisFrame = adultFrameOf(sim, male);
-  const frame = fetusSex === Sex.MALE ? (herFrame * K.frameRatio + hisFrame) / 2 : (herFrame + hisFrame / K.frameRatio) / 2;
+  let lossAt = lost ? K.lossFrom + (K.lossTo - K.lossFrom) * nextFloat(s, o) : 0;
+  // Its genome (§3.14), when the pipeline keeps genes: its adult frame from its own frameScale, and a
+  // loss where two broken copies of a gene act before birth. Without genes, the frame of its sex at 1.
+  let frameScale = 1;
+  if (agents.hasColumn(GENETICS_COLUMNS.fetusAlleles.name)) {
+    const conceived = conceiveGenome(sim, female, male);
+    frameScale = conceived.frameScale;
+    if (conceived.lossShare > 0 && (lossAt === 0 || conceived.lossShare < lossAt)) lossAt = conceived.lossShare;
+  }
+  const frame = adultFrameFor(fetusSex, frameScale);
   agents.column<Uint8Array>(C.pregnant.name).data[female] = 1;
   f64(C.conceivedAt.name)[female] = state.tick;
   f64(C.lossAt.name)[female] = lossAt;
@@ -344,6 +338,7 @@ export const reproduction: SystemDef = defineSystem({
     const watered = agents.hasColumn(H.water.name);
     const bleeds = agents.hasColumn(INJURY_BLEED);
     const training = agents.hasColumn('trainedKg');
+    const genes = agents.hasColumn(GENETICS_COLUMNS.fetusAlleles.name);
     const s = state.streams;
     const o = globalStreamOffset(StreamDomain.REPRODUCTION);
     const births = readings(state, REPRODUCTION_PARTS.births);
@@ -411,6 +406,7 @@ export const reproduction: SystemDef = defineSystem({
       const g64 = (name: string) => agents.column<Float64Array>(name).data;
       agents.column<Uint32Array>(C.motherId.name).data[child] = motherId;
       agents.column<Uint32Array>(C.fatherId.name).data[child] = fatherId;
+      if (genes) bearGenome(sim, mother, child, motherId, fatherId);
       if (watered && water > 0) {
         g64(H.water.name)[child] = water;
         g64(H.waterIn.name)[child] = water;

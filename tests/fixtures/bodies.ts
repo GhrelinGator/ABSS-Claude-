@@ -13,6 +13,7 @@ import { INJURY_COLUMNS, exposeGut, injure, waterDose } from '../../src/sim/body
 import { SKILL_COLUMNS, SKILL_KINDS, practice } from '../../src/sim/body/skills.ts';
 import { solidsAtAge } from '../../src/sim/body/lifecourse.ts';
 import { ticksPerYear } from '../../src/sim/core/clock.ts';
+import { GENETICS_COLUMNS, formGenome } from '../../src/sim/body/genetics.ts';
 
 const f64 = (sim: Sim, name: string) => sim.state.agents.column<Float64Array>(name).data;
 
@@ -27,10 +28,14 @@ export const FORAGER_LOAD = 8;
 export const HADZA_MAN: BodySpec = { sex: Sex.MALE, ageYears: 28, leanKg: 44.0, fatKg: 6.9, conditionedTo: FORAGER_LOAD };
 export const HADZA_WOMAN: BodySpec = { sex: Sex.FEMALE, ageYears: 28, leanKg: 34.0, fatKg: 9.0, conditionedTo: FORAGER_LOAD };
 
-/** Spawn an agent and give it a body in one step, as founder placement will. */
+/**
+ * Spawn an agent and give it a body in one step, and a founder's genome when the pipeline keeps genes
+ * (§3.14). The body keeps the size the spec gives it; its genes only pass on.
+ */
 export function spawnWithBody(sim: Sim, x: number, y: number, spec: BodySpec = HADZA_MAN): number {
   const slot = spawnAgent(sim, x, y);
   formBody(sim, slot, spec);
+  if (sim.state.agents.hasColumn(GENETICS_COLUMNS.genomeFormed.name)) formGenome(sim, slot);
   return slot;
 }
 
