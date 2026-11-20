@@ -96,7 +96,12 @@ test("a Hadza-like day costs about what Hadza adults spend (§9: ~2,600 kcal men
     const before = col(sim, BODY_COLUMNS.energyOut.name)[slot];
     stepSim(sim, 144);
     const spent = col(sim, BODY_COLUMNS.energyOut.name)[slot] - before;
-    t.diagnostic(`${label}: ${spent.toFixed(0)} kcal a day`);
+    // Pontzer et al. (2012) give PAL against BMR from Henry's (2005) equations, 18–30 years (from
+    // memory: men 0.0669 W + 2.28 MJ, women 0.0546 W + 2.33 MJ). Reported beside their 2.26 ± 0.48
+    // (men) and 1.78 ± 0.30 (women), not asserted (T-014).
+    const mass = spec.leanKg + spec.fatKg;
+    const henry = ((label === 'man' ? 0.0669 * mass + 2.28 : 0.0546 * mass + 2.33) * 1000) / 4.184;
+    t.diagnostic(`${label}: ${spent.toFixed(0)} kcal a day; PAL ${(spent / henry).toFixed(2)} against a Henry BMR of ${henry.toFixed(0)}`);
     assert.ok(Math.abs(spent / target - 1) < 0.15, `${label}: ${spent.toFixed(0)} kcal a day against ${target}`);
     assert.deepEqual(auditConserved(sim.state.agents), []);
   }
@@ -170,7 +175,7 @@ test('refeeding after a famine restores the lean mass it took', () => {
   assert.deepEqual(auditConserved(sim.state.agents), []);
 });
 
-test('food is absorbed over hours, and absorbing it costs a tenth of it', () => {
+test('food is absorbed over hours, and absorbing it costs nothing beyond the activity ratios (T-014)', () => {
   const sim = createSim(defaultConfig(3), [metabolism]);
   const fed = spawnWithBody(sim, 100, 100);
   const unfed = spawnWithBody(sim, 200, 100);
@@ -181,9 +186,10 @@ test('food is absorbed over hours, and absorbing it costs a tenth of it', () => 
   stepSim(sim, 50);
   assert.equal(gut[fed], 0);
   const out = col(sim, BODY_COLUMNS.energyOut.name);
-  // Same body, same day: the difference is the thermic effect plus the slightly heavier body's basal share.
+  // Same body, same day: FAO's activity ratios carry the response to food, so the only difference is
+  // the slightly heavier body's basal share (a few kcal).
   const extra = out[fed] - out[unfed];
-  assert.ok(extra > 150 && extra < 160, `absorbing 1,500 kcal cost ${extra}`);
+  assert.ok(extra > 0 && extra < 10, `absorbing 1,500 kcal cost ${extra}`);
 });
 
 test('the doors refuse a missing or second body, and odd inputs stop the run', () => {

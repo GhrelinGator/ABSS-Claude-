@@ -52,8 +52,12 @@ export const METABOLISM = {
   forbesKg: 10.4,
   /** Fastest the gut passes food into the tissues, kcal per minute [estimate]. */
   absorbKcalPerMinute: 3,
-  /** Share of absorbed energy spent as heat in absorbing it: the thermic effect of food [estimate]. */
-  thermicShare: 0.1,
+  /**
+   * Share of absorbed energy spent as heat in absorbing it, on top of the activity ratios. 0: FAO's
+   * ratios already carry the average response to food (FAO/WHO/UNU 2004, ch. 2; T-014). Kept as a
+   * setting so a body model with fasting ratios could charge it.
+   */
+  thermicShare: 0,
   /** Below this share of its built lean mass, a body dies of starvation [estimate, DESIGN §3.8]. */
   starveLeanShare: 2 / 3,
   /**

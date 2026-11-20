@@ -544,7 +544,7 @@ What §3.1 became when it was built (D-039). `src/sim/body/metabolism.ts`, the s
 - **Energy**, the conserved stock (kcal) = gut + ρ_F *F* + ρ_L *L*, with ρ_F = 9,441 kcal/kg and ρ_L = 1,816 kcal/kg, the energy densities of fat and of lean-tissue change (39.5 and 7.6 MJ/kg; Hall 2008). Fat is not stored separately: it is what the stock leaves after the gut and the lean mass, so no part of the body can gain energy the stock didn't. Inflow: the body when it forms, then everything eaten. Outflow: heat.
 
 **Each tick**
-1. **Absorption.** The gut passes at most 3 kcal a minute into the tissues [estimate; gastric emptying is remembered as 1–4 kcal a minute, unsourced]. A tenth of what is absorbed is spent as heat: the thermic effect of food [estimate, the usual 10%]. The FAO activity ratios below were measured on people who were eating, so this may count part of that cost twice; the calibration fixture checks the total.
+1. **Absorption.** The gut passes at most 3 kcal a minute into the tissues [estimate; gastric emptying is remembered as 1–4 kcal a minute, unsourced]. Absorbing costs nothing separate: FAO's activity ratios below were set against 24-hour measurements that include the response to food (FAO/WHO/UNU 2004, ch. 2), so charging the thermic effect on top counted it twice (2.1 charged 10% of what was absorbed; T-014 removed it).
 2. **Spending.** The basal rate *B* comes from the Schofield equations (FAO/WHO/UNU 2004, Table 5.2) by sex, age band (under 3, 3–10, 10–18, 18–30, 30–60, over 60) and *W*. The tick splits into time spent moving and the rest:
    - The rest costs *B* × the **physical activity ratio** (PAR, multiples of the basal rate) of the effort the body held: sleep 1.0; still, lying or sitting awake 1.4 (FAO "light leisure"); light, standing and handling light things 2.2; moderate, digging, gathering, collecting wood 4.1 (FAO's 4.1–4.4); heavy 6.0 [estimate: FAO names heavy work without a value]. Still is the effort of a tick nobody describes.
    - Time moving costs *B* × 1.4 for the body upright, plus the motion itself (Pandolf et al. 1977, with *W*_t = *W* + load): walking, below 2 m/s, η *W*_t 1.5 *v*² watts; running, at 2 m/s or more, 1 kcal per kg of *W*_t per km (the net cost of running). Climbing costs 0.35 η *W*_t *v G* watts with *G* in percent, which is 35 η J per kg per metre climbed (about 25% efficient work). Going down saves nothing [simplification: real walking down a gentle slope is a little cheaper]. η = 1.2, Pandolf's terrain factor for light brush, everywhere [simplification].
@@ -555,7 +555,7 @@ What §3.1 became when it was built (D-039). `src/sim/body/metabolism.ts`, the s
 
 **What tells the body what it did.** Five columns, written during the tick by whatever makes the agent act (Phase 3 on; fixtures in `tests/` until then) and cleared by metabolism after it charges them: effort, metres moved, seconds spent moving, metres climbed, load carried in kg. A sixth, the heat made by shivering, is written by `body.heat` (§3.9) and charged and cleared the same way; metabolism writes back the heat it made apart from shivering, for `body.heat` to use next tick. It also writes the tick's exertion, for `body.fitness` (§3.11). Doors: `formBody(sim, slot, …)`, right after `spawnAgent`, sets sex, age, lean mass and fat, and records the body as the first inflow; `ingest(sim, slot, kcal)` puts food in the gut. A live agent without a body stops the run with an error, so a forgotten `formBody` can't pass unnoticed.
 
-**Calibration (scripted bodies in `tests/`, §9).** A Hadza-like day of sleep, sitting, digging and walking, with the travel distances of §9, spends within 15% of §9's ~2,600 kcal (men) and ~1,900 kcal (women). A lean adult with water and no food dies in 30–80 days having lost 30–50% of body mass.
+**Calibration (scripted bodies in `tests/`, §9).** A Hadza-like day of sleep, sitting, digging and walking, with the travel distances of §9, spends within 15% of §9's ~2,600 kcal (men) and ~1,900 kcal (women). Since 2.8 (T-014): 2,541 and 1,962 kcal, and the test also reports each day as a PAL over Henry's BMR beside Pontzer et al.'s 2.26 and 1.78. A lean adult with water and no food dies in 30–80 days having lost 30–50% of body mass.
 
 **Not in this version.** Adaptive thermogenesis (in real starvation the metabolic rate falls further than lost tissue explains, so these bodies starve somewhat sooner); terrain surface (sand, snow, brush all cost η = 1.2); savings walking downhill; stomach capacity (it needs the mass of food, which arrives with eating in Phase 3); injury and illness (§3.10), fitness and muscle (§3.11: training moves lean and built lean mass together, and *B* follows the mass), growth (§3.12: it moves lean and built lean mass together too, and scales Forbes's constant for a body short of its adult frame), pregnancy and lactation (2.6); the heritable `basalEfficiency` and body-size dials (2.7); carcasses (§3.12). The cost of heat and cold is §3.9's: metabolism charges the shivering it asks for.
 
@@ -1011,19 +1011,22 @@ No phenomenon is reported as emerged without:
 
 ## 9. Calibration targets (plausibility, never social outcomes)
 
-Approximate values from the forager literature. **Verify each against its source before implementing**, since these were written from memory (see `RESEARCH.md`).
+Approximate values from the forager and physiology literature. The table was written from memory at planning; the calibration pass (2.8, 2026-11-20) read what it could at the source. **✓** marks a value read at the source (where, in `RESEARCH.md`); the rest is still from memory and must be checked before anything leans on it.
 
-| Quantity | Target (approximate) | Source to verify |
-|---|---|---|
-| Adult total daily energy expenditure | ~2,600 kcal (men), ~1,900 kcal (women) in Hadza | Pontzer et al. 2012 |
-| Daily travel while foraging | ~11 km (men), ~6 km (women) in Hadza | Pontzer et al. 2012 |
-| Activity costs | MET values (walking ~3–3.5, running ~8–10, load carriage higher) | Compendium of Physical Activities |
-| Survival to age 15 | roughly 50–70% | Gurven & Kaplan 2007 |
-| Modal adult age at death | late 60s to 70s | Gurven & Kaplan 2007 |
-| Interbirth interval | ~3–4 years | forager demography literature |
-| Net food production by children | negative until late adolescence | Kaplan et al. 2000 |
-| Survival without water | ~3 days in heat | physiology references |
-| Residential group size | ~25–50 | forager ethnography |
+| Quantity | Target | Source | Bodies (2.8) |
+|---|---|---|---|
+| Adult total daily energy expenditure | ~2,600 kcal (men), ~1,900 (women) in Hadza (from memory); ✓ as PAL over BMR from Henry's (2005) equations, 2.26 ± 0.48 (men) and 1.78 ± 0.30 (women) | Pontzer et al. 2012: text ✓, Table 1 (masses, kcal) not readable | scripted day 2,541 / 1,962 kcal, PAL 1.87 / 1.76 against Henry (T-014) |
+| Daily travel while foraging | ✓ 11.4 ± 2.1 km (men), 5.8 ± 1.7 km (women) in Hadza, by GPS | Pontzer et al. 2012 | scripted day 11.4 / 5.8 km |
+| Activity costs | ✓ FAO/WHO/UNU (2004) activity ratios (Table 5.1), which carry the response to food (ch. 2); Pandolf's walking and load costs (from memory) | FAO/WHO/UNU 2004 | §3.8 |
+| Survival to age 15 | ✓ 0.57 (0.45–0.66) in five forager populations; ✓ 0.60, the forager mean | Gurven & Kaplan 2007; Kaplan et al. 2000, Table 1 | needs Phase 3–4 (care of the young) |
+| Modal adult age at death | ✓ about 72 (68–78) | Gurven & Kaplan 2007 | old age's term alone: 69 (§3.12) |
+| Interbirth interval | ✓ 41.3 months (3.4 years), the forager mean; Ache 37.6, Hiwi 45.1 months | Kaplan et al. 2000, Table 1 (some rows garbled in the text read) | scripted forager mother 3.14 years (§3.13) |
+| Net food production by children | ✓ "No children in any forager society produced as much as they consumed until they reached their mid- to late teens" | Kaplan et al. 2000 | needs Phase 3 (foraging) |
+| Survival without water | ✓ about 10 days for an inactive adult in shade below 21 °C (70 °F); ✓ deficits of 15–25% of body mass fatal; 7–10 days of complete deprivation, death within 48 hours marching across hot desert (summary, not verbatim); the remembered table by temperature (3 days at 43 °C) still unverified | Adolph 1947, via Allen 1956 and Greenleaf 1973; Leithead & Lind 1964 via Greenleaf | 1.7–11.2 days in shade by heat; fatal at 15% (§3.9) |
+| Pregnancy and milk | ✓ 321 MJ (about 77,000 kcal) for 12 kg gained, 375 / 1,200 / 1,950 kJ a day by trimester; basal rate +4.5 / 10.8 / 24.0%; fat gained 3.7 kg; milk 2.8 kJ/g (0.67 kcal/g) at 80% efficiency, 749–807 g a day exclusively nursed | Butte & King 2005; FAO/WHO/UNU 2004, ch. 7 | §3.13 |
+| Pregnancy loss by age | ✓ 8.9% at 20–24, over half at 42, 74.7% at 45 or more | Nybo Andersen et al. 2000 (abstract) | §3.13 |
+| Children of first cousins | ✓ about 3.5% more deaths before adulthood than children of unrelated parents (recent estimates; older ones 11%); 1.1% more infant deaths; 1.5% more stillbirths (0.7% without two outlying studies) | Bittles & Black 2010, *Early Human Development* | 3.3% more after birth (§3.14) |
+| Residential group size | ~25–50 | forager ethnography (Marlowe 2005, not readable in 2.8) | Phase 3 on |
 
 Viability tuning (keeping founders from going extinct) is allowed and logged. Social metrics are never targets.
 
