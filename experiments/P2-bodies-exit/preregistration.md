@@ -40,3 +40,20 @@ Deaths by cause and by supply group; the share of ambiguous ticks; how many bodi
 
 ## Analysis plan
 `random-policy.ts` prints the counts and each criterion with its numbers, and writes them to `results.md` by hand. No criterion is changed after seeing results; if one turns out to be ill-posed, that is said in `results.md`, and the original stands. A failure is diagnosed by the nudge protocol (`GUARDRAILS.md` §4) before any change, and every change is logged in `TUNING_LOG.md` first.
+
+---
+
+# Part two, written after the first run (2026-11-20, before any run on seeds 3 and 4)
+
+The first run (seeds 1 and 2, `results.md`) failed criteria 3, 4, 5 and (seed 1) 7. Diagnosis, from the run's own reported numbers: under this policy bodies spend a median 4,600–4,800 kcal a day (men 5,150–5,365, women 4,290–4,450), more than a man's gut can pass (4,320 kcal a day, §3.8), so no food supply in the run keeps a body, and criterion 5's "supplied" group was not supplied; at that spending a body makes about 0.6 kg of water a day by burning fuel and, on days whose median is about 10 °C, loses little to sweat, so 0.5–1 kg of drink a day is not severe thirst, which criterion 3 assumed; criterion 4's 15-day floor was a resting fast's; and criterion 7, with 6 deaths, failed on two deaths under 45 when the hazard predicts 0.47 (the hazard predicts 7.4 and 7.8 old-age deaths over the time the bodies lived; 6 and 16 happened). One analysis bug was found and fixed before the diagnosis: ages at death were read after the store had cleared the slot (they came out as the years since tick 0).
+
+None of this points to a fault in the bodies, and nothing in `src/` changes. The first run's criteria and results stand as written and failed. Part two keeps the policy, the worlds' settings and the code that runs them exactly as they were, and poses the criteria against what this policy does, on two worlds not yet run (seeds 3 and 4), so the thresholds can't fit seen data.
+
+## Pass criteria, part two (all must hold in both worlds)
+1. and 2. As in part one (audits; one cause per death).
+3. **Thirst before hunger, where thirst is severe:** of bodies with *W* < 0.25 kg a day, at least 70% die of dehydration, and their median time to death is 5–15 days (an inactive adult in shade below 21 °C lasts about 10, Adolph).
+4. **Hunger takes weeks, at this policy's spending:** of bodies with *W* ≥ 3 kg and *F* < 400 kcal a day, none die of dehydration, and their starvation deaths fall between 10 and 40 days (a Hadza-like body can draw about 90,000 kcal before starving, at 4,500–5,500 kcal a day: 16–20 days).
+5. **Supply buys time:** among bodies with *W* ≥ 3 kg, the median survival rises from each food band to the next (0–1,000, 1,000–2,000, 2,000–3,000, 3,000–4,000 kcal a day), and the top band's is at least 1.5 times the bottom band's; among bodies with *W* < 1 kg, the median survival rises from each water band to the next (0–0.25, 0.25–0.5, 0.5–0.75, 0.75–1 kg a day).
+6. As in part one (cold kills in the cold).
+7. **Old age at the hazard's rate:** the deaths by old age lie inside the central 99% of a Poisson count whose mean is what the hazard (§3.12) predicts over the time each body lived, and so do the deaths by old age under 45.
+8. As in part one (a mix).
