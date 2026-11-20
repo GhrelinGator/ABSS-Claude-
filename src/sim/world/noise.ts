@@ -10,7 +10,7 @@ const GRADIENTS = new Float64Array([
 ]);
 
 /** MurmurHash3's 32-bit finalizer. */
-function mix32(h: number): number {
+export function mix32(h: number): number {
   h ^= h >>> 16;
   h = Math.imul(h, 0x85ebca6b);
   h ^= h >>> 13;
