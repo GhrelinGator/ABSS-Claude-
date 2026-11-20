@@ -133,6 +133,13 @@ As first written (session 27):
 - **Heritability and variation of the two body dials:** adult height and size are highly heritable (about 0.6–0.8); resting metabolic rate at the same lean mass varies by about 7–8% between people with a heritability of about 0.4–0.5 (Bouchard and others, as remembered); circumpolar peoples have higher resting rates than their size predicts (Leonard et al., as remembered), which is the trade the `basalScale` dial carries.
 - **Not yet sourced at all:** the half of recessive lethality that acts before birth; the spread of ages at which lethal recessive disorders kill; the 1% chance a dial's allele mutates.
 
+## Drives and acts (written from memory 2026-11-20 for 3.3, not checked against sources)
+
+- Daan, Beersma & Borbély (1984), "Timing of human sleep: recovery process gated by a circadian pacemaker," *American Journal of Physiology*. The two-process model: process S rises awake (time constant about 18.2 h) and falls asleep (about 4.2 h) between thresholds modulated by a circadian process. §4.9.2 uses these constants, the amplitude 0.12 and the lower threshold 0.17, all from memory.
+- Hadza walking speed about 1.2 m/s and foraging returns (berries 1–2 kg an hour, tubers about 1.5–2 kg an hour with a digging stick): Hawkes, O'Connell & Blurton Jones (1989, 1991), Marlowe (2010), *The Hadza*. §4.9.3's rates by hand are lower than these with-implement figures, from memory.
+- Gastric emptying of a mixed meal over about 3–4 hours; stomach volume about 1–1.5 L comfortably: textbook physiology, from memory (§4.9.2).
+- Solanine and similar plant poisons: illness from a few mg per kg of body mass, death at several times that, symptoms hours after eating. §4.9.2's strengths (vomit at 2, death at 8) are scaled to that ratio, from memory; the plants are fictional.
+
 ## Plants and foraging (✓ checked 2026-11-15 by web search)
 
 - ✓ Einkorn yields: about 1–2 t/ha (2000m2.eu crop profile); about 832 lb/acre (≈ 930 kg/ha) in low-input Wyoming trials (University of Wyoming Extension, via sciencesocieties.org). Wild stands are put below these (§2.12).
