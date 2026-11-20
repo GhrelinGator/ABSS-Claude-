@@ -910,13 +910,21 @@ export function createMemory(sim: Sim): Memory {
     predict,
     dials,
     readDials,
+    // The doors read the agent's dials first; learn() and begin() do so themselves.
     update: (slot, ks, n, o, tick, placeKey = 0, start, startOff = 0) => {
-      // Tests pass their own keys; update may append the place key, so copy into room for it.
+      readDials(slot);
+      // Callers pass their own keys; update may append the place key, so copy into room for it.
       for (let i = 0; i < n; i++) keys[i] = ks[i];
       return update(slot, keys, n, o, tick, placeKey, start ?? null, startOff);
     },
-    credit,
-    push,
+    credit: (slot, err, tick) => {
+      readDials(slot);
+      credit(slot, err, tick);
+    },
+    push: (slot, k, placeKey, tick) => {
+      readDials(slot);
+      push(slot, k, placeKey, tick);
+    },
     error,
     entry,
     count: (slot) => count[slot],
