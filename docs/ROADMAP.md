@@ -64,7 +64,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 ## Phase 3: Individual minds (~3–5k lines, 4–8 sessions)
 
 - **3.1 [F]** Design the learning architecture (`DESIGN.md` §4.5) in writing first: features, value learning, how delays are handled, memory limits, compute cost per agent. Add it to `DESIGN.md` before coding. *Done 2026-11-20: `DESIGN.md` §4.7, D-049.*
-- **3.2 [O]** Perception (light, terrain, vegetation), individual recognition.
+- **3.2 [O]** Perception (light, terrain, vegetation), individual recognition. *Done 2026-11-20: `DESIGN.md` §4.8, D-050.*
 - **3.3 [O]** Drives (closed list) and action selection, with the solo acts' physics, the body's door for plant toxins, and founders (`DESIGN.md` §4.7.14).
 - **3.4 [O]** Episodic buffer, semantic associations, entity-response models.
 - **3.5 [O]** Hidden-cause inference.

@@ -13,7 +13,7 @@ import { NeighbourGrid } from '../core/spatial.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { worldWidthM } from '../config.ts';
 import { ANIMAL_STORE, AnimalMode, CARCASS_LAYER, HARE_LAYER, tallCoverOf } from '../world/animals.ts';
-import { CLIMATE_PARTS, airTemperatureC, dailyMeanTemperatureC } from '../world/climate.ts';
+import { CLIMATE_CONSTANTS, CLIMATE_PARTS, airTemperatureC, dailyMeanTemperatureC } from '../world/climate.ts';
 import { FIRE_LAYERS, FIRE_STORE, FireStage, createFireProbe } from '../world/fire.ts';
 import { ambientLight, seasonFraction } from '../world/light.ts';
 import {
@@ -272,50 +272,72 @@ export function createPerception(sim: Sim): Perception {
   const SR = P.sightReachCells;
   const side = 2 * SR + 1;
   const sightWords = Math.ceil((side * side) / 32);
-  const offsets: { di: number; dj: number; bit: number; d2: number }[] = [];
+  const offsets: { di: number; dj: number; bit: number; d2: number; floor: number }[] = [];
   for (let dj = -SR; dj <= SR; dj++) {
-    for (let di = -SR; di <= SR; di++) offsets.push({ di, dj, bit: (dj + SR) * side + (di + SR), d2: di * di + dj * dj });
+    for (let di = -SR; di <= SR; di++) {
+      // The least distance from anywhere in the viewing cell to the nearest point of this one.
+      const gi = Math.max(0, Math.abs(di) - 1) * cs;
+      const gj = Math.max(0, Math.abs(dj) - 1) * cs;
+      offsets.push({ di, dj, bit: (dj + SR) * side + (di + SR), d2: di * di + dj * dj, floor: Math.sqrt(gi * gi + gj * gj) });
+    }
   }
-  offsets.sort((a, b) => a.d2 - b.d2 || a.dj - b.dj || a.di - b.di);
+  offsets.sort((a, b) => a.floor - b.floor || a.d2 - b.d2 || a.dj - b.dj || a.di - b.di);
   const offI = new Int32Array(offsets.map((o) => o.di));
   const offJ = new Int32Array(offsets.map((o) => o.dj));
   const offBit = new Int32Array(offsets.map((o) => o.bit));
-  // No cell at or after this offset can be nearer than this (its Chebyshev distance is at least d / √2).
-  const offFloor = new Float64Array(offsets.map((o) => Math.max(0, Math.sqrt(o.d2) / Math.SQRT2 - 1) * cs));
-  const sight = new Uint32Array(W * H * sightWords);
-  const sightDone = new Uint8Array(W * H);
-
-  function workOutSight(k: number): void {
-    const vi = k % W;
-    const vj = (k - vi) / W;
-    const eye = elevation[k] + P.eyeM;
-    const base = k * sightWords;
-    for (let o = 0; o < offI.length; o++) {
-      const di = offI[o];
-      const dj = offJ[o];
-      const ti = vi + di;
-      const tj = vj + dj;
-      if (ti < 0 || ti >= W || tj < 0 || tj >= H) continue;
-      const m = Math.max(di < 0 ? -di : di, dj < 0 ? -dj : dj);
-      let clear = true;
-      if (m > 1) {
-        const top = elevation[tj * W + ti] + P.targetM;
-        for (let s = 1; s < m && clear; s++) {
-          const si = vi + Math.round((di * s) / m);
-          const sj = vj + Math.round((dj * s) / m);
-          if (elevation[sj * W + si] > eye + ((top - eye) * s) / m) clear = false;
-        }
-      }
-      if (clear) sight[base + (offBit[o] >>> 5)] |= 1 << (offBit[o] & 31);
+  const offFloor = new Float64Array(offsets.map((o) => o.floor));
+  // The cells a line of sight passes over, for each offset: steps along the line at cell centres.
+  const stepBegin = new Int32Array(offsets.length + 1);
+  const stepI: number[] = [];
+  const stepJ: number[] = [];
+  const stepAt: number[] = [];
+  offsets.forEach((o, n) => {
+    stepBegin[n] = stepI.length;
+    const m = Math.max(Math.abs(o.di), Math.abs(o.dj));
+    for (let s = 1; s < m; s++) {
+      stepI.push(Math.round((o.di * s) / m));
+      stepJ.push(Math.round((o.dj * s) / m));
+      stepAt.push(s / m);
     }
-    sightDone[k] = 1;
-  }
+  });
+  stepBegin[offsets.length] = stepI.length;
+  const stepDi = new Int32Array(stepI);
+  const stepDj = new Int32Array(stepJ);
+  const stepShare = new Float64Array(stepAt);
+  // Two bits per line from a viewing cell: worked out yet, and clear. Lines are worked out when a look
+  // first needs them, so a cell walked through costs the few lines its looks used, not all 225.
+  const sightKnown = new Uint32Array(W * H * sightWords);
+  const sightClear = new Uint32Array(W * H * sightWords);
+  // Offset bit -> its index in the nearest-first order, for the steps along its line.
+  const orderOfBit = new Int32Array(side * side);
+  for (let o = 0; o < offBit.length; o++) orderOfBit[offBit[o]] = o;
 
   const inSight = (viewer: number, di: number, dj: number): boolean => {
     if (di < -SR || di > SR || dj < -SR || dj > SR) return true;
-    if (sightDone[viewer] === 0) workOutSight(viewer);
     const bit = (dj + SR) * side + (di + SR);
-    return (sight[viewer * sightWords + (bit >>> 5)] & (1 << (bit & 31))) !== 0;
+    const word = viewer * sightWords + (bit >>> 5);
+    const flag = 1 << (bit & 31);
+    if ((sightKnown[word] & flag) === 0) {
+      const vi = viewer % W;
+      const vj = (viewer - vi) / W;
+      const ti = vi + di;
+      const tj = vj + dj;
+      let clear = ti >= 0 && ti < W && tj >= 0 && tj < H;
+      if (clear) {
+        const eye = elevation[viewer] + P.eyeM;
+        const rise = elevation[tj * W + ti] + P.targetM - eye;
+        const o = orderOfBit[bit];
+        for (let q = stepBegin[o]; q < stepBegin[o + 1]; q++) {
+          if (elevation[(vj + stepDj[q]) * W + vi + stepDi[q]] > eye + rise * stepShare[q]) {
+            clear = false;
+            break;
+          }
+        }
+      }
+      sightKnown[word] |= flag;
+      if (clear) sightClear[word] |= flag;
+    }
+    return (sightClear[word] & flag) !== 0;
   };
 
   // Rock shelters by cell, rebuilt if the store changes (it is made at setup and then fixed).
@@ -353,6 +375,9 @@ export function createPerception(sim: Sim): Perception {
   let season = 0;
   let leafOut = false;
   let dayLength = 0;
+  /** Air now and the day's mean, at the climate's reference height; a cell's differ by the lapse rate (§2.11). */
+  let airRef = 0;
+  let meanRef = 0;
 
   function refreshTick(): void {
     const now = state.tick;
@@ -365,17 +390,26 @@ export function createPerception(sim: Sim): Perception {
     // Quarters of the year centred on the equinoxes and solstices (the year starts at the spring equinox).
     const quarter = Math.floor((season + 0.125 - Math.floor(season + 0.125)) * 4);
     dayLength = quarter === 0 ? DayLength.LENGTHENING : quarter === 1 ? DayLength.LONG : quarter === 2 ? DayLength.SHORTENING : DayLength.SHORT;
+    airRef = airTemperatureC(config, now, weather, CLIMATE_CONSTANTS.referenceElevationM);
+    meanRef = dailyMeanTemperatureC(config, now, weather, CLIMATE_CONSTANTS.referenceElevationM);
     if (view!.hour !== hour) view!.hour = hour;
   }
 
+  const lapse = (k: number) => CLIMATE_CONSTANTS.lapseRatePerM * (elevation[k] - CLIMATE_CONSTANTS.referenceElevationM);
+
   // ---- the still view of a cell (rule 1)
+  // Each still class as its bit in a cell's mask, split into the low and the high 32 bits.
+  const lowBit = new Int32Array(CLASS.stillCount);
+  const highBit = new Int32Array(CLASS.stillCount);
+  for (let c = 0; c < CLASS.stillCount; c++) {
+    lowBit[c] = c < 32 ? 1 << c : 0;
+    highBit[c] = c < 32 ? 0 : 1 << (c - 32);
+  }
+
   function workOutStill(k: number): void {
     let m0 = 0;
     let m1 = 0;
-    const set = (c: number) => {
-      if (c < 32) m0 |= 1 << c;
-      else m1 |= 1 << (c - 32);
-    };
+    let c: number;
     let meanC = Number.NaN;
     for (let s = 0; s < cover.length; s++) {
       if (cover[s][k] < P.plantSeenCover) continue;
@@ -383,27 +417,57 @@ export function createPerception(sim: Sim): Perception {
       if (bearsInSight[s] && food[s][k] >= P.bearingKg) look = PlantLook.BEARING;
       else if (woody[s]) look = leafOut ? PlantLook.LEAF : PlantLook.BARE;
       else {
-        if (meanC !== meanC) meanC = dailyMeanTemperatureC(config, tick, weather, elevation[k]);
+        if (meanC !== meanC) meanC = meanRef - lapse(k);
         look = meanC >= minTemperature[s] ? PlantLook.LEAF : PlantLook.BARE;
       }
-      set(plantBits[s][look]);
+      c = plantBits[s][look];
+      m0 |= lowBit[c];
+      m1 |= highBit[c];
     }
     const h = hares[k];
-    if (h > 0) {
+    if (h > 1e-6) {
       const draw = mix32(mix32(hareKey ^ Math.imul(k + 1, 0x9e3779b1)) ^ Math.imul(hour + 1, 0x85ebca6b)) / 4294967296;
-      if (draw < 1 - exp(-h)) set(CLASS.hare);
+      if (draw < 1 - exp(-h)) {
+        m0 |= lowBit[CLASS.hare];
+        m1 |= highBit[CLASS.hare];
+      }
     }
-    if (carcass[k] >= P.carcassKg) set(CLASS.carcass);
-    for (let m = 0; m < stones.length; m++) if (stones[m][k] >= P.stoneSeenKg) set(stoneBits[m]);
-    if (smallWood[k] >= P.smallWoodKg) set(CLASS.smallWood);
-    if (longWood[k] >= P.longWoodKg) set(CLASS.longWood);
-    if (litter[k] >= P.litterKg) set(CLASS.litter);
+    if (carcass[k] >= P.carcassKg) {
+      m0 |= lowBit[CLASS.carcass];
+      m1 |= highBit[CLASS.carcass];
+    }
+    for (let m = 0; m < stones.length; m++) if (stones[m][k] >= P.stoneSeenKg) {
+      m0 |= lowBit[stoneBits[m]];
+      m1 |= highBit[stoneBits[m]];
+    }
+    if (smallWood[k] >= P.smallWoodKg) {
+      m0 |= lowBit[CLASS.smallWood];
+      m1 |= highBit[CLASS.smallWood];
+    }
+    if (longWood[k] >= P.longWoodKg) {
+      m0 |= lowBit[CLASS.longWood];
+      m1 |= highBit[CLASS.longWood];
+    }
+    if (litter[k] >= P.litterKg) {
+      m0 |= lowBit[CLASS.litter];
+      m1 |= highBit[CLASS.litter];
+    }
     const water = waterKind[k];
-    if (water === Water.RIVER || water === Water.SPRING) set(CLASS.flowing);
-    else if (water === Water.LAKE) set(CLASS.standing);
+    if (water === Water.RIVER || water === Water.SPRING) {
+      m0 |= lowBit[CLASS.flowing];
+      m1 |= highBit[CLASS.flowing];
+    } else if (water === Water.LAKE) {
+      m0 |= lowBit[CLASS.standing];
+      m1 |= highBit[CLASS.standing];
+    }
     const shelter = shelterKind[k];
-    if (shelter === RockShelterKind.OVERHANG) set(CLASS.overhang);
-    else if (shelter === RockShelterKind.CAVE) set(CLASS.cave);
+    if (shelter === RockShelterKind.OVERHANG) {
+      m0 |= lowBit[CLASS.overhang];
+      m1 |= highBit[CLASS.overhang];
+    } else if (shelter === RockShelterKind.CAVE) {
+      m0 |= lowBit[CLASS.cave];
+      m1 |= highBit[CLASS.cave];
+    }
     view!.mask[2 * k] = m0;
     view!.mask[2 * k + 1] = m1;
     view!.stamp[k] = hour + 1;
@@ -543,9 +607,17 @@ export function createPerception(sim: Sim): Perception {
 
   function flush(out: Percepts): void {
     // Class order, so the output does not depend on the order things were found in.
-    const order = touched.subarray(0, touchedN).sort();
+    for (let a = 1; a < touchedN; a++) {
+      const c = touched[a];
+      let b = a;
+      while (b > 0 && touched[b - 1] > c) {
+        touched[b] = touched[b - 1];
+        b--;
+      }
+      touched[b] = c;
+    }
     for (let n = 0; n < touchedN; n++) {
-      const c = order[n];
+      const c = touched[n];
       out.push(cue(CueKind.CLASS, c), bestD[c], bestX[c], bestY[c], bestRef[c], bestSource[c]);
       bestD[c] = Infinity;
       bestSource[c] = SOURCE_NONE;
@@ -590,11 +662,14 @@ export function createPerception(sim: Sim): Perception {
     out.dayLength = cue(CueKind.DAY_LENGTH, dayLength);
     out.place = cue(CueKind.PLACE, Math.floor(py / P.placeM) * placeColumns + Math.floor(px / P.placeM));
     // The air at the skin: what body.exposure gives a body in this cell (§3.9).
-    const air = airTemperatureC(config, tick, weather, elevation[k]);
+    const air = airRef - lapse(k);
     out.warmth = cue(CueKind.WARMTH, air < P.coldBelowC ? Warmth.COLD : air < P.hotFromC ? Warmth.MILD : Warmth.HOT);
 
     // The still world: cells nearest first, each class at the nearest cell where it shows.
     const stillReach = R[SightGroup.TREE] * f;
+    const reach2 = stillReach * stillReach;
+    const ground2 = R[SightGroup.GROUND] * f * (R[SightGroup.GROUND] * f);
+    const bush2 = R[SightGroup.BUSH] * f * (R[SightGroup.BUSH] * f);
     let seen0 = 0;
     let seen1 = 0;
     const stamp = view!.stamp;
@@ -605,23 +680,26 @@ export function createPerception(sim: Sim): Perception {
       const ti = vi + offI[o];
       const tj = vj + offJ[o];
       if (ti < 0 || ti >= W || tj < 0 || tj >= H) continue;
-      // Distance to the cell's nearest point.
+      // Distance to the cell's nearest point, squared.
       const x0 = ti * cs;
       const y0 = tj * cs;
       const dx = px < x0 ? x0 - px : px > x0 + cs ? px - x0 - cs : 0;
       const dy = py < y0 ? y0 - py : py > y0 + cs ? py - y0 - cs : 0;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d > stillReach) continue;
-      const t = d / f;
-      const g = t <= R[SightGroup.GROUND] ? 0 : t <= R[SightGroup.BUSH] ? 1 : 2;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > reach2) continue;
       const tk = tj * W + ti;
       if (stamp[tk] !== want) workOutStill(tk);
-      let new0 = mask[2 * tk] & ~seen0 & reach[g][0];
-      let new1 = mask[2 * tk + 1] & ~seen1 & reach[g][1];
+      let new0 = mask[2 * tk] & ~seen0;
+      let new1 = mask[2 * tk + 1] & ~seen1;
+      if ((new0 | new1) === 0) continue;
+      const g = d2 <= ground2 ? 0 : d2 <= bush2 ? 1 : 2;
+      new0 &= reach[g][0];
+      new1 &= reach[g][1];
       if ((new0 | new1) === 0) continue;
       if (!inSight(k, offI[o], offJ[o])) continue;
       seen0 |= new0;
       seen1 |= new1;
+      const d = Math.sqrt(d2);
       const cx = x0 + cs / 2;
       const cy = y0 + cs / 2;
       while (new0 !== 0) {
@@ -713,19 +791,28 @@ export function createPerception(sim: Sim): Perception {
     if (agents.count > 1) {
       refreshAgents();
       const found = agentGrid.query(px, py, R[SightGroup.LARGE] * f);
+      // Persons stand together, so the last cell's concealment and line of sight are kept.
+      let lastCell = -1;
+      let lastHide = 0;
+      let lastSeen = false;
       for (let q = 0; q < found; q++) {
         const s = agentGrid.result[q];
         if (s === slot) continue;
         const ox = agentGrid.x[s];
         const oy = agentGrid.y[s];
+        const tk = cellOf(ox, oy);
+        if (tk !== lastCell) {
+          lastCell = tk;
+          lastHide = f * concealment(tk);
+          const tki = tk % W;
+          lastSeen = inSight(k, tki - vi, (tk - tki) / W - vj);
+        }
+        if (!lastSeen) continue;
+        const hide = lastHide;
         const dx = ox - px;
         const dy = oy - py;
         const d = Math.sqrt(dx * dx + dy * dy);
-        const tk = cellOf(ox, oy);
-        const hide = f * concealment(tk);
         if (d > R[SightGroup.LARGE] * hide) continue;
-        const tki = tk % W;
-        if (!inSight(k, tki - vi, (tk - tki) / W - vj)) continue;
         if (d <= P.individualM * hide) {
           // Insert into the nearest-first list, ties by id.
           const id = agents.id.data[s];
