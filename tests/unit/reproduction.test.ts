@@ -75,7 +75,7 @@ function conceive(sim: Sim, female: number, male: number, tries = 2000): number 
   return -1;
 }
 
-test('the pieces: fertility by age and energy, birth mass, loss by age, what a young body cannot do', (t) => {
+test('the pieces: fertility by age and energy, birth mass, loss by age, what a young body cannot do', () => {
   assert.equal(fecundityAtAge(Sex.FEMALE, 12), 0);
   assert.equal(fecundityAtAge(Sex.FEMALE, 25), 1);
   assert.equal(fecundityAtAge(Sex.FEMALE, 52), 0);
