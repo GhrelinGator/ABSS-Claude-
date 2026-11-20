@@ -12,6 +12,7 @@ import {
   fire,
   light,
   materials,
+  metabolism,
   pathogens,
   plants,
   stepSim,
@@ -229,6 +230,32 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+/** Words for each cause of death on the date line (index: metabolism.DeathCause). */
+const DEATH_WORDS: Record<number, string> = {
+  [metabolism.DeathCause.STARVATION]: 'hunger',
+  [metabolism.DeathCause.DEHYDRATION]: 'thirst',
+  [metabolism.DeathCause.HYPERTHERMIA]: 'heat',
+  [metabolism.DeathCause.HYPOTHERMIA]: 'cold',
+  [metabolism.DeathCause.SHOCK]: 'blood loss',
+  [metabolism.DeathCause.INFECTION]: 'infection',
+  [metabolism.DeathCause.LIGHTNING]: 'lightning',
+  [metabolism.DeathCause.OLD_AGE]: 'old age',
+  [metabolism.DeathCause.CONGENITAL]: 'inherited disorder',
+  [metabolism.DeathCause.POISONING]: 'poison',
+  [metabolism.DeathCause.ANIMAL]: 'animals',
+};
+
+/** "· died of thirst 3, animals 1", or nothing while no one has died. */
+function deathsText(): string {
+  const deaths = view?.readings(metabolism.BODY_PARTS.deaths);
+  if (!deaths) return '';
+  const parts: string[] = [];
+  for (let cause = 1; cause < deaths.length; cause++) {
+    if (deaths[cause] > 0) parts.push(`${DEATH_WORDS[cause] ?? `cause ${cause}`} ${deaths[cause]}`);
+  }
+  return parts.length > 0 ? ` · died of ${parts.join(', ')}` : '';
+}
+
 function updateClock(): void {
   if (!sim) return;
   const { config } = sim;
@@ -238,7 +265,7 @@ function updateClock(): void {
   const people = view ? view.agents.count : 0;
   dateLine.textContent =
     `Year ${clock.yearIndex(config, tick) + 1}, day ${clock.dayOfYear(config, tick) + 1} (${season}), ` +
-    `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)} · ${people} of ${FOUNDERS.count} people alive`;
+    `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)} · ${people} of ${FOUNDERS.count} people alive${deathsText()}`;
   const ambient = light.ambientLight(config, tick);
   const sun = light.sunlight(config, tick);
   const moon = MOONS[Math.floor((light.moonPhase(config, tick) + 1 / 16) * 8) % 8];

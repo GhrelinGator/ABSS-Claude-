@@ -176,3 +176,14 @@ Append-only. Every parameter or mechanism change made for tuning reasons goes he
 - **What this does not settle:** §9's absolute targets (~2,600 and ~1,900) are still from memory: Pontzer et al. (2012)'s Table 1 could not be read this session (an image on the PLOS page; PubMed Central behind a bot check). What was read (the text): physical activity levels of 2.26 ± 0.48 (men) and 1.78 ± 0.30 (women), as total expenditure over BMR estimated by Henry's (2005) equations; travel of 11.4 ± 2.1 and 5.8 ± 1.7 km a day; measured resting rates averaging 11% above Henry's predicted BMR. The calibration test now also reports the scripted days as multiples of a Henry-estimated BMR (equations from memory) beside those PALs, reported, not asserted.
 - **Owner approval:** not needed (a body mechanism's bookkeeping, D-034); he is told.
 - **Null-model re-run:** not applicable (no social outcome).
+
+### T-015: Grass hid a person walking upright, and a body not yet seen by injury looked lame (milestone 3.3b)
+- **Date / session model:** 2026-11-20 (US Central, early morning), Opus 5.5 (unattended run, an [F] milestone on Opus, D-034). Written in the same session, after the two corrections and before any run of founders with them: both were found by 3.3b's own unit tests on their first run.
+- **Social metrics involved:** none. Targets: §2.17's calibration targets, written before the code ("a person walking last tick makes deer leave from 100 m by day"; "wolves never attack a healthy lone adult").
+- **Symptom 1:** on open grassland in spring, deer did not notice a person walking toward them at 60 m by day. §2.17 shortened the distance by the tall cover around the person, the same `tallCoverOf` that hides a cat lying in wait, which counts grass (at 0.3 of its cover in spring, all of it from midsummer). A walking person stood behind a cover of 0.8 grass as if behind reeds: noticed at 44 m.
+- **Classification:** (a) **a design error**: grass, even in late summer (about 1–1.5 m), hides a body keeping low, not one walking upright.
+- **Change:** for a person who walked in its last tick, the cover that hides it leaves grass out (reeds, bushes and trees only); for one keeping still, all tall cover counts, as written. `DESIGN.md` §2.17 says so.
+- **Symptom 2:** a pack of wolves attacked a healthy lone adult in the first ticks after the body was spawned. Wolves take an adult only if its mobility is under 0.5; mobility is 0 until `body.injury` first computes it, and the animals run before the bodies in a tick.
+- **Classification:** (a) **a bug.** Mobility from §3.10's formula is never below 0.0625, so 0 means "not yet computed"; animals now read it as no limp (the acts already treat a body the body systems have not seen as whole).
+- **Owner approval:** not needed (world mechanisms, D-034); he is told.
+- **Null-model re-run:** not applicable (no social outcome).

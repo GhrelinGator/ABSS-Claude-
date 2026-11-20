@@ -941,9 +941,14 @@ export const animals: SystemDef = defineSystem({
     let personMobility: Float64Array | null = null;
     let personMoved: Float64Array | null = null;
     let personIds: Uint32Array = new Uint32Array(0);
-    /** Per group: the nearest person it notices this tick (agent slot, -1 for none) and how far. */
-    let shyFrom = new Int32Array(64);
-    let shyD = new Float64Array(64);
+    /** 200 m squares with a person in or next to them this tick (§2.17). The most any animal notices from is 100 m. */
+    const MARK_M = 200;
+    const markW = Math.ceil(widthM / MARK_M);
+    const markH = Math.ceil(heightM / MARK_M);
+    const marks = new Uint8Array(markW * markH);
+    let marked = new Int32Array(64);
+    let markedN = 0;
+    for (const d of [...E.shyDayM, ...E.shyNightM]) if (d > MARK_M) throw new Error('world.animals: a flight distance is longer than the squares that mark persons.');
     /** Results of a person query, copied out so a nested query can run. */
     let found = new Int32Array(64);
     const bites = state.parts.find((p) => p.name === ANIMAL_PARTS.bites) as AnimalBites;
@@ -973,6 +978,7 @@ export const animals: SystemDef = defineSystem({
       personMoved = agents.hasColumn(MOVED_TICK_COLUMN) ? agents.column<Float64Array>(MOVED_TICK_COLUMN).data : null;
       personIds = agents.id.data;
       personGrid.build(personX, personY, personMask, hw);
+      markPersons();
       return personsN;
     }
 
@@ -1027,56 +1033,71 @@ export const animals: SystemDef = defineSystem({
       return dx * dx + dy * dy;
     }
 
-    /**
-     * Which person, if any, each group notices this tick: for every person, the groups within the
-     * distance it is noticed at (by kind, light, whether it walked, and the tall cover around it).
-     */
-    function noticePersons(night: boolean, season: number): void {
-      const hw = store.highWater;
-      if (shyFrom.length < hw) {
-        let n = shyFrom.length;
-        while (n < hw) n *= 2;
-        shyFrom = new Int32Array(n);
-        shyD = new Float64Array(n);
-      }
-      shyFrom.fill(-1, 0, hw);
-      const shy = night ? E.shyNightM : E.shyDayM;
-      let most = 0;
-      for (const d of shy) if (d > most) most = d;
+    /** The share of its distance at which an animal notices person p now (§2.17). */
+    function noticeOf(p: number, season: number): number {
+      const moving = personMoved === null || personMoved[p] > E.movingFromM;
+      // Grass, even tall, hides only a body keeping low: one walking upright shows above it.
+      const k = cellAt(personX[p], personY[p]);
+      const tall = tallCoverOf(season, moving ? 0 : grassCover[k], berryCover[k], nutCover[k], reedCover[k]);
+      return noticeFactor(moving, tall / A.ambushCover);
+    }
+
+    /** Mark the 200 m squares each person stands in, and their neighbours (derived each tick, never saved). */
+    function markPersons(): void {
+      for (let m = 0; m < markedN; m++) marks[marked[m]] = 0;
+      markedN = 0;
       const hwA = agents.highWater;
       for (let p = 0; p < hwA; p++) {
         if (personMask[p] !== 1) continue;
-        const moving = personMoved === null || personMoved[p] > E.movingFromM;
-        // Grass, even tall, hides only a body keeping low: one walking upright shows above it.
-        const k = cellAt(personX[p], personY[p]);
-        const tall = tallCoverOf(season, moving ? 0 : grassCover[k], berryCover[k], nutCover[k], reedCover[k]);
-        const f = noticeFactor(moving, tall / A.ambushCover);
-        noticeIn(herbGrid, p, f, shy, most);
-        noticeIn(predGrid, p, f, shy, most);
+        const i0 = Math.floor(personX[p] / MARK_M);
+        const j0 = Math.floor(personY[p] / MARK_M);
+        for (let j = j0 - 1; j <= j0 + 1; j++) {
+          if (j < 0 || j >= markH) continue;
+          for (let i = i0 - 1; i <= i0 + 1; i++) {
+            if (i < 0 || i >= markW) continue;
+            const m = j * markW + i;
+            if (marks[m] !== 0) continue;
+            marks[m] = 1;
+            if (markedN === marked.length) {
+              const bigger = new Int32Array(marked.length * 2);
+              bigger.set(marked);
+              marked = bigger;
+            }
+            marked[markedN++] = m;
+          }
+        }
       }
     }
 
-    function noticeIn(grid: BucketGrid, p: number, f: number, shy: readonly number[], most: number): void {
-      const n = grid.query(personX[p], personY[p], most * f, c.x, c.y);
-      for (let q = 0; q < n; q++) {
-        const g = grid.result[q];
-        const dx = c.x[g] - personX[p];
-        const dy = c.y[g] - personY[p];
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d > shy[c.kind[g]] * f || (shyFrom[g] >= 0 && d >= shyD[g])) continue;
-        shyFrom[g] = p;
-        shyD[g] = d;
-      }
-    }
-
-    /** A group that noticed a person leaves it, unless it is running already, standing its ground, or a hungry predator. */
-    function keepAway(slot: number): void {
-      const p = shyFrom[slot];
-      if (p < 0 || c.mode[slot] === AnimalMode.FLEE) return;
+    /**
+     * A group that notices a person leaves the nearest such person (ties: the lower slot), unless it
+     * is running already, standing its ground, or a hungry predator. Called only for groups in a
+     * marked square (the tick's loop looks the square up).
+     */
+    function keepAway(slot: number, night: boolean, season: number): void {
+      if (c.mode[slot] === AnimalMode.FLEE) return;
       const kind = c.kind[slot];
       if (kind === AnimalKind.AUROCHS && c.cooldown[slot] > 0) return;
       if ((kind === AnimalKind.WOLF || kind === AnimalKind.CAT) && c.condition[slot] < A.hungryBelow) return;
-      leave(slot, personX[p], personY[p], E.leaveM[kind], E.leaveRuns[kind] ? AnimalMode.FLEE : AnimalMode.MOVE);
+      const gx = c.x[slot];
+      const gy = c.y[slot];
+      const reach = (night ? E.shyNightM : E.shyDayM)[kind];
+      const n = personGrid.query(gx, gy, reach, personX, personY);
+      const r = personGrid.result;
+      let best = -1;
+      let bestD = Infinity;
+      for (let q = 0; q < n; q++) {
+        const p = r[q];
+        const dx = gx - personX[p];
+        const dy = gy - personY[p];
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > reach || d > bestD || (d === bestD && p > best)) continue;
+        if (d > reach * noticeOf(p, season)) continue;
+        best = p;
+        bestD = d;
+      }
+      if (best < 0) return;
+      leave(slot, personX[best], personY[best], E.leaveM[kind], E.leaveRuns[kind] ? AnimalMode.FLEE : AnimalMode.MOVE);
     }
 
     /** Write a wound an animal of `kind` deals to person p, drawing whether it breaks a bone. */
@@ -1739,7 +1760,7 @@ export const animals: SystemDef = defineSystem({
       buildGrids();
       const night = isNight(tick);
       bites.clear();
-      if (indexPersons() > 0) noticePersons(night, season);
+      indexPersons();
       const hour = Math.floor(tick / ticksPerHour);
       const end = store.highWater;
       for (let slot = 0; slot < end; slot++) {
@@ -1760,7 +1781,12 @@ export const animals: SystemDef = defineSystem({
           const p = fireTooClose(kind, c.x[slot], c.y[slot]);
           if (p >= 0) leaveFire(slot, p);
         }
-        if (personsN > 0) keepAway(slot);
+        if (personsN > 0) {
+          // Groups with no person in their 200 m square or the next cost one lookup (positions are never negative).
+          const mi = (c.x[slot] / MARK_M) | 0;
+          const mj = (c.y[slot] / MARK_M) | 0;
+          if (marks[(mj < markH ? mj : markH - 1) * markW + (mi < markW ? mi : markW - 1)] !== 0) keepAway(slot, night, season);
+        }
         if (kind === AnimalKind.WOLF && c.mode[slot] === AnimalMode.HUNT) chase(slot);
         else if (kind === AnimalKind.CAT && c.mode[slot] === AnimalMode.AMBUSH) ambush(slot, night, season);
         if (store.isAlive(slot)) move(slot);
