@@ -220,7 +220,7 @@ export const fitness: SystemDef = defineSystem({
           let nourished = (fatKg / (leanKg + fatKg) - INJURY.nourishedFrom) / (INJURY.nourishedAt - INJURY.nourishedFrom);
           nourished = nourished < 0 ? 0 : nourished > 1 ? 1 : nourished;
           change = (target - m) * gainShare * nourished;
-          const spare = fatKg - INJURY.rebuildKeepsFatKg;
+          const spare = fatKg - INJURY.rebuildKeepsFatShare * (leanKg + fatKg);
           const most = spare > 0 ? (spare * fatDensity) / (leanDensity * (1 + buildCost)) : 0;
           if (change > most) change = most;
           if (change > 0) {

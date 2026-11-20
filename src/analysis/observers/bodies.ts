@@ -3,19 +3,25 @@
 // far, their mean core temperature and water deficit, the water they have taken
 // in and lost so far, how many are wounded, burned, broken, infected or ill
 // now (§3.10), their mean capacity for work and trained muscle (§3.11), their
-// mean age (§3.12), injuries so far by kind, deaths so far by cause, and the
-// modal age of the deaths after 15 so far.
+// mean age (§3.12), injuries so far by kind, deaths so far by cause, the
+// modal age of the deaths after 15 so far, and (§3.13) the shares of women of
+// 15–49 pregnant and making milk now, and conceptions, births, stillbirths and
+// lost pregnancies so far.
 
 import type { Measurements, Observer } from '../observer.ts';
 import {
   BODY_COLUMNS,
   BODY_PARTS,
+  BirthEvent,
   DeathCause,
   FITNESS_COLUMNS,
   HEAT_COLUMNS,
   INJURY_COLUMNS,
   INJURY_PARTS,
   InjuryKind,
+  REPRODUCTION,
+  REPRODUCTION_COLUMNS,
+  REPRODUCTION_PARTS,
   Sex,
   capacity,
   capacityAtAge,
@@ -54,6 +60,12 @@ export const bodies: Observer = {
     const fitness = fit ? agents.column(FITNESS_COLUMNS.fitness.name) : null;
     const fatigue = fit ? agents.column(FITNESS_COLUMNS.fatigue.name) : null;
     const trained = fit ? agents.column(FITNESS_COLUMNS.trainedKg.name) : null;
+    const bearing = agents.hasColumn(REPRODUCTION_COLUMNS.pregnant.name);
+    const pregnant = bearing ? agents.column(REPRODUCTION_COLUMNS.pregnant.name) : null;
+    const milkRate = bearing ? agents.column(REPRODUCTION_COLUMNS.milkRate.name) : null;
+    let women = 0;
+    let carrying = 0;
+    let nursing = 0;
     let able = 0;
     let muscle = 0;
     let wounded = 0;
@@ -84,6 +96,11 @@ export const bodies: Observer = {
       fatShare += fat / m;
       eaten += energyIn[slot];
       spent += energyOut[slot];
+      if (pregnant && milkRate && sex[slot] === Sex.FEMALE && age >= 15 && age < 50) {
+        women++;
+        if (pregnant[slot] === 1) carrying++;
+        if (milkRate[slot] >= REPRODUCTION.milkEndsBelowPerDay) nursing++;
+      }
       if (wound && burns && leg && arm && wInf && gInf && mobility) {
         if (wound[slot] > 0) wounded++;
         if (burns[slot] > 0) burned++;
@@ -156,6 +173,17 @@ export const bodies: Observer = {
       }
       out['deaths.under15'] = young;
       if (mode >= 0) out['deaths.modalAdultAge'] = mode;
+    }
+    if (women > 0) {
+      out.pregnantShare = carrying / women;
+      out.lactatingShare = nursing / women;
+    }
+    const births = view.readings(REPRODUCTION_PARTS.births);
+    if (births) {
+      out['births.conceptions'] = births[BirthEvent.CONCEPTION];
+      out['births.live'] = births[BirthEvent.BIRTH];
+      out['births.stillborn'] = births[BirthEvent.STILLBIRTH];
+      out['births.lost'] = births[BirthEvent.LOST];
     }
     const injuries = view.readings(INJURY_PARTS.injuries);
     if (injuries) {

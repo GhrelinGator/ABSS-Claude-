@@ -1,7 +1,7 @@
-// The course of a life, as pure functions of age (docs/DESIGN.md §3.5, §3.12):
-// the frame curve a body grows along and shrinks along, what age takes from
-// capacity, strength and skill after their peak, and the age at which a body
-// dies of old age. Ages are compressed years (§1.1). Nothing here holds state.
+// The course of a life, as pure functions of age (docs/DESIGN.md §3.5, §3.12,
+// §3.13): the frame curve a body grows along and shrinks along, what age takes
+// from capacity, strength and skill after their peak, the age at which a body
+// dies of old age, fertility by age, and what a young body cannot yet do. Ages are compressed years (§1.1). Nothing here holds state.
 
 import { exp, log } from '../core/dmath.ts';
 
@@ -38,6 +38,18 @@ export const LIFECOURSE = {
    */
   oldAgeA: 1.47e-4,
   oldAgeB: 0.086,
+  /**
+   * A female's chance of conceiving, as a share of its peak, by age (§3.13): menarche at about 15–16 in
+   * foragers and a few years of anovulatory cycles, then the shape of Coale & Trussell's natural-fertility
+   * schedule after 30, and menopause at about 50 [estimate].
+   */
+  fecundityFemale: [[15, 0], [19, 1], [30, 1], [35, 0.86], [40, 0.65], [44, 0.3], [48, 0.05], [50, 0]] as ReadonlyArray<readonly [number, number]>,
+  /** A male's share of his peak, by age: from about 13–16, falling slowly after 45 [estimate]. */
+  fecundityMale: [[13, 0], [16, 1], [45, 1], [70, 0.6], [90, 0.3]] as ReadonlyArray<readonly [number, number]>,
+  /** Share of solid food's energy a young body digests (milk is always digested): from about six months, all by two [estimate]. */
+  solidsByAge: [[0.3, 0], [1, 0.5], [2, 1]] as ReadonlyArray<readonly [number, number]>,
+  /** Share of an adult's walking a young body can do: first steps at about a year, near an adult's pace by ten [estimate]. */
+  walkingByAge: [[0.75, 0], [1.25, 0.2], [3, 0.5], [6, 0.8], [10, 1]] as ReadonlyArray<readonly [number, number]>,
 } as const;
 const K = LIFECOURSE;
 
@@ -87,4 +99,19 @@ export function oldAgeHazard(ageYears: number): number {
 export function oldAgeDeathAge(ageYears: number, reserve: number): number {
   const b = K.oldAgeB;
   return log(exp(b * ageYears) + (b * reserve) / K.oldAgeA) / b;
+}
+
+/** A body's chance of conceiving or siring, as a share of its peak, at this age (sex 1 female, 2 male). */
+export function fecundityAtAge(sex: number, ageYears: number): number {
+  return interpolate(sex === 1 ? K.fecundityFemale : K.fecundityMale, ageYears);
+}
+
+/** The share of solid food's energy a body of this age digests (§3.13). */
+export function solidsAtAge(ageYears: number): number {
+  return interpolate(K.solidsByAge, ageYears);
+}
+
+/** The share of an adult's walking a body of this age can do (§3.13). */
+export function walkingAtAge(ageYears: number): number {
+  return interpolate(K.walkingByAge, ageYears);
 }

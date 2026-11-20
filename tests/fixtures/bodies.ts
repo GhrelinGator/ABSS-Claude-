@@ -11,6 +11,8 @@ import type { Sim } from '../../src/sim/sim.ts';
 import { HEAT_COLUMNS, drink, fullWaterKg } from '../../src/sim/body/heat.ts';
 import { INJURY_COLUMNS, exposeGut, injure, waterDose } from '../../src/sim/body/injury.ts';
 import { SKILL_COLUMNS, SKILL_KINDS, practice } from '../../src/sim/body/skills.ts';
+import { solidsAtAge } from '../../src/sim/body/lifecourse.ts';
+import { ticksPerYear } from '../../src/sim/core/clock.ts';
 
 const f64 = (sim: Sim, name: string) => sim.state.agents.column<Float64Array>(name).data;
 
@@ -30,6 +32,22 @@ export function spawnWithBody(sim: Sim, x: number, y: number, spec: BodySpec = H
   const slot = spawnAgent(sim, x, y);
   formBody(sim, slot, spec);
   return slot;
+}
+
+/**
+ * Feed a body `kcal`, as solid food through `ingest` once it digests all of it (§3.13), and before then
+ * as if a lactating body had nursed it: milk's energy straight into the gut, a stand-in for `nurse`
+ * when a test has no mother. Tests only.
+ */
+export function feedAsMilk(sim: Sim, slot: number, kcal: number): void {
+  const age = (sim.state.tick - f64(sim, BODY_COLUMNS.born.name)[slot]) / ticksPerYear(sim.config);
+  if (solidsAtAge(age) >= 1) {
+    ingest(sim, slot, kcal);
+    return;
+  }
+  f64(sim, BODY_COLUMNS.gut.name)[slot] += kcal;
+  f64(sim, BODY_COLUMNS.energy.name)[slot] += kcal;
+  f64(sim, BODY_COLUMNS.energyIn.name)[slot] += kcal;
 }
 
 /** Spawn `n` adults of alternating sex in a line from (x0, y0). */

@@ -98,6 +98,19 @@ The 2.8 calibration pass should check these first; every number in `DESIGN.md` �
 - **Practice curves** (Newell & Rosenbloom 1981, from memory): time per trial falls as a power of the number of trials, exponents roughly 0.2–0.6. Skill retention (Arthur et al. 1998, from memory): substantial loss after a year or more of disuse, less for physical, continuous tasks.
 - **Muscle** (from memory, not checked): bed rest costs young adults about 1 kg of lean mass in two weeks; resistance training adds about 1–2 kg in 12 weeks in untrained adults; resting skeletal muscle uses about 13 kcal per kg a day and adipose tissue about 4.5 (Elia 1992); strength follows cross-sectional area. Aerobic capacity of sedentary adults is roughly a fifth below that of active ones; training raises it by about 15–20% over weeks to months.
 
+### Reproduction (Phase 2.6, 2026-11-19; mostly from memory, sources named but not re-read)
+
+Searches in session 26 found the sources below but returned no text, so every number is as remembered. Check them in 2.8.
+- **Energy cost of pregnancy and lactation:** FAO/WHO/UNU (2004), *Human energy requirements* (FAO Food and Nutrition Technical Report Series 1, fao.org/3/y5686e); Butte & King (2005), "Energy requirements during pregnancy and lactation," *Public Health Nutrition* 8(7A):1010–1027 (pubmed 16277817). Remembered: extra needs of about 85, 285 and 475 kcal a day by trimester for a gain of about 12 kg, totalling about 77,000 kcal; basal rate rising by about 5%, 11% and 24% by trimester in well-nourished women; milk of 0.67 kcal per g made at an energetic efficiency of 0.80; exclusive breastfeeding output about 0.75–0.8 kg a day.
+- **Postpartum fertility and energy balance:** Valeggia & Ellison (2009), "Interactions between metabolic and reproductive functions in the resumption of postpartum fecundity," *American Journal of Human Biology* 21(4):559–566 (PMC3305908). Remembered: Toba women nursing on demand resumed ovarian function when their energy balance (C-peptide) turned positive, about 10 months after birth, regardless of suckling intensity. Ellison's "metabolic load" view (Ellison 2001, *On Fertile Ground*): ovarian function graded by energy balance and expenditure; recreational runners losing about 1 kg a month showed weaker luteal function.
+- **Waiting time to conception:** Bongaarts & Potter (1983), *Fertility, Biology, and Behavior*: fecundability about 0.15–0.2 in natural-fertility populations, a mean wait of about seven months. Wilcox et al. (1995, *NEJM*): about 0.25 a cycle in young couples timing intercourse.
+- **Age pattern:** Coale & Trussell's natural-fertility schedule (1974) for the decline after 30; menarche about 15–17 in foragers (Hadza, !Kung); menopause about 50.
+- **Pregnancy loss by age:** Nybo Andersen et al. (2000), *BMJ* 320:1708: recognized pregnancies lost about 9% at 20–24, 11% at 25–29, 15% at 30–34, 25% at 35–39, 51% at 40–44, 75% from 45.
+- **Bleeding at birth:** measured blood loss after vaginal birth: about one in five over 500 mL, about 1–3% over 1,000 mL (several studies in the PMC search results, e.g. PMC7437852, not read).
+- **Milk storage:** Daly, Owens & Hartmann (1993, 1996): breast storage capacity 0.1–0.6 L; production regulated by removal (the feedback inhibitor of lactation).
+- **Interbirth intervals** (§9): about 3.4 years (Hadza), 4 (!Kung), 3.2 (Ache), as remembered.
+- **Not yet sourced at all:** fetal fat by week, the share of a pregnancy's added mass, the onset of milk after a birth, the age at which infants digest solid food and walk, newborn sweat and urine.
+
 ## Plants and foraging (✓ checked 2026-11-15 by web search)
 
 - ✓ Einkorn yields: about 1–2 t/ha (2000m2.eu crop profile); about 832 lb/acre (≈ 930 kg/ha) in low-input Wyoming trials (University of Wyoming Extension, via sciencesocieties.org). Wild stands are put below these (§2.12).

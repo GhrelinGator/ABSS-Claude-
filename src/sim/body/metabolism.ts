@@ -9,6 +9,7 @@
 import { ticksPerYear } from '../core/clock.ts';
 import { defineSystem } from '../core/registry.ts';
 import { CARCASS_LAYER, CARCASS_LOAD_LAYER, dilutedLoad } from '../world/animals.ts';
+import { solidsAtAge } from './lifecourse.ts';
 import type { SystemDef } from '../core/registry.ts';
 import type { ColumnSpec } from '../core/store.ts';
 import type { Sink, Source } from '../core/codec.ts';
@@ -165,6 +166,32 @@ const C = BODY_COLUMNS;
 const HEAL_COLUMN = 'healW';
 /** body.fitness's trained muscle (§3.11), named here so metabolism need not import fitness. */
 const TRAINED_COLUMN = 'trainedKg';
+/** body.reproduction's heat of pregnancy and of making milk, and the mass a pregnancy adds (§3.13). */
+const REPRO_HEAT_COLUMN = 'reproW';
+const GRAVID_COLUMN = 'gravidKg';
+
+/**
+ * Forbes's constant for a body (§3.8, §3.12): 10.4 kg for a grown body, scaled by its frame (built lean
+ * mass less trained muscle) ÷ its adult frame while the frame is short of it. `adultFrameKg` 0 is unknown.
+ */
+export function forbesKgOf(leanBuiltKg: number, trainedKg: number, adultFrameKg: number): number {
+  let scale = 1;
+  if (adultFrameKg > 0) {
+    const frame = leanBuiltKg - trainedKg;
+    if (frame < adultFrameKg) scale = frame / adultFrameKg;
+  }
+  return M.forbesKg * scale;
+}
+
+/**
+ * The change in lean mass, kg, when `netKcal` enters a body's tissues (negative: leaves them), split
+ * between fat and lean by Forbes's rule at the body's present fat (§3.8).
+ */
+export function leanShiftKg(netKcal: number, fatKg: number, forbesKg: number): number {
+  const leanPerFat = forbesKg / fatKg;
+  const fatChange = netKcal / (M.fatKcalPerKg + M.leanKcalPerKg * leanPerFat);
+  return leanPerFat * fatChange;
+}
 
 export const BODY_PARTS = { deaths: 'body.deaths', deathAges: 'body.deathAges' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
@@ -286,17 +313,25 @@ export function formBody(sim: Sim, slot: number, spec: BodySpec): void {
   agents.column<Float64Array>(C.adultFrameKg.name).data[slot] = adultFrame;
 }
 
-/** Put food into an agent's gut: `kcal` of metabolizable energy, which the world has already given up. */
-export function ingest(sim: Sim, slot: number, kcal: number): void {
+/**
+ * Put solid food into an agent's gut: `kcal` of metabolizable energy, which the world has already given
+ * up. A young body digests only a share of it (§3.13: none before about 0.3 years, all from 2); the rest
+ * passes through and is never counted. Returns the kcal the body took in. Milk goes in through `nurse`.
+ */
+export function ingest(sim: Sim, slot: number, kcal: number): number {
   const agents = sim.state.agents;
   if (!agents.isAlive(slot)) throw new Error(`ingest: slot ${slot} holds no agent.`);
   if (agents.column<Uint8Array>(C.sex.name).data[slot] === Sex.NONE) {
     throw new Error(`ingest: agent id ${agents.id.data[slot]} has no body.`);
   }
   if (!(kcal >= 0 && Number.isFinite(kcal))) throw new RangeError(`ingest: ${kcal} kcal.`);
-  agents.column<Float64Array>(C.gut.name).data[slot] += kcal;
-  agents.column<Float64Array>(C.energy.name).data[slot] += kcal;
-  agents.column<Float64Array>(C.energyIn.name).data[slot] += kcal;
+  const age = (sim.state.tick - agents.column<Float64Array>(C.born.name).data[slot]) / ticksPerYear(sim.config);
+  const digested = solidsAtAge(age);
+  const taken = digested >= 1 ? kcal : kcal * digested;
+  agents.column<Float64Array>(C.gut.name).data[slot] += taken;
+  agents.column<Float64Array>(C.energy.name).data[slot] += taken;
+  agents.column<Float64Array>(C.energyIn.name).data[slot] += taken;
+  return taken;
 }
 
 /**
@@ -333,15 +368,14 @@ export const metabolism: SystemDef = defineSystem({
     const secondsPerTick = 86_400 / config.time.ticksPerDay;
     const perYear = ticksPerYear(config);
     const absorbPerTick = (M.absorbKcalPerMinute * secondsPerTick) / 60;
-    const fatDensity = M.fatKcalPerKg;
-    const leanDensity = M.leanKcalPerKg;
-    const forbes = M.forbesKg;
     const ratios = M.effortRatio;
     const dies = deathDoor(sim, 'body.metabolism');
     // The heat of healing and fighting infection, when the pipeline holds body.injury (§3.10).
     const healing = agents.hasColumn(HEAL_COLUMN);
     // Trained muscle, when the pipeline holds body.fitness (§3.11): the frame is built lean mass less it.
     const training = agents.hasColumn(TRAINED_COLUMN);
+    // Pregnancy and milk, when the pipeline holds body.reproduction (§3.13).
+    const bearing = agents.hasColumn(REPRO_HEAT_COLUMN);
 
     return () => {
       const tick = state.tick;
@@ -365,6 +399,8 @@ export const metabolism: SystemDef = defineSystem({
       const heal = healing ? agents.column<Float64Array>(HEAL_COLUMN).data : null;
       const trained = training ? agents.column<Float64Array>(TRAINED_COLUMN).data : null;
       const adultFrame = agents.column<Float64Array>(C.adultFrameKg.name).data;
+      const reproW = bearing ? agents.column<Float64Array>(REPRO_HEAT_COLUMN).data : null;
+      const gravid = bearing ? agents.column<Float64Array>(GRAVID_COLUMN).data : null;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -397,12 +433,14 @@ export const metabolism: SystemDef = defineSystem({
           throw new RangeError(`body.metabolism: agent id ${ids[slot]} moved ${metres} m in no time.`);
         }
         const basalPerSecond = basalKcalPerDay(s, (tick - born[slot]) / perYear, mass) / 86_400;
+        // A pregnancy is carried like the body's own mass (§3.13).
+        const bulk = gravid ? mass + gravid[slot] : mass;
         let active =
           basalPerSecond * (ratio * (secondsPerTick - movingSeconds) + M.movingRatio * movingSeconds) +
-          motionKcal(mass, carried, metres, movingSeconds, climbed[slot]);
+          motionKcal(bulk, carried, metres, movingSeconds, climbed[slot]);
         if (carried > 0) {
-          const share = carried / mass;
-          active += (M.loadWattsPerKg * (mass + carried) * share * share * secondsPerTick) / JOULES_PER_KCAL;
+          const share = carried / bulk;
+          active += (M.loadWattsPerKg * (bulk + carried) * share * share * secondsPerTick) / JOULES_PER_KCAL;
         }
         exertion[slot] = active / (basalPerSecond * secondsPerTick);
         let spent = active + M.thermicShare * absorbed;
@@ -411,6 +449,12 @@ export const metabolism: SystemDef = defineSystem({
           if (!(healingW >= 0)) throw new RangeError(`body.metabolism: agent id ${ids[slot]} reports healing heat ${healingW}.`);
           spent += (healingW * secondsPerTick) / JOULES_PER_KCAL;
           heal[slot] = 0;
+        }
+        if (reproW) {
+          const bearingW = reproW[slot];
+          if (!(bearingW >= 0)) throw new RangeError(`body.metabolism: agent id ${ids[slot]} reports the heat of pregnancy or milk ${bearingW}.`);
+          spent += (bearingW * secondsPerTick) / JOULES_PER_KCAL;
+          reproW[slot] = 0;
         }
         heat[slot] = (spent * JOULES_PER_KCAL) / secondsPerTick;
         // Shivering: the heat body.heat asked for (DESIGN.md §3.9).
@@ -421,15 +465,7 @@ export const metabolism: SystemDef = defineSystem({
         // 3. Tissues: Forbes's rule splits the net change between fat and lean. Its constant is for
         // a grown body; a body short of its adult frame (growing, or shrunk with age) scales it (§3.12).
         const net = absorbed - spent;
-        let scale = 1;
-        const adult = adultFrame[slot];
-        if (adult > 0) {
-          const frame = leanBuilt[slot] - (trained ? trained[slot] : 0);
-          if (frame < adult) scale = frame / adult;
-        }
-        const leanPerFat = (forbes * scale) / fatKg;
-        const fatChange = net / (fatDensity + leanDensity * leanPerFat);
-        const newLean = leanKg + leanPerFat * fatChange;
+        const newLean = leanKg + leanShiftKg(net, fatKg, forbesKgOf(leanBuilt[slot], trained ? trained[slot] : 0, adultFrame[slot]));
         lean[slot] = newLean;
 
         effort[slot] = Effort.STILL;

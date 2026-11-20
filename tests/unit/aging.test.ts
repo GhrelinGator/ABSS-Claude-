@@ -32,7 +32,6 @@ import {
   basalKcalPerDay,
   fatKgOf,
   formBody,
-  ingest,
   metabolism,
 } from '../../src/sim/body/metabolism.ts';
 import type { BodySpec } from '../../src/sim/body/metabolism.ts';
@@ -40,7 +39,7 @@ import { SkillAct, plantKind, practice, practiceHours, skillLevel, skillOf } fro
 import { createSim, hashSim, loadSim, saveSim, spawnAgent, stepSim } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
 import { CARCASS_LAYER, CARCASS_LOAD_LAYER } from '../../src/sim/world/animals.ts';
-import { HADZA_MAN, HADZA_WOMAN, fxKeeper, spawnWithBody } from '../fixtures/bodies.ts';
+import { HADZA_MAN, HADZA_WOMAN, feedAsMilk, fxKeeper, spawnWithBody } from '../fixtures/bodies.ts';
 import { fxSurroundings, still } from '../fixtures/surroundings.ts';
 
 const TPD = 144;
@@ -79,7 +78,8 @@ function feeder(fatShare: number | null, extraPerDay = 0): SystemDef {
           const short = fatShare * massOf(sim, slot) - fatOf(sim, slot);
           if (short > 0) meal += 0.5 * short * METABOLISM.fatKcalPerKg;
         }
-        if (meal > 0) ingest(sim, slot, meal);
+        // Young bodies digest solid food only in part (§3.13): before 2 they are fed as if nursed.
+        if (meal > 0) feedAsMilk(sim, slot, meal);
         mark[slot] = out[slot];
       }
     },
