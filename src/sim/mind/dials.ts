@@ -39,6 +39,14 @@ export const RISK_TOLERANCE: DialDef = defineDial({ name: 'riskTolerance', min: 
 // and leaves the mind of 3.4, and mutation moves it up and down alike.
 export const HIDDEN_CAUSE_BIAS: DialDef = defineDial({ name: 'hiddenCauseBias', min: -4, max: 4, neutral: 0 });
 
+// ALIBI: plants defend themselves with poisons that act hours after they are eaten (§2.7), and water and
+// carcasses carry microbes that sicken the gut (§2.14), in a world where no one else exists; a mind that
+// links its gut's illness to what it last swallowed, over the hours a gut takes, eats less of what
+// poisons it. Half-life, hours, of a second eligibility kernel that reaches back only to acts of eating
+// and drinking, and only with the part of pain the gut adds (§4.13). At 0, or at any value no longer than
+// `traceHalfLife`, it adds nothing.
+export const GUT_TRACE_HALF_LIFE: DialDef = defineDial({ name: 'gutTraceHalfLife', min: 0, max: 24, neutral: 0 });
+
 /** The values a mind uses when its body carries no genome (a pipeline without body.genetics): the toy's (§4.10.6). */
 export const MIND_DIAL_DEFAULTS = {
   learningRate: 1,
@@ -48,4 +56,6 @@ export const MIND_DIAL_DEFAULTS = {
   riskTolerance: 0,
   /** Neutral: a mind without a genome sets nothing aside (§4.11.6). */
   hiddenCauseBias: 0,
+  /** Neutral: a mind without a genome has no second kernel, and is 3.5's (§4.13.3). */
+  gutTraceHalfLife: 0,
 } as const;

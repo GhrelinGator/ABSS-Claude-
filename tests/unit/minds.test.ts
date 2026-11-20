@@ -559,12 +559,14 @@ test('minds in the real pipeline: deterministic, the same after save and load, e
   stepSim(a, 144 * 4);
   assert.deepEqual(auditConserved(a.state.agents), []);
   const tally = a.state.parts.find((p) => p.name === MIND_PARTS.acts)!.readings!() as Float64Array;
-  // The decision rate of 30 agents over five days spreads from about 0.2 to 0.32 between seeds (3.6,
-  // on main and with skills alike), so it is pooled over four seeds; bench/acts.ts at 500 agents is
-  // the measure of record (§4.9.7).
+  // The decision rate of 30 agents over five days spreads from about 0.2 to 0.34 between seeds (3.6,
+  // on main and with skills alike), so it is pooled over seeds; bench/acts.ts at 500 agents is the
+  // measure of record (§4.9.7). 3.6b: four seeds pooled sat at 0.304 (0.293 with the second kernel off
+  // on the same genomes; main's eight 0.271), while bench/acts.ts gave 0.252 against main's 0.259, so
+  // the pool is now eight seeds (D-058).
   let decisions = tally[ActTally.DECISIONS];
   let awake = tally[ActTally.AWAKE_TICKS];
-  for (const seed of [14, 15, 16]) {
+  for (const seed of [14, 15, 16, 17, 18, 19, 20]) {
     const other = createSim(config(seed, 64, { count: 30, radiusM: 2000 }), SIM_PIPELINE);
     stepSim(other, 300 + 144 * 4);
     const t = other.state.parts.find((p) => p.name === MIND_PARTS.acts)!.readings!() as Float64Array;

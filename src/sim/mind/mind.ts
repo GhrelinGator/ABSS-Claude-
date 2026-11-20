@@ -91,7 +91,7 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
       function decide(slot: number): void {
         perception.perceive(slot, look);
         // The act that just ended is learned from before the next is chosen (§4.10.2).
-        if (predictor.learn) predictor.learn(slot, look, drives, 0);
+        if (predictor.learn) predictor.learn(slot, look, drives, 0, intero.gutPain(slot));
         const heldN = heldCuesOf(slot);
         gatherCandidates(look, heldIds, heldCues, heldN, order, cands);
         if (predictor.recall) predictor.recall(slot, look, cands, drives, 0);

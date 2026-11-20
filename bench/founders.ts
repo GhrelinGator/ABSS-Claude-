@@ -1,7 +1,7 @@
 // Phase 3.4: what founders do and die of, with memory and with the blank predictor (the random-policy
 // baseline), on the full map (docs/DESIGN.md §4.9.8, §4.10).
 //
-//   node bench/founders.ts [founders=100] [days=40] [seed=7] [radiusM=3000] [--blank] [--bias=x]
+//   node bench/founders.ts [founders=100] [days=40] [seed=7] [radiusM=3000] [--blank] [--bias=x] [--gut=h]
 //
 // The real pipeline; `--blank` swaps the mind for one that never learns. It reports, every 5 days, how
 // many are alive, and at the end the deaths by cause, the acts begun, done and failed, what was eaten
@@ -10,6 +10,8 @@
 // values), and the run then also reports hidden-cause nodes (§4.11). This is a description of what the code does, not an
 // emergence check: nothing here has a null model or a preregistered threshold. Since 3.6 it also reports,
 // every 10 days, the skills of the living, and at the end the pieces, embers and fires their acts made.
+// Since 3.6b `--gut=h` sets every founder's gutTraceHalfLife to h hours after tick 0 (`--gut=0` is the
+// ablation of §4.13), and the run reports the poisonous plants' share of what was eaten by tenths of the run.
 
 import { defaultConfig, validateConfig } from '../src/sim/config.ts';
 import { createSim, stepSim } from '../src/sim/sim.ts';
@@ -28,6 +30,8 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const blank = process.argv.includes('--blank');
 const biasArg = process.argv.find((a) => a.startsWith('--bias='));
 const bias = biasArg === undefined ? null : Number(biasArg.slice(7));
+const gutArg = process.argv.find((a) => a.startsWith('--gut='));
+const gutH = gutArg === undefined ? null : Number(gutArg.slice(6));
 const N = Number(args[0] ?? 100);
 const DAYS = Number(args[1] ?? 40);
 const seed = Number(args[2] ?? 7);
@@ -49,6 +53,25 @@ stepSim(sim, 1); // tick 0: founders placed, first choices made (nothing learned
 if (bias !== null) {
   const col = sim.state.agents.column<Float64Array>(GENETICS_COLUMNS.hiddenCauseBias.name).data;
   for (let s = 0; s < sim.state.agents.highWater; s++) col[s] = bias;
+}
+if (gutH !== null) {
+  const col = sim.state.agents.column<Float64Array>(GENETICS_COLUMNS.gutTraceHalfLife.name).data;
+  for (let s = 0; s < sim.state.agents.highWater; s++) col[s] = gutH;
+}
+// 3.6b: the poisonous plants' share of plant kg eaten, by stretch of the run (§4.13).
+const poisonous = PLANT_SPECIES.map((sp) => sp.toxin !== null);
+const shares: string[] = [];
+let lastKg = PLANT_SPECIES.map((_, i) => tally[ActTally.PLANT_KG + i]);
+function poisonShare(): string {
+  let all = 0;
+  let bad = 0;
+  PLANT_SPECIES.forEach((_, i) => {
+    const kg = tally[ActTally.PLANT_KG + i] - lastKg[i];
+    all += kg;
+    if (poisonous[i]) bad += kg;
+  });
+  lastKg = PLANT_SPECIES.map((_, i) => tally[ActTally.PLANT_KG + i]);
+  return all > 0 ? `${((100 * bad) / all).toFixed(1)}% of ${all.toFixed(0)} kg` : '—';
 }
 const painSum = { sum: 0, n: 0 };
 // 3.6: skills of the living (§4.12): the mean of each one's best eating skill, the share above 0.3, and
@@ -95,6 +118,7 @@ for (let d = 1; d <= DAYS; d++) {
   }
   if (d % 5 === 0) alive.push(`${d}:${sim.state.agents.count}`);
   if (d % 10 === 0) skills.push(`${d}: ${skillsNow()}`);
+  if (d % Math.max(1, Math.round(DAYS / 10)) === 0) shares.push(`${d}: ${poisonShare()}`);
 }
 const ms = performance.now() - t0;
 const causes = Object.entries(DeathCause)
@@ -113,6 +137,7 @@ console.log(`failed: ${row(ActTally.FAILED)}`);
 console.log(`eaten, kg: ${eaten}; meat ${tally[ActTally.MEAT_KG].toFixed(1)}; water drunk ${tally[ActTally.WATER_KG].toFixed(0)} kg; ${(tally[ActTally.KCAL] / 1000).toFixed(0)} thousand kcal`);
 console.log(`decisions per awake agent-tick ${(tally[ActTally.DECISIONS] / tally[ActTally.AWAKE_TICKS]).toFixed(3)}; poison units ${tally[ActTally.POISON_UNITS].toFixed(1)}`);
 console.log(`mean pain of the living, hourly: ${(painSum.sum / Math.max(1, painSum.n)).toFixed(4)}`);
+console.log(`poisonous plants' share of plant kg eaten, by stretch${gutH === null ? ' (genome gutTraceHalfLife)' : ` (gutTraceHalfLife ${gutH} h)`}: ${shares.join('; ')}`);
 console.log(`skills of the living (best pair, mean): ${skills.join('; ')}`);
 console.log(`pieces struck off ${tally[ActTally.PIECES]}, embers ${tally[ActTally.EMBERS]}, fires lit ${tally[ActTally.FIRES_LIT]}, blows on animals ${tally[ActTally.BLOWS_ON_ANIMALS]}, animals killed ${tally[ActTally.ANIMALS_KILLED]}`);
 if (!blank) {
