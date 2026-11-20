@@ -37,6 +37,8 @@ export const StreamDomain = {
   AGING: 11,
   /** Conception, the fetus's sex, lost pregnancies, bleeding at birth (Phase 2.6): its own stream, so no draw above changed. */
   REPRODUCTION: 12,
+  /** Founders' genomes, gametes, mutations, developmental noise (Phase 2.7): its own stream, so no draw above changed. */
+  GENETICS: 13,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];

@@ -23,6 +23,7 @@ export { SKILLS, SKILL_COLUMNS, SKILL_PAIRS, skillOf } from './body/skills.ts';
 export { LIFECOURSE, capacityAtAge, fecundityAtAge, frameShare, oldAgeHazard, skillAtAge, solidsAtAge, strengthAtAge, walkingAtAge } from './body/lifecourse.ts';
 export { BirthEvent, REPRODUCTION, REPRODUCTION_COLUMNS, REPRODUCTION_PARTS } from './body/reproduction.ts';
 export { AGING_COLUMNS } from './body/aging.ts';
+export { DialIndex, GENEALOGY_FIELDS, GENETICS, GENETICS_COLUMNS, GENETICS_PARTS, GENE_DIALS, bitCount } from './body/genetics.ts';
 export {
   Bedrock,
   MATERIALS,

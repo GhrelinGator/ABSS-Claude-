@@ -3,7 +3,8 @@
 // far, their mean core temperature and water deficit, the water they have taken
 // in and lost so far, how many are wounded, burned, broken, infected or ill
 // now (§3.10), their mean capacity for work and trained muscle (§3.11), their
-// mean age (§3.12), injuries so far by kind, deaths so far by cause, the
+// mean age (§3.12), injuries so far by kind, deaths so far by cause (a
+// recessive disorder among them, §3.14), the
 // modal age of the deaths after 15 so far, and (§3.13) the shares of women of
 // 15–49 pregnant and making milk now, and conceptions, births, stillbirths and
 // lost pregnancies so far.
@@ -161,6 +162,7 @@ export const bodies: Observer = {
         out['deaths.lightning'] = deaths[DeathCause.LIGHTNING];
       }
       if (deaths.length > DeathCause.OLD_AGE) out['deaths.oldAge'] = deaths[DeathCause.OLD_AGE];
+      if (deaths.length > DeathCause.CONGENITAL) out['deaths.congenital'] = deaths[DeathCause.CONGENITAL];
     }
     // Ages at death, in whole years (§3.12): deaths before 15, and the modal age of those after.
     const byAge = view.readings(BODY_PARTS.deathAges);

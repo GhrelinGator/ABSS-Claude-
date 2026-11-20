@@ -27,7 +27,8 @@ export const Effort = { STILL: 0, SLEEP: 1, LIGHT: 2, MODERATE: 3, HEAVY: 4 } as
 /**
  * Causes of death counted in `body.deaths` (index = cause). Starvation is metabolism's;
  * dehydration, hyperthermia and hypothermia body.heat's (§3.9); shock (blood or plasma lost),
- * infection and lightning body.injury's (§3.10); old age body.aging's (§3.12).
+ * infection and lightning body.injury's (§3.10); old age body.aging's (§3.12); a recessive
+ * disorder body.genetics's (§3.14).
  */
 export const DeathCause = {
   STARVATION: 1,
@@ -38,6 +39,8 @@ export const DeathCause = {
   INFECTION: 6,
   LIGHTNING: 7,
   OLD_AGE: 8,
+  /** Two broken copies of a gene the body cannot live without (§3.14): body.genetics's. */
+  CONGENITAL: 9,
 } as const;
 
 export const METABOLISM = {
@@ -169,6 +172,8 @@ const TRAINED_COLUMN = 'trainedKg';
 /** body.reproduction's heat of pregnancy and of making milk, and the mass a pregnancy adds (§3.13). */
 const REPRO_HEAT_COLUMN = 'reproW';
 const GRAVID_COLUMN = 'gravidKg';
+/** body.genetics's expressed basal scale (§3.14), named here so metabolism need not import genetics. */
+const BASAL_SCALE_COLUMN = 'basalScale';
 
 /**
  * Forbes's constant for a body (§3.8, §3.12): 10.4 kg for a grown body, scaled by its frame (built lean
@@ -195,7 +200,7 @@ export function leanShiftKg(netKcal: number, fatKg: number, forbesKg: number): n
 
 export const BODY_PARTS = { deaths: 'body.deaths', deathAges: 'body.deathAges' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
-const DEATH_SLOTS = 9;
+const DEATH_SLOTS = 10;
 
 function declareBody(state: SimState): void {
   for (const spec of Object.values(BODY_COLUMNS)) state.agents.ensureColumn(spec);
@@ -376,6 +381,8 @@ export const metabolism: SystemDef = defineSystem({
     const training = agents.hasColumn(TRAINED_COLUMN);
     // Pregnancy and milk, when the pipeline holds body.reproduction (§3.13).
     const bearing = agents.hasColumn(REPRO_HEAT_COLUMN);
+    // The body's own basal rate, when the pipeline holds body.genetics (§3.14).
+    const inherited = agents.hasColumn(BASAL_SCALE_COLUMN);
 
     return () => {
       const tick = state.tick;
@@ -401,6 +408,7 @@ export const metabolism: SystemDef = defineSystem({
       const adultFrame = agents.column<Float64Array>(C.adultFrameKg.name).data;
       const reproW = bearing ? agents.column<Float64Array>(REPRO_HEAT_COLUMN).data : null;
       const gravid = bearing ? agents.column<Float64Array>(GRAVID_COLUMN).data : null;
+      const basalScale = inherited ? agents.column<Float64Array>(BASAL_SCALE_COLUMN).data : null;
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -455,6 +463,13 @@ export const metabolism: SystemDef = defineSystem({
           if (!(bearingW >= 0)) throw new RangeError(`body.metabolism: agent id ${ids[slot]} reports the heat of pregnancy or milk ${bearingW}.`);
           spent += (bearingW * secondsPerTick) / JOULES_PER_KCAL;
           reproW[slot] = 0;
+        }
+        if (basalScale) {
+          // The body's basal rate is the Schofield rate × its expressed basal scale (§3.14); exertion
+          // stays in multiples of the Schofield rate.
+          const scale = basalScale[slot];
+          if (!(scale > 0)) throw new Error(`body.metabolism: agent id ${ids[slot]} has no genome; call formGenome right after formBody.`);
+          spent += (scale - 1) * basalPerSecond * secondsPerTick;
         }
         heat[slot] = (spent * JOULES_PER_KCAL) / secondsPerTick;
         // Shivering: the heat body.heat asked for (DESIGN.md §3.9).
