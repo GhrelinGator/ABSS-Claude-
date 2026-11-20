@@ -9,7 +9,7 @@ import { STREAM_WORDS, StreamDomain, globalStreamOffset, nextInt } from '../core
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { Sex, BODY_COLUMNS } from '../body/metabolism.ts';
 import { Material, OBJECT_STORE } from '../world/materials.ts';
-import { ACT_COLUMNS, Act, ActEnd, ActTally, createActs, declareActs } from './acts.ts';
+import { ACT_COLUMNS, ACT_TALLY_PART, Act, ActEnd, ActTally, createActs, declareActs } from './acts.ts';
 import { CHOICE, Candidates, DEFAULT_CHOICE_DIALS, PREDICTION_LENGTH, choose, gatherCandidates, interrupts } from './choice.ts';
 import { BLANK_PREDICTOR } from './choice.ts';
 import type { Predictor } from './choice.ts';
@@ -18,7 +18,7 @@ import { CHANNELS, Channel, createInteroception } from './interoception.ts';
 import { PERCEPTION, Percepts, createPerception, declarePerception } from './perception.ts';
 import { createMemory, declareMemory } from './memory.ts';
 
-export const MIND_PARTS = { acts: 'mind.acts' } as const;
+export const MIND_PARTS = { acts: ACT_TALLY_PART } as const;
 
 function actTally(): StatePart {
   const counts = new Float64Array(ActTally.LENGTH);

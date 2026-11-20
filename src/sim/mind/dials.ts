@@ -31,6 +31,14 @@ export const EXPLORATION_TEMPERATURE: DialDef = defineDial({ name: 'explorationT
 // counted exactly as the quadratic drive cost expects it (§4.10.2).
 export const RISK_TOLERANCE: DialDef = defineDial({ name: 'riskTolerance', min: -1, max: 1, neutral: 0 });
 
+// ALIBI: harm and relief can come from causes no sense picks up (a cat in tall cover at night, a poison
+// felt hours after eating, sickness from water, §2.7) in a world with no one else in it. A mind that sets
+// aside what its known causes could not explain, tied to where, in what light and in what season it
+// happened, can expect it again there; one that does so too readily expects what never comes. The dial
+// is a liability (§4.11.6): the mind reads max(0, value), so every value at or below 0 sets nothing aside
+// and leaves the mind of 3.4, and mutation moves it up and down alike.
+export const HIDDEN_CAUSE_BIAS: DialDef = defineDial({ name: 'hiddenCauseBias', min: -4, max: 4, neutral: 0 });
+
 /** The values a mind uses when its body carries no genome (a pipeline without body.genetics): the toy's (§4.10.6). */
 export const MIND_DIAL_DEFAULTS = {
   learningRate: 1,
@@ -38,4 +46,6 @@ export const MIND_DIAL_DEFAULTS = {
   curiosity: 0.3,
   explorationTemperature: 0.01,
   riskTolerance: 0,
+  /** Neutral: a mind without a genome sets nothing aside (§4.11.6). */
+  hiddenCauseBias: 0,
 } as const;

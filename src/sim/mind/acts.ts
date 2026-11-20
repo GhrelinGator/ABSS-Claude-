@@ -43,6 +43,9 @@ export const Act = {
 } as const;
 export const ACT_KINDS = 11;
 
+/** The name of the mind's tally part (`mind.acts`), which acts and memory both write. */
+export const ACT_TALLY_PART = 'mind.acts';
+
 /** How an act stands at the end of a tick. */
 export const ActEnd = { GOING: 0, DONE: 1, FAILED: 2 } as const;
 
@@ -142,7 +145,11 @@ export const ActTally = {
   /** Blows landed on animals, and animals killed by them (§2.17). */
   BLOWS_ON_ANIMALS: 51,
   ANIMALS_KILLED: 52,
-  LENGTH: 53,
+  /** Hidden-cause nodes posited and strengthened, and unexplained residuals that were salient (§4.11). */
+  NODES_POSITED: 53,
+  NODES_STRENGTHENED: 54,
+  RESIDUALS_SALIENT: 55,
+  LENGTH: 56,
 } as const;
 
 export function declareActs(state: SimState): void {
