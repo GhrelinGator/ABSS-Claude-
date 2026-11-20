@@ -9,6 +9,7 @@ import { fitness } from './body/fitness.ts';
 import { heat } from './body/heat.ts';
 import { injury } from './body/injury.ts';
 import { metabolism } from './body/metabolism.ts';
+import { reproduction } from './body/reproduction.ts';
 import { climate } from './world/climate.ts';
 import { animals } from './world/animals.ts';
 import { fire } from './world/fire.ts';
@@ -40,6 +41,8 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   injury,
   // Phase 2.2: body temperature, shivering and sweat, body water.
   heat,
+  // Phase 2.6: conception, the fetus, birth, milk; after heat, so what they cost is charged by metabolism this tick.
+  reproduction,
   // Phase 2.1: what agents' bodies spend, store and starve on.
   metabolism,
   // Phase 2.4: fitness and fatigue from the tick's exertion, strains, trained muscle (skills are kept here too).

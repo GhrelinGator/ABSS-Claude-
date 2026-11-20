@@ -35,6 +35,8 @@ export const StreamDomain = {
   LOAD: 10,
   /** The age each body dies of old age, drawn once per body (Phase 2.5): its own stream, so no draw above changed. */
   AGING: 11,
+  /** Conception, the fetus's sex, lost pregnancies, bleeding at birth (Phase 2.6): its own stream, so no draw above changed. */
+  REPRODUCTION: 12,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];

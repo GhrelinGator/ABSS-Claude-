@@ -20,6 +20,7 @@ import type { Sim, SimState, StatePart } from '../sim.ts';
 import { CLIMATE_PARTS } from '../world/climate.ts';
 import { BODY_COLUMNS, DeathCause, METABOLISM, Sex, basalKcalPerDay, deathDoor, fatKgOf } from './metabolism.ts';
 import { HEAT, HEAT_COLUMNS, SURROUNDINGS, fullWaterKg, skinAreaM2 } from './heat.ts';
+import { walkingAtAge } from './lifecourse.ts';
 
 /** Every number injury uses, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Bodies*). */
 export const INJURY = {
@@ -86,10 +87,13 @@ export const INJURY = {
   burnHalfDays: 7,
   boneHalfDays: 14,
   strainHalfDays: 7,
-  /** Lean tissue rebuilt per day, as a share of what is owed; extra heat, as a share of the energy rebuilt; least fat kept, kg. */
+  /**
+   * Lean tissue rebuilt per day, as a share of what is owed; extra heat, as a share of the energy rebuilt;
+   * least fat kept, share of body mass (0.5 kg before 2.6, which kept a newborn from rebuilding, §3.13).
+   */
   rebuildPerDay: 1 / 20,
   rebuildCost: 0.2,
-  rebuildKeepsFatKg: 0.5,
+  rebuildKeepsFatShare: 0.01,
 
   /** Water evaporated through burned and open skin: mL an hour per percent of skin per m² of skin. Diarrhoea: kg a day at full severity. */
   burnWaterMlPerPctM2H: 1,
@@ -270,6 +274,17 @@ export function injure(sim: Sim, slot: number, injury: Injury): void {
   strains[slot] = 1 - (1 - strains[slot]) * (1 - strain);
   if (open > 0 || bleed > 0 || leg > 0 || arm > 0) tallyOf(sim.state)[InjuryKind.WOUND] += 1;
   else if (strain > 0) tallyOf(sim.state)[InjuryKind.STRAIN] += 1;
+}
+
+/**
+ * A body's share of walking now (§3.10), less what youth withholds (§3.13: a newborn cannot walk, a
+ * child of ten walks like an adult), for the acts of Phase 3 to read.
+ */
+export function mobilityOf(sim: Sim, slot: number): number {
+  bodySlot(sim, slot, 'mobilityOf');
+  const agents = sim.state.agents;
+  const age = (sim.state.tick - agents.column<Float64Array>(B.born.name).data[slot]) / ticksPerYear(sim.config);
+  return agents.column<Float64Array>(C.mobility.name).data[slot] * walkingAtAge(age);
 }
 
 /** Pathogens swallowed: `dose` infectious units (waterDose, meatDose), from what the world has already given up. */
@@ -534,7 +549,7 @@ export const injury: SystemDef = defineSystem({
         if (rebuild[slot] > 0 && nourished > 0) {
           // Energy moves from fat to lean inside the stock; only the cost of rebuilding leaves as heat.
           let kg = rebuild[slot] * K.rebuildPerDay * days * nourished;
-          const spareFat = fatKg - K.rebuildKeepsFatKg;
+          const spareFat = fatKg - K.rebuildKeepsFatShare * mass;
           const most = spareFat > 0 ? (spareFat * fatDensity) / (leanDensity * (1 + K.rebuildCost)) : 0;
           if (kg > most) kg = most;
           if (kg > 0) {

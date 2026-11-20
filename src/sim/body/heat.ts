@@ -60,8 +60,12 @@ export const HEAT = {
   sweatingSkinKPa: 5.6,
   lewisKPerKPa: 16.5,
   hidePermeability: 0.38,
-  /** Most sweat, kg an hour [estimate], and the share of it lost at the fatal water deficit [estimate]. */
+  /**
+   * Most sweat, kg an hour, for sweatMostAtSkinM2 of skin, in proportion to skin area (T-012) [estimate],
+   * and the share of it lost at the fatal water deficit [estimate].
+   */
   sweatMostKgPerHour: 1,
+  sweatMostAtSkinM2: 1.5,
   dehydratedSweatLoss: 0.5,
   /** Heat taken by evaporating a kg of water at skin temperature, J. */
   latentJPerKg: 2.43e6,
@@ -69,8 +73,13 @@ export const HEAT = {
   leanWaterShare: 0.73,
   /** Water made by burning fuel, kg per kcal spent [estimate]. */
   metabolicWaterKgPerKcal: 0.00012,
-  /** Urine: the least a day, kg [estimate]; a surplus passes over this many s, at most this many kg an hour. */
+  /**
+   * Urine: the least a day, kg, for a body whose basal rate is urineLeastAtBasalKcal a day, in proportion
+   * to the basal rate (the solutes it carries come from food burned; T-012) [estimate]; a surplus passes
+   * over this many s, at most this many kg an hour.
+   */
   urineLeastKgPerDay: 0.5,
+  urineLeastAtBasalKcal: 1500,
   surplusSeconds: 3600,
   urineMostKgPerHour: 1,
   /** Death: water deficit as a share of body mass; core temperatures, °C [estimates, DESIGN.md §3.9]. */
@@ -171,9 +180,9 @@ export const heat: SystemDef = defineSystem({
     const perYear = ticksPerYear(config);
     const dies = deathDoor(sim, 'body.heat');
     const restingRatio = METABOLISM.effortRatio[Effort.STILL];
-    const urineLeast = (H.urineLeastKgPerDay / 86_400) * dt;
+    const urineLeastPerBasalW = (H.urineLeastKgPerDay * dt) / (H.urineLeastAtBasalKcal * JOULES_PER_KCAL);
     const urineMost = (H.urineMostKgPerHour / 3600) * dt;
-    const sweatMost = H.sweatMostKgPerHour / 3600;
+    const sweatMostPerM2 = H.sweatMostKgPerHour / (3600 * H.sweatMostAtSkinM2);
     const fevered = agents.hasColumn(FEVER_COLUMN);
 
     return () => {
@@ -287,6 +296,7 @@ export const heat: SystemDef = defineSystem({
             const deficitShare = (fullWaterKg(leanKg) - water[slot]) / (H.fatalDeficitShare * mass);
             const cut = deficitShare <= 0 ? 0 : deficitShare >= 1 ? H.dehydratedSweatLoss : H.dehydratedSweatLoss * deficitShare;
             sweatKgS = needed / (H.latentJPerKg * efficiency);
+            const sweatMost = sweatMostPerM2 * area;
             if (sweatKgS > sweatMost * (1 - cut)) sweatKgS = sweatMost * (1 - cut);
             let evaporated = sweatKgS * H.latentJPerKg * efficiency;
             const room = evapMost - diffusion;
@@ -304,7 +314,7 @@ export const heat: SystemDef = defineSystem({
         const fuel = (((madeW + shiverW) * dt) / JOULES_PER_KCAL) * H.metabolicWaterKgPerKcal;
         const full = fullWaterKg(leanKg);
         const surplus = water[slot] - full;
-        let urine = urineLeast;
+        let urine = urineLeastPerBasalW * basalW;
         if (surplus > 0) {
           const pass = (surplus * dt) / H.surplusSeconds;
           urine += pass < urineMost ? pass : urineMost;
