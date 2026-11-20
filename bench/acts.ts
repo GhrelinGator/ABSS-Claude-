@@ -54,7 +54,7 @@ const decisions = tally[ActTally.DECISIONS] - decisions0;
 const awake = tally[ActTally.AWAKE_TICKS] - awake0;
 const machine = getMachineInfo();
 console.log(`bench/acts: ${N} founders in a ${radiusM} m disc, seed ${seed}, ${DAYS} days after a warm-up day; built in ${buildMs.toFixed(0)} ms`);
-console.log(`machine: ${machine.cpuModel ?? '?'} (${machine.cpuCount} cores), Node ${process.versions.node}`);
+console.log(`machine: ${machine.cpu} (${machine.cores} cores), Node ${machine.node}`);
 console.log(`mean agents alive: ${meanAgents.toFixed(1)}; decisions per awake agent-tick: ${(decisions / awake).toFixed(3)} (rule: about 0.25)`);
 const rows: [string, number][] = sim.pipeline.map((d, i) => [d.name, spent[i]]);
 let bodies = 0;
