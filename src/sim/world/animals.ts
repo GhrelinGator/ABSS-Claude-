@@ -3,7 +3,7 @@
 // much meat and danger the land holds per day runs on real days (D-026).
 
 import type { Sink, Source } from '../core/codec.ts';
-import { cosTurn, sinTurn } from '../core/dmath.ts';
+import { cosTurn, exp, sinTurn } from '../core/dmath.ts';
 import { defineSystem } from '../core/registry.ts';
 import type { SystemDef } from '../core/registry.ts';
 import { StreamDomain, globalStreamOffset, nextChance, nextFloat } from '../core/rng.ts';
@@ -31,6 +31,8 @@ export interface GroupKind {
   readonly grazer: boolean;
   /** Meat a body leaves, kg. */
   readonly edibleKg: number;
+  /** A grown body's mass, kg: what a blow must wound (§2.17). */
+  readonly massKg: number;
   readonly typicalGroup: number;
   readonly maxGroup: number;
   /** Starting density, animals per km² of land. */
@@ -62,6 +64,7 @@ export const GROUP_KINDS: readonly GroupKind[] = Object.freeze([
     kind: AnimalKind.DEER,
     grazer: true,
     edibleKg: 55,
+    massKg: 90,
     typicalGroup: 8,
     maxGroup: 30,
     startPerKm2: 5,
@@ -81,6 +84,7 @@ export const GROUP_KINDS: readonly GroupKind[] = Object.freeze([
     kind: AnimalKind.AUROCHS,
     grazer: true,
     edibleKg: 350,
+    massKg: 700,
     typicalGroup: 12,
     maxGroup: 25,
     startPerKm2: 0.5,
@@ -100,6 +104,7 @@ export const GROUP_KINDS: readonly GroupKind[] = Object.freeze([
     kind: AnimalKind.WOLF,
     grazer: false,
     edibleKg: 15,
+    massKg: 40,
     typicalGroup: 5,
     maxGroup: 8,
     startPerKm2: 0.02,
@@ -120,6 +125,7 @@ export const GROUP_KINDS: readonly GroupKind[] = Object.freeze([
     kind: AnimalKind.CAT,
     grazer: false,
     edibleKg: 20,
+    massKg: 60,
     typicalGroup: 1,
     maxGroup: 1,
     startPerKm2: 0.015,
@@ -246,12 +252,89 @@ export const ANIMAL_CONSTANTS = {
 } as const;
 const A = ANIMAL_CONSTANTS;
 
+/** A wound an animal deals: open cm², bleeding mL a minute, dirt, and the chance and share of a broken limb (§2.17). */
+export interface AnimalWound {
+  readonly openCm2: number;
+  readonly bleedMlMin: number;
+  readonly dirt: number;
+  /** Chance of a broken bone, and the share of the limb's use lost if so. */
+  readonly breakChance: number;
+  readonly breakShare: number;
+  /** True for a leg, false for an arm. */
+  readonly leg: boolean;
+}
+
+/** Animals and persons (docs/DESIGN.md §2.17). Every number an estimate unless a source is named there. */
+export const ENCOUNTER = {
+  /** Distances at which a group notices a person and leaves, by day and by night, m; and how far it goes. Index: AnimalKind. */
+  shyDayM: [0, 100, 50, 100, 50] as readonly number[],
+  shyNightM: [0, 40, 20, 50, 25] as readonly number[],
+  leaveM: [0, 400, 200, 400, 300] as readonly number[],
+  /** Whether the group runs (true) or walks (false) when it leaves a person. */
+  leaveRuns: [false, true, false, false, false] as readonly boolean[],
+  /** A person who did not walk in its last tick is noticed at this share of the distance. */
+  stillShare: 0.4,
+  /** Tall cover around a person shortens it by this much at full cover (perception's concealment), to no less than `leastConcealed`. */
+  concealLoss: 0.7,
+  leastConcealed: 0.3,
+  /** Metres walked in the last tick above which a person counts as moving. */
+  movingFromM: 1,
+  /** A person of this lean mass or more counts as company for another, kg. */
+  companyLeanKg: 20,
+  /** Within this distance another person makes a person not alone, m: to a cat, to wolves. */
+  catAloneM: 50,
+  wolfAloneM: 100,
+  /** Wolves take a lone person only if smaller than this lean mass, kg, or with mobility under `lameBelow` (Linnell et al. 2002). */
+  wolfPreyLeanKg: 30,
+  lameBelow: 0.5,
+  /** A landed attack holds with chance min(holdMost, H ÷ lean mass): H for a cat, and for each wolf in the pack, kg. */
+  catHoldKg: 22,
+  wolfHoldKgEach: 5,
+  holdMost: 0.9,
+  /** A hold: a bite to the throat or neck. */
+  hold: { openCm2: 20, bleedMlMin: 1200, dirt: 1, breakChance: 0, breakShare: 0, leg: false } as AnimalWound,
+  /** A cat's mauling bite (two in a mauling, one biting back), a wolf's bite, an aurochs' goring. */
+  catBite: { openCm2: 25, bleedMlMin: 60, dirt: 1, breakChance: 0.15, breakShare: 0.7, leg: false } as AnimalWound,
+  catMaulBites: 2,
+  wolfBite: { openCm2: 15, bleedMlMin: 40, dirt: 1, breakChance: 0.1, breakShare: 0.7, leg: true } as AnimalWound,
+  gore: { openCm2: 60, bleedMlMin: 200, dirt: 0.5, breakChance: 0.3, breakShare: 0.7, leg: true } as AnimalWound,
+  /** Struck animals: energy landed per kg of body that kills, J; the edge's gain; the half-life of a wound, days. */
+  lethalJPerKg: 8,
+  edgeGain: 3,
+  healHalfDays: 5,
+  /** Chance a tick that a struck aurochs gores its striker, and that a struck wolf or cat bites back. */
+  goreChance: 0.4,
+  biteBackChance: 0.5,
+} as const;
+const E = ENCOUNTER;
+
+/**
+ * The share of its distance at which an animal notices a person (§2.17): 1 for a person that walked in
+ * its last tick on open ground, less for one standing still, and less again in tall cover (`tall` is
+ * the tall cover around it as a share of `ambushCover`'s).
+ */
+export function noticeFactor(moving: boolean, tall: number): number {
+  let conceal = 1 - E.concealLoss * (tall < 1 ? tall : 1);
+  if (conceal < E.leastConcealed) conceal = E.leastConcealed;
+  return (moving ? 1 : E.stillShare) * conceal;
+}
+
+/** Chance a landed attack by a group of `kind` and `count` holds a person of `leanKg` lean mass (§2.17). */
+export function holdChance(kind: number, count: number, leanKg: number): number {
+  const h = kind === AnimalKind.WOLF ? E.wolfHoldKgEach * count : E.catHoldKg;
+  const p = leanKg > 0 ? h / leanKg : 1;
+  return p > E.holdMost ? E.holdMost : p;
+}
+
+/** The column the acts keep on each agent: metres walked in its last tick (§2.17); animals read it by name. */
+export const MOVED_TICK_COLUMN = 'movedTickM';
+
 export const ANIMAL_STORE = 'animals';
 export const HARE_LAYER = 'animals.hare';
 export const CARCASS_LAYER = 'animals.carcass';
 /** Pathogen load of the carcass meat in each cell, 0 to 1 (§2.14). Fresh meat is clean; mixing is by weight. */
 export const CARCASS_LOAD_LAYER = 'animals.carcassLoad';
-export const ANIMAL_PARTS = { counts: 'animals.counts' } as const;
+export const ANIMAL_PARTS = { counts: 'animals.counts', bites: 'animals.bites' } as const;
 
 export const AnimalMode = {
   REST: 0,
@@ -288,9 +371,95 @@ export const ANIMAL_FIELDS = {
   meatToVultures: 21,
   meatRotted: 22,
   meatToPredators: 23,
+  // Animals and persons (§2.17).
+  catStrikesPerson: 24,
+  catLandsPerson: 25,
+  wolfAttacksPerson: 26,
+  holdsPerson: 27,
+  bitesToPersons: 28,
+  blowsByPersons: 29,
+  killedByPersonsDeer: 30,
+  killedByPersonsAurochs: 31,
+  killedByPersonsWolf: 32,
+  killedByPersonsCat: 33,
 } as const;
-const FIELD_COUNT = 24;
+const FIELD_COUNT = 34;
 const F = ANIMAL_FIELDS;
+const KILLED_BY_PERSONS: Readonly<Record<number, number>> = {
+  [AnimalKind.DEER]: F.killedByPersonsDeer,
+  [AnimalKind.AUROCHS]: F.killedByPersonsAurochs,
+  [AnimalKind.WOLF]: F.killedByPersonsWolf,
+  [AnimalKind.CAT]: F.killedByPersonsCat,
+};
+
+/** Fields of one entry in `animals.bites`. */
+const BITE = { agent: 0, openCm2: 1, bleedMlMin: 2, dirt: 3, leg: 4, arm: 5, kind: 6, STRIDE: 7 } as const;
+/** How many numbers `AnimalBites.entry` writes: open cm², bleeding, dirt, leg, arm, the animal's kind. */
+export const BITES_INJURY_FIELDS = BITE.STRIDE - 1;
+
+/**
+ * Wounds animals dealt to persons this tick (§2.17), for body.injury to deal through `injure` in the
+ * same tick: the world does not import bodies. Empty between ticks once body.injury has run; cleared
+ * by world.animals at the start of each tick in any case.
+ */
+export class AnimalBites implements StatePart {
+  readonly name = ANIMAL_PARTS.bites;
+  readonly holdsLearned = false;
+  n = 0;
+  data = new Float64Array(BITE.STRIDE * 8);
+
+  push(agentId: number, w: AnimalWound, leg: number, arm: number, kind: number): void {
+    if ((this.n + 1) * BITE.STRIDE > this.data.length) {
+      const bigger = new Float64Array(this.data.length * 2);
+      bigger.set(this.data);
+      this.data = bigger;
+    }
+    const o = this.n * BITE.STRIDE;
+    this.data[o + BITE.agent] = agentId;
+    this.data[o + BITE.openCm2] = w.openCm2;
+    this.data[o + BITE.bleedMlMin] = w.bleedMlMin;
+    this.data[o + BITE.dirt] = w.dirt;
+    this.data[o + BITE.leg] = leg;
+    this.data[o + BITE.arm] = arm;
+    this.data[o + BITE.kind] = kind;
+    this.n++;
+  }
+
+  /** Is the agent with this id in an animal's jaws or under its horns this tick? */
+  holds(agentId: number): boolean {
+    for (let i = 0; i < this.n; i++) if (this.data[i * BITE.STRIDE + BITE.agent] === agentId) return true;
+    return false;
+  }
+
+  /** Entry `i`: the agent's id, and the injury's fields into `out` (open, bleeding, dirt, leg, arm, kind). */
+  entry(i: number, out: Float64Array): number {
+    const o = i * BITE.STRIDE;
+    for (let f = 1; f < BITE.STRIDE; f++) out[f - 1] = this.data[o + f];
+    return this.data[o + BITE.agent];
+  }
+
+  clear(): void {
+    this.n = 0;
+  }
+
+  write(sink: Sink): void {
+    sink.array(this.data.slice(0, this.n * BITE.STRIDE));
+  }
+
+  read(source: Source): void {
+    const saved = source.array('f64');
+    if (saved.length % BITE.STRIDE !== 0) throw new Error('Snapshot animal bites have the wrong length.');
+    this.n = saved.length / BITE.STRIDE;
+    if (this.data.length < saved.length) this.data = new Float64Array(saved.length);
+    this.data.set(saved);
+  }
+}
+
+/** The part `animals.bites`, or null when the pipeline has no animals. */
+export function bitesOf(state: SimState): AnimalBites | null {
+  const part = state.parts.find((p) => p.name === ANIMAL_PARTS.bites);
+  return part ? (part as AnimalBites) : null;
+}
 
 export class AnimalCounts implements StatePart {
   readonly name = ANIMAL_PARTS.counts;
@@ -352,12 +521,16 @@ interface Columns {
   cooldown: Uint16Array;
   preyId: Uint32Array;
   seeds: Uint8Array;
+  /** The most-hurt animal's share of a lethal wound from persons' blows, 0 to 1 (§2.17). */
+  hurt: Float32Array;
+  /** The id of the person a predator is hunting, 0 for none (§2.17). */
+  preyAgent: Uint32Array;
 }
 
 function declareStore(state: SimState): EntityStore {
   const store = state.addStore(ANIMAL_STORE);
   store.ensureColumn({ name: 'kind', dtype: 'u8', category: 'identity' });
-  for (const name of ['x', 'y', 'condition', 'targetX', 'targetY', 'thirst', 'anchorX', 'anchorY']) {
+  for (const name of ['x', 'y', 'condition', 'targetX', 'targetY', 'thirst', 'anchorX', 'anchorY', 'hurt']) {
     store.ensureColumn({ name, dtype: 'f32', category: 'body' });
   }
   store.ensureColumn({ name: 'count', dtype: 'u16', category: 'body' });
@@ -365,6 +538,7 @@ function declareStore(state: SimState): EntityStore {
   store.ensureColumn({ name: 'cooldown', dtype: 'u16', category: 'body' });
   store.ensureColumn({ name: 'preyId', dtype: 'u32', category: 'body' });
   store.ensureColumn({ name: 'seeds', dtype: 'u8', category: 'body' });
+  store.ensureColumn({ name: 'preyAgent', dtype: 'u32', category: 'body' });
   return store;
 }
 
@@ -386,6 +560,8 @@ function columnsOf(store: EntityStore): Columns {
     cooldown: c<Uint16Array>('cooldown'),
     preyId: c<Uint32Array>('preyId'),
     seeds: c<Uint8Array>('seeds'),
+    hurt: c<Float32Array>('hurt'),
+    preyAgent: c<Uint32Array>('preyAgent'),
   };
 }
 
@@ -407,7 +583,15 @@ function addGroup(state: SimState, store: EntityStore, kind: number, x: number, 
   c.cooldown[slot] = 0;
   c.preyId[slot] = 0;
   c.seeds[slot] = 0;
+  c.hurt[slot] = 0;
+  c.preyAgent[slot] = 0;
   return slot;
+}
+
+/** Place a group (tests and experiments that need animals somewhere particular); returns its slot. */
+export function placeGroup(sim: Sim, kind: number, x: number, y: number, count: number, condition: number): number {
+  groupKind(kind);
+  return addGroup(sim.state, sim.state.store(ANIMAL_STORE), kind, x, y, count, condition);
 }
 
 /** Km² of habitat: land counted in proportion to its forage, fully from `goodHabitatForageKgHa` (T-006). */
@@ -511,6 +695,7 @@ export const animals: SystemDef = defineSystem({
   declare(state: SimState) {
     declareStore(state);
     state.addPart(new AnimalCounts());
+    state.addPart(new AnimalBites());
     state.world.ensureLayer(HARE_LAYER, 'f32');
     state.world.ensureLayer(CARCASS_LAYER, 'f32');
     state.world.ensureLayer(CARCASS_LOAD_LAYER, 'f32');
@@ -572,6 +757,8 @@ export const animals: SystemDef = defineSystem({
     const reference = CLIMATE_CONSTANTS.referenceElevationM;
     const specOf: GroupKind[] = [];
     for (const spec of GROUP_KINDS) specOf[spec.kind] = spec;
+    /** Share of a wound from persons' blows left after a day (§2.17). */
+    const hurtKeep = exp(-0.6931471805599453 / E.healHalfDays);
 
     // Fire (§2.16), if the pipeline has it: every animal keeps away from a burning cell, predators from any fire.
     const fireStore = state.stores.find((st) => st.name === FIRE_STORE) ?? null;
@@ -730,11 +917,218 @@ export const animals: SystemDef = defineSystem({
     }
 
     function flee(slot: number, fromX: number, fromY: number): void {
+      leave(slot, fromX, fromY, A.fleeM, AnimalMode.FLEE);
+    }
+
+    /** Head `far` metres away from (fromX, fromY), in a random direction from that very point (T-009). */
+    function leave(slot: number, fromX: number, fromY: number, far: number, mode: number): void {
       const dx = c.x[slot] - fromX;
       const dy = c.y[slot] - fromY;
       const d = Math.sqrt(dx * dx + dy * dy);
       const [ux, uy] = d > 0 ? [dx / d, dy / d] : anyDirection();
-      setTarget(slot, c.x[slot] + ux * A.fleeM, c.y[slot] + uy * A.fleeM, AnimalMode.FLEE);
+      setTarget(slot, c.x[slot] + ux * far, c.y[slot] + uy * far, mode);
+    }
+
+    // ---- persons (§2.17): bodies with a sex, as animals see them at the end of the last tick ----
+
+    const agents = state.agents;
+    const personGrid = new BucketGrid(widthM, heightM, 500);
+    let personMask = new Uint8Array(64);
+    let personsN = 0;
+    let personX: Float64Array = new Float64Array(0);
+    let personY: Float64Array = new Float64Array(0);
+    let personLean: Float64Array = new Float64Array(0);
+    let personMobility: Float64Array | null = null;
+    let personMoved: Float64Array | null = null;
+    let personIds: Uint32Array = new Uint32Array(0);
+    /** 200 m squares with a person in or next to them this tick (§2.17). The most any animal notices from is 100 m. */
+    const MARK_M = 200;
+    const markW = Math.ceil(widthM / MARK_M);
+    const markH = Math.ceil(heightM / MARK_M);
+    const marks = new Uint8Array(markW * markH);
+    let marked = new Int32Array(64);
+    let markedN = 0;
+    for (const d of [...E.shyDayM, ...E.shyNightM]) if (d > MARK_M) throw new Error('world.animals: a flight distance is longer than the squares that mark persons.');
+    /** Results of a person query, copied out so a nested query can run. */
+    let found = new Int32Array(64);
+    const bites = state.parts.find((p) => p.name === ANIMAL_PARTS.bites) as AnimalBites;
+
+    /** Index the persons; returns how many there are. Nothing about persons runs when there are none. */
+    function indexPersons(): number {
+      personsN = 0;
+      if (agents.count === 0 || !agents.hasColumn('sex') || !agents.hasColumn('leanKg')) return 0;
+      const hw = agents.highWater;
+      if (personMask.length < hw) {
+        let n = personMask.length;
+        while (n < hw) n *= 2;
+        personMask = new Uint8Array(n);
+      }
+      const alive = agents.alive.data;
+      const sex = agents.column<Uint8Array>('sex').data;
+      for (let slot = 0; slot < hw; slot++) {
+        const on = alive[slot] === 1 && sex[slot] !== 0 ? 1 : 0;
+        personMask[slot] = on;
+        personsN += on;
+      }
+      if (personsN === 0) return 0;
+      personX = agents.column<Float64Array>('x').data;
+      personY = agents.column<Float64Array>('y').data;
+      personLean = agents.column<Float64Array>('leanKg').data;
+      personMobility = agents.hasColumn('mobility') ? agents.column<Float64Array>('mobility').data : null;
+      personMoved = agents.hasColumn(MOVED_TICK_COLUMN) ? agents.column<Float64Array>(MOVED_TICK_COLUMN).data : null;
+      personIds = agents.id.data;
+      personGrid.build(personX, personY, personMask, hw);
+      markPersons();
+      return personsN;
+    }
+
+    /** Copy the persons within `radius` of (x, y) into `found`; returns how many. */
+    function personsWithin(x: number, y: number, radius: number): number {
+      const n = personGrid.query(x, y, radius, personX, personY);
+      if (found.length < n) found = new Int32Array(personGrid.result.length);
+      for (let q = 0; q < n; q++) found[q] = personGrid.result[q];
+      return n;
+    }
+
+    /** Is person p without company: no other person of `companyLeanKg` or more within `radius`? */
+    function alone(p: number, radius: number): boolean {
+      const n = personGrid.query(personX[p], personY[p], radius, personX, personY);
+      const r = personGrid.result;
+      for (let q = 0; q < n; q++) {
+        const o = r[q];
+        if (o !== p && personLean[o] >= E.companyLeanKg) return false;
+      }
+      return true;
+    }
+
+    /**
+     * The nearest person within `radius` of (x, y) that a hungry predator of `kind` would take: alone,
+     * not near a fire, and for wolves small or lame. -1 for none; ties go to the lower slot.
+     */
+    function personPrey(kind: number, x: number, y: number, radius: number): number {
+      const n = personsWithin(x, y, radius);
+      const wolf = kind === AnimalKind.WOLF;
+      let best = -1;
+      let bestD = Infinity;
+      for (let q = 0; q < n; q++) {
+        const p = found[q];
+        const dx = personX[p] - x;
+        const dy = personY[p] - y;
+        const d = dx * dx + dy * dy;
+        if (d > bestD || (d === bestD && p > best)) continue;
+        // Mobility is 0 only before body.injury has first seen a body: that is not a limp.
+        if (wolf && !(personLean[p] < E.wolfPreyLeanKg || (personMobility !== null && personMobility[p] > 0 && personMobility[p] < E.lameBelow))) continue;
+        if (fireTooClose(kind, personX[p], personY[p]) >= 0) continue;
+        if (!alone(p, wolf ? E.wolfAloneM : E.catAloneM)) continue;
+        best = p;
+        bestD = d;
+      }
+      return best;
+    }
+
+    /** Squared distance from group `slot` to person p. */
+    function d2To(slot: number, p: number): number {
+      const dx = personX[p] - c.x[slot];
+      const dy = personY[p] - c.y[slot];
+      return dx * dx + dy * dy;
+    }
+
+    /** The share of its distance at which an animal notices person p now (§2.17). */
+    function noticeOf(p: number, season: number): number {
+      const moving = personMoved === null || personMoved[p] > E.movingFromM;
+      // Grass, even tall, hides only a body keeping low: one walking upright shows above it.
+      const k = cellAt(personX[p], personY[p]);
+      const tall = tallCoverOf(season, moving ? 0 : grassCover[k], berryCover[k], nutCover[k], reedCover[k]);
+      return noticeFactor(moving, tall / A.ambushCover);
+    }
+
+    /** Mark the 200 m squares each person stands in, and their neighbours (derived each tick, never saved). */
+    function markPersons(): void {
+      for (let m = 0; m < markedN; m++) marks[marked[m]] = 0;
+      markedN = 0;
+      const hwA = agents.highWater;
+      for (let p = 0; p < hwA; p++) {
+        if (personMask[p] !== 1) continue;
+        const i0 = Math.floor(personX[p] / MARK_M);
+        const j0 = Math.floor(personY[p] / MARK_M);
+        for (let j = j0 - 1; j <= j0 + 1; j++) {
+          if (j < 0 || j >= markH) continue;
+          for (let i = i0 - 1; i <= i0 + 1; i++) {
+            if (i < 0 || i >= markW) continue;
+            const m = j * markW + i;
+            if (marks[m] !== 0) continue;
+            marks[m] = 1;
+            if (markedN === marked.length) {
+              const bigger = new Int32Array(marked.length * 2);
+              bigger.set(marked);
+              marked = bigger;
+            }
+            marked[markedN++] = m;
+          }
+        }
+      }
+    }
+
+    /**
+     * A group that notices a person leaves the nearest such person (ties: the lower slot), unless it
+     * is running already, standing its ground, or a hungry predator. Called only for groups in a
+     * marked square (the tick's loop looks the square up).
+     */
+    function keepAway(slot: number, night: boolean, season: number): void {
+      if (c.mode[slot] === AnimalMode.FLEE) return;
+      const kind = c.kind[slot];
+      if (kind === AnimalKind.AUROCHS && c.cooldown[slot] > 0) return;
+      if ((kind === AnimalKind.WOLF || kind === AnimalKind.CAT) && c.condition[slot] < A.hungryBelow) return;
+      const gx = c.x[slot];
+      const gy = c.y[slot];
+      const reach = (night ? E.shyNightM : E.shyDayM)[kind];
+      const n = personGrid.query(gx, gy, reach, personX, personY);
+      const r = personGrid.result;
+      let best = -1;
+      let bestD = Infinity;
+      for (let q = 0; q < n; q++) {
+        const p = r[q];
+        const dx = gx - personX[p];
+        const dy = gy - personY[p];
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > reach || d > bestD || (d === bestD && p > best)) continue;
+        if (d > reach * noticeOf(p, season)) continue;
+        best = p;
+        bestD = d;
+      }
+      if (best < 0) return;
+      leave(slot, personX[best], personY[best], E.leaveM[kind], E.leaveRuns[kind] ? AnimalMode.FLEE : AnimalMode.MOVE);
+    }
+
+    /** Write a wound an animal of `kind` deals to person p, drawing whether it breaks a bone. */
+    function wound(p: number, w: AnimalWound, kind: number): void {
+      const broken = w.breakChance > 0 && chance(w.breakChance) ? w.breakShare : 0;
+      bites.push(personIds[p], w, w.leg ? broken : 0, w.leg ? 0 : broken, kind);
+      counts[F.bitesToPersons] += 1;
+    }
+
+    /** A landed attack on person p by group `slot`: a hold, or a mauling (§2.17). Returns true for a hold. */
+    function attackPerson(slot: number, p: number): boolean {
+      const kind = c.kind[slot];
+      const wolves = kind === AnimalKind.WOLF;
+      const held = chance(holdChance(kind, c.count[slot], personLean[p]));
+      if (wolves) for (let w = 0; w < c.count[slot]; w++) wound(p, E.wolfBite, kind);
+      else if (!held) for (let b = 0; b < E.catMaulBites; b++) wound(p, E.catBite, kind);
+      if (held) {
+        wound(p, E.hold, kind);
+        counts[F.holdsPerson] += 1;
+      }
+      const x = personX[p];
+      const y = personY[p];
+      c.x[slot] = x;
+      c.y[slot] = y;
+      c.targetX[slot] = x;
+      c.targetY[slot] = y;
+      c.cooldown[slot] = A.restTicks;
+      c.preyAgent[slot] = 0;
+      if (held) settle(slot, x, y);
+      c.mode[slot] = held ? AnimalMode.FEED : AnimalMode.REST;
+      return held;
     }
 
     /** Food that would bring a group to full condition, kg: animals eat no more than they can hold. */
@@ -901,7 +1295,16 @@ export const animals: SystemDef = defineSystem({
         // Prey standing near a fire is left alone.
         if (prey >= 0 && fireTooClose(AnimalKind.WOLF, c.x[prey], c.y[prey]) >= 0) prey = -1;
         catchHare(slot, k, A.wolfHarePerHare, A.wolfHareCap, F.wolfKillsHare);
+        // A lone person who is small or lame, if nearer than any deer (§2.17).
+        const person = personsN > 0 ? personPrey(AnimalKind.WOLF, c.x[slot], c.y[slot], A.wolfSearchM) : -1;
+        if (person >= 0 && (prey < 0 || c.kind[prey] !== AnimalKind.DEER || d2To(slot, person) < groupD2(slot, prey))) {
+          c.preyAgent[slot] = personIds[person];
+          c.preyId[slot] = 0;
+          setTarget(slot, personX[person], personY[person], AnimalMode.HUNT);
+          return;
+        }
         if (prey >= 0) {
+          c.preyAgent[slot] = 0;
           c.preyId[slot] = store.id.data[prey];
           setTarget(slot, c.x[prey], c.y[prey], AnimalMode.HUNT);
           return;
@@ -935,23 +1338,28 @@ export const animals: SystemDef = defineSystem({
         catchHare(slot, k, A.catHarePerHare, A.catHareCap, F.catKillsHare);
         let prey = nearest(herbGrid, c.x[slot], c.y[slot], A.catSearchM, AnimalKind.DEER, -1);
         if (prey >= 0 && fireTooClose(AnimalKind.CAT, c.x[prey], c.y[prey]) >= 0) prey = -1;
-        if (prey < 0) {
+        // A lone person, if nearer than any deer (§2.17).
+        const person = personsN > 0 ? personPrey(AnimalKind.CAT, c.x[slot], c.y[slot], A.catSearchM) : -1;
+        const onPerson = person >= 0 && (prey < 0 || d2To(slot, person) < groupD2(slot, prey));
+        if (prey < 0 && !onPerson) {
           // Nothing near: search somewhere else in the range.
           setTarget(slot, c.anchorX[slot] + (random() * 2 - 1) * A.rangeM, c.anchorY[slot] + (random() * 2 - 1) * A.rangeM, AnimalMode.MOVE);
           return;
         }
-        const pdx = c.x[prey] - c.x[slot];
-        const pdy = c.y[prey] - c.y[slot];
+        const tx = onPerson ? personX[person] : c.x[prey];
+        const ty = onPerson ? personY[person] : c.y[prey];
+        const pdx = tx - c.x[slot];
+        const pdy = ty - c.y[slot];
         if (pdx * pdx + pdy * pdy <= A.ambushM * A.ambushM) {
           c.mode[slot] = AnimalMode.AMBUSH;
           return;
         }
-        // Stalk: creep to the tallest cover within striking range of the deer.
+        // Stalk: creep to the tallest cover within striking range of the prey.
         let bestCover = -1;
         const reach = A.ambushM * 0.7;
         for (let t = 0; t < 6; t++) {
-          const px = clampX(c.x[prey] + (random() * 2 - 1) * reach);
-          const py = clampY(c.y[prey] + (random() * 2 - 1) * reach);
+          const px = clampX(tx + (random() * 2 - 1) * reach);
+          const py = clampY(ty + (random() * 2 - 1) * reach);
           const cell = cellAt(px, py);
           if (waterKind[cell] !== Water.DRY || fireTooClose(AnimalKind.CAT, px, py) >= 0) continue;
           const tc = tallCover(cell, season);
@@ -1033,7 +1441,46 @@ export const animals: SystemDef = defineSystem({
       if (d <= step && mode !== AnimalMode.HUNT) c.mode[slot] = AnimalMode.REST;
     }
 
+    /** Squared distance between two groups. */
+    function groupD2(a: number, b: number): number {
+      const dx = c.x[b] - c.x[a];
+      const dy = c.y[b] - c.y[a];
+      return dx * dx + dy * dy;
+    }
+
+    /** A pack hunting a person runs it down; within reach it attacks, unless company or a fire is near (§2.17). */
+    function chasePerson(slot: number): void {
+      const p = personsN > 0 ? agents.slotOf(c.preyAgent[slot]) : -1;
+      if (p < 0 || personMask[p] !== 1) {
+        c.preyAgent[slot] = 0;
+        c.mode[slot] = AnimalMode.REST;
+        return;
+      }
+      const giveUp = () => {
+        c.preyAgent[slot] = 0;
+        c.cooldown[slot] = A.restTicks;
+        c.mode[slot] = AnimalMode.REST;
+      };
+      if (fireTooClose(AnimalKind.WOLF, personX[p], personY[p]) >= 0) {
+        giveUp();
+        return;
+      }
+      c.targetX[slot] = personX[p];
+      c.targetY[slot] = personY[p];
+      if (d2To(slot, p) > A.chaseStartM * A.chaseStartM) return;
+      if (!alone(p, E.wolfAloneM)) {
+        giveUp();
+        return;
+      }
+      counts[F.wolfAttacksPerson] += 1;
+      attackPerson(slot, p);
+    }
+
     function chase(slot: number): void {
+      if (c.preyAgent[slot] !== 0) {
+        chasePerson(slot);
+        return;
+      }
       const prey = store.slotOf(c.preyId[slot]);
       if (prey < 0 || !store.isAlive(prey) || c.count[prey] === 0) {
         c.mode[slot] = AnimalMode.REST;
@@ -1071,8 +1518,21 @@ export const animals: SystemDef = defineSystem({
 
     function ambush(slot: number, night: boolean, season: number): void {
       if (!night || c.cooldown[slot] > 0 || c.condition[slot] >= A.hungryBelow) return;
-      const prey = nearest(herbGrid, c.x[slot], c.y[slot], A.ambushM, AnimalKind.DEER, -1);
-      if (prey < 0 || fireTooClose(AnimalKind.CAT, c.x[prey], c.y[prey]) >= 0) return;
+      let prey = nearest(herbGrid, c.x[slot], c.y[slot], A.ambushM, AnimalKind.DEER, -1);
+      if (prey >= 0 && fireTooClose(AnimalKind.CAT, c.x[prey], c.y[prey]) >= 0) prey = -1;
+      // A lone person within reach, if nearer than any deer, is struck instead (§2.17).
+      const person = personsN > 0 ? personPrey(AnimalKind.CAT, c.x[slot], c.y[slot], A.ambushM) : -1;
+      if (person >= 0 && (prey < 0 || d2To(slot, person) < groupD2(slot, prey))) {
+        counts[F.catStrikesPerson] += 1;
+        c.cooldown[slot] = A.restTicks;
+        const cover = tallCover(cellAt(c.x[slot], c.y[slot]), season) / A.ambushCover;
+        if (chance(A.catKillDeer * (A.openGroundShare + (1 - A.openGroundShare) * (cover < 1 ? cover : 1)))) {
+          counts[F.catLandsPerson] += 1;
+          attackPerson(slot, person);
+        }
+        return;
+      }
+      if (prey < 0) return;
       counts[F.catStrikes] += 1;
       c.cooldown[slot] = A.restTicks;
       const px = c.x[prey];
@@ -1195,6 +1655,8 @@ export const animals: SystemDef = defineSystem({
         const spec = specOf[c.kind[slot]];
         const k = cellAt(c.x[slot], c.y[slot]);
         c.seeds[slot] = 0;
+        // Wounds from persons' blows heal (§2.17).
+        if (c.hurt[slot] > 0) c.hurt[slot] = c.hurt[slot] * hurtKeep < 1e-4 ? 0 : c.hurt[slot] * hurtKeep;
         // Deaths.
         const cond = c.condition[slot];
         const hunger = cond < A.starvingBelow ? (A.starvationHazardPerDay * (A.starvingBelow - cond)) / A.starvingBelow : 0;
@@ -1297,6 +1759,8 @@ export const animals: SystemDef = defineSystem({
       if (fireStore !== null && fireStore.count > 0) burnInCells();
       buildGrids();
       const night = isNight(tick);
+      bites.clear();
+      indexPersons();
       const hour = Math.floor(tick / ticksPerHour);
       const end = store.highWater;
       for (let slot = 0; slot < end; slot++) {
@@ -1317,6 +1781,12 @@ export const animals: SystemDef = defineSystem({
           const p = fireTooClose(kind, c.x[slot], c.y[slot]);
           if (p >= 0) leaveFire(slot, p);
         }
+        if (personsN > 0) {
+          // Groups with no person in their 200 m square or the next cost one lookup (positions are never negative).
+          const mi = (c.x[slot] / MARK_M) | 0;
+          const mj = (c.y[slot] / MARK_M) | 0;
+          if (marks[(mj < markH ? mj : markH - 1) * markW + (mi < markW ? mi : markW - 1)] !== 0) keepAway(slot, night, season);
+        }
         if (kind === AnimalKind.WOLF && c.mode[slot] === AnimalMode.HUNT) chase(slot);
         else if (kind === AnimalKind.CAT && c.mode[slot] === AnimalMode.AMBUSH) ambush(slot, night, season);
         if (store.isAlive(slot)) move(slot);
@@ -1324,3 +1794,129 @@ export const animals: SystemDef = defineSystem({
     };
   },
 });
+
+/** What a tick of blows on an animal did (§2.17). */
+export interface StrikeOutcome {
+  /** Blows that landed. */
+  landed: number;
+  /** An animal died of them; its meat lies in `cell`. */
+  killed: boolean;
+  cell: number;
+  /** The group ran or walked off, or is gone: the striker cannot go on. */
+  away: boolean;
+}
+
+/**
+ * Persons' blows on an animal group (§2.17): up to `blows` blows of `joules` each, landing `precision` of
+ * their energy, times (1 + edgeGain × edge). Wounds add up on the group's most-hurt animal, whoever deals
+ * them; at a lethal total it dies and its meat lies in its cell. Then the group responds: deer run after
+ * the first blow; an aurochs stands and may gore; a wolf or a cat may bite back, then leaves. Draws come
+ * from the striker's stream (`s`, `o`); wounds dealt go to `animals.bites`, for body.injury this tick.
+ */
+export function strikeAnimal(
+  sim: Sim,
+  group: number,
+  striker: number,
+  joules: number,
+  edge: number,
+  precision: number,
+  blows: number,
+  s: Uint32Array,
+  o: number,
+  out: StrikeOutcome,
+): void {
+  const { config, state } = sim;
+  const store = state.store(ANIMAL_STORE);
+  out.landed = 0;
+  out.killed = false;
+  out.cell = -1;
+  out.away = false;
+  if (!store.isAlive(group) || blows <= 0) {
+    out.away = !store.isAlive(group);
+    return;
+  }
+  const c = columnsOf(store);
+  const kind = c.kind[group];
+  const spec = groupKind(kind);
+  const counts = (state.parts.find((p) => p.name === ANIMAL_PARTS.counts) as AnimalCounts).values;
+  const bites = bitesOf(state) as AnimalBites;
+  const agents = state.agents;
+  const strikerId = agents.id.data[striker];
+  const sx = agents.column<Float64Array>('x').data[striker];
+  const sy = agents.column<Float64Array>('y').data[striker];
+  const { widthCells: W, heightCells: H, cellSizeM: cs } = config.world;
+  const per = (joules * precision * (1 + E.edgeGain * edge)) / (E.lethalJPerKg * spec.massKg);
+  const most = kind === AnimalKind.AUROCHS ? blows : 1;
+  for (let b = 0; b < most; b++) {
+    out.landed++;
+    counts[F.blowsByPersons] += 1;
+    const hurt = c.hurt[group] + per;
+    if (hurt < 1) {
+      c.hurt[group] = hurt;
+      continue;
+    }
+    // One animal dies of its wounds; its meat lies where it fell.
+    let i = Math.floor(c.x[group] / cs);
+    let j = Math.floor(c.y[group] / cs);
+    i = i < 0 ? 0 : i >= W ? W - 1 : i;
+    j = j < 0 ? 0 : j >= H ? H - 1 : j;
+    const k = j * W + i;
+    const meat = state.world.layer<Float32Array>(CARCASS_LAYER);
+    const load = state.world.layer<Float32Array>(CARCASS_LOAD_LAYER);
+    load[k] = dilutedLoad(load[k], meat[k], spec.edibleKg);
+    meat[k] += spec.edibleKg;
+    counts[KILLED_BY_PERSONS[kind]] += 1;
+    counts[DEATH_FIELD[kind]] += 1;
+    out.killed = true;
+    out.cell = k;
+    c.hurt[group] = 0;
+    c.count[group] -= 1;
+    if (c.count[group] === 0) {
+      store.remove(group);
+      out.away = true;
+      return;
+    }
+    return;
+  }
+  // The group's answer to the blows.
+  const wound = (w: AnimalWound) => {
+    const broken = w.breakChance > 0 && nextChance(s, o, w.breakChance) ? w.breakShare : 0;
+    bites.push(strikerId, w, w.leg ? broken : 0, w.leg ? 0 : broken, kind);
+    counts[F.bitesToPersons] += 1;
+  };
+  const go = (far: number, mode: number) => {
+    let dx = c.x[group] - sx;
+    let dy = c.y[group] - sy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > 0) {
+      dx /= d;
+      dy /= d;
+    } else {
+      const turn = nextFloat(s, o);
+      dx = cosTurn(turn);
+      dy = sinTurn(turn);
+    }
+    const widthM = W * cs;
+    const heightM = H * cs;
+    const tx = c.x[group] + dx * far;
+    const ty = c.y[group] + dy * far;
+    c.targetX[group] = tx < 0 ? 0 : tx >= widthM ? widthM - 0.01 : tx;
+    c.targetY[group] = ty < 0 ? 0 : ty >= heightM ? heightM - 0.01 : ty;
+    c.mode[group] = mode;
+    c.preyAgent[group] = 0;
+    c.preyId[group] = 0;
+    out.away = true;
+  };
+  if (kind === AnimalKind.DEER) {
+    go(A.fleeM, AnimalMode.FLEE);
+  } else if (kind === AnimalKind.AUROCHS) {
+    // It stands its ground for an hour, and may gore whoever strikes it.
+    c.cooldown[group] = A.restTicks;
+    if (c.mode[group] === AnimalMode.MOVE) c.mode[group] = AnimalMode.REST;
+    if (nextChance(s, o, E.goreChance)) wound(E.gore);
+  } else {
+    if (nextChance(s, o, E.biteBackChance)) wound(kind === AnimalKind.WOLF ? E.wolfBite : E.catBite);
+    if (kind === AnimalKind.WOLF) go(A.fleeM, AnimalMode.FLEE);
+    else go(E.leaveM[AnimalKind.CAT], AnimalMode.MOVE);
+  }
+}

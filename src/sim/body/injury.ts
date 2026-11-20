@@ -17,6 +17,7 @@ import type { ColumnSpec } from '../core/store.ts';
 import type { Sink, Source } from '../core/codec.ts';
 import { ticksPerYear } from '../core/clock.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
+import { BITES_INJURY_FIELDS, bitesOf } from '../world/animals.ts';
 import { CLIMATE_PARTS } from '../world/climate.ts';
 import { BODY_COLUMNS, DeathCause, METABOLISM, Sex, basalKcalPerDay, deathDoor, fatKgOf } from './metabolism.ts';
 import { HEAT, HEAT_COLUMNS, SURROUNDINGS, fullWaterKg, skinAreaM2 } from './heat.ts';
@@ -24,6 +25,8 @@ import { walkingAtAge } from './lifecourse.ts';
 
 /** Every number injury uses, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Bodies*). */
 export const INJURY = {
+  /** A death by shock this many hours after an animal's wound counts as killed by an animal (§2.17). */
+  mauledHours: 6,
   /** Blood volume, litres per kg of lean mass (about 5 L for a 70 kg man) [estimate]. */
   bloodLPerLeanKg: 0.085,
   /** Mass of a litre of blood, kg. */
@@ -123,8 +126,8 @@ const JOULES_PER_KCAL = 4184;
  * open wound, bleeding or a broken bone), burns, bodies struck by lightning, infections caught, and
  * strains dealt through `injure` with nothing else (overexertion, §3.11).
  */
-export const InjuryKind = { WOUND: 1, BURN: 2, LIGHTNING: 3, WOUND_INFECTION: 4, GUT_ILLNESS: 5, STRAIN: 6 } as const;
-const INJURY_SLOTS = 7;
+export const InjuryKind = { WOUND: 1, BURN: 2, LIGHTNING: 3, WOUND_INFECTION: 4, GUT_ILLNESS: 5, STRAIN: 6, ANIMAL: 7 } as const;
+const INJURY_SLOTS = 8;
 export const INJURY_PARTS = { injuries: 'body.injuries' } as const;
 
 export const INJURY_COLUMNS = {
@@ -163,6 +166,8 @@ export const INJURY_COLUMNS = {
   /** Share of walking, and of handling, the body can still do: for the acts of Phase 3. */
   mobility: { name: 'mobility', dtype: 'f64', category: 'body' },
   armUse: { name: 'armUse', dtype: 'f64', category: 'body' },
+  /** The tick an animal last wounded the body, plus one (0: never), so a death by shock can be told apart (§2.17). */
+  mauledAt: { name: 'mauledAt', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = INJURY_COLUMNS;
 const B = BODY_COLUMNS;
@@ -335,6 +340,10 @@ export const injury: SystemDef = defineSystem({
     const leanWater = HEAT.leanWaterShare;
     const leanDensity = METABOLISM.leanKcalPerKg;
     const fatDensity = METABOLISM.fatKcalPerKg;
+    const bites = bitesOf(state);
+    const bite = new Float64Array(BITES_INJURY_FIELDS);
+    /** Deaths by shock this soon after an animal's wound count as killed by an animal (§2.17). */
+    const mauledTicks = Math.round((K.mauledHours * config.time.ticksPerDay) / 24);
 
     /** The course of one infection over a tick: the new severity and response, into `out`. */
     function course(sev: number, response: number, virulence: number, rise: number, bounded: boolean, condition: number, out: Float64Array): void {
@@ -398,6 +407,20 @@ export const injury: SystemDef = defineSystem({
       const armUse = f64(C.armUse.name);
       const x = f64('x');
       const y = f64('y');
+      const mauledAt = f64(C.mauledAt.name);
+
+      // 0. Wounds animals dealt this tick (§2.17), before anything else, so they bleed and take in dirt now.
+      if (bites !== null && bites.n > 0) {
+        for (let i = 0; i < bites.n; i++) {
+          const id = bites.entry(i, bite);
+          const slot = agents.slotOf(id);
+          if (slot < 0 || alive[slot] !== 1 || sex[slot] === Sex.NONE) continue;
+          injure(sim, slot, { openCm2: bite[0], bleedMlMin: bite[1], dirt: bite[2], leg: bite[3], arm: bite[4] });
+          mauledAt[slot] = tick + 1;
+          tally[InjuryKind.ANIMAL] += 1;
+        }
+        bites.clear();
+      }
 
       // 3. Lightning: every strike lands at a point in its cell, whoever is near.
       const struck = strikes && strikes.readings ? (strikes.readings() as Int32Array) : null;
@@ -595,7 +618,9 @@ export const injury: SystemDef = defineSystem({
 
         // 9. Death.
         let cause = 0;
-        if (lost[slot] >= K.fatalVolumeShare * bloodVolumeL(leanKg)) cause = DeathCause.SHOCK;
+        if (lost[slot] >= K.fatalVolumeShare * bloodVolumeL(leanKg)) {
+          cause = mauledAt[slot] > 0 && tick + 1 - mauledAt[slot] <= mauledTicks ? DeathCause.ANIMAL : DeathCause.SHOCK;
+        }
         else if (wInf[slot] >= K.fatalSeverity) cause = DeathCause.INFECTION;
         if (cause !== 0) dies(slot, cause);
       }

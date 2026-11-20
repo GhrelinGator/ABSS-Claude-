@@ -16,7 +16,8 @@ import { INJURY_COLUMNS, exposeGut, meatDose, waterDose } from '../body/injury.t
 import { capacityAtAge, strengthAtAge, walkingAtAge } from '../body/lifecourse.ts';
 import { BODY_COLUMNS, Effort, METABOLISM, ingest } from '../body/metabolism.ts';
 import { SLEEP, SLEEP_COLUMNS, sleepiness } from '../body/sleep.ts';
-import { ANIMAL_STORE, CARCASS_LAYER, CARCASS_LOAD_LAYER } from '../world/animals.ts';
+import { ANIMAL_STORE, CARCASS_LAYER, CARCASS_LOAD_LAYER, MOVED_TICK_COLUMN, bitesOf, strikeAnimal } from '../world/animals.ts';
+import type { StrikeOutcome } from '../world/animals.ts';
 import { sparksAt, rubWood } from '../world/fire.ts';
 import { Material, OBJECT_STORE, strikeObjects, takeStone, takeWood } from '../world/materials.ts';
 import { WATER_PATHOGEN_LAYER } from '../world/pathogens.ts';
@@ -114,6 +115,8 @@ export const ACT_COLUMNS = {
   actDrives: { name: 'actDrives', dtype: 'f32', category: 'body', width: 8 },
   /** Ids of the objects in the two hands; 0 for an empty hand. */
   held: { name: 'held', dtype: 'u32', category: 'body', width: 2 },
+  /** Metres walked in the agent's last tick: animals notice a body that moves (§2.17). */
+  movedTickM: { name: MOVED_TICK_COLUMN, dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = ACT_COLUMNS;
 const B = BODY_COLUMNS;
@@ -136,7 +139,10 @@ export const ActTally = {
   PIECES: 48,
   EMBERS: 49,
   FIRES_LIT: 50,
-  LENGTH: 51,
+  /** Blows landed on animals, and animals killed by them (§2.17). */
+  BLOWS_ON_ANIMALS: 51,
+  ANIMALS_KILLED: 52,
+  LENGTH: 53,
 } as const;
 
 export function declareActs(state: SimState): void {
@@ -215,6 +221,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
   let got = f(C.actGot.name);
   let drivesAt = agents.column<Float32Array>(C.actDrives.name).data;
   let held = agents.column<Uint32Array>(C.held.name).data;
+  let movedTick = f(C.movedTickM.name);
   let effort = agents.column<Uint8Array>(B.effort.name).data;
   let moved = f(B.movedM.name);
   let moving = f(B.movingS.name);
@@ -260,8 +267,13 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     return tiredness(acute[slot], capacityFrom(fitness[slot], fatigue[slot]) * capacityAtAge(ageOf(slot)));
   }
 
+  // Wounds animals dealt this tick (§2.17): a body in jaws or under horns does not walk this tick.
+  const bites = bitesOf(state);
+  const strikeOut: StrikeOutcome = { landed: 0, killed: false, cell: -1, away: false };
+
   /** Share of walking speed: mobility (injury, youth) and tiredness. */
   function legsOf(slot: number): number {
+    if (bites !== null && bites.n > 0 && bites.holds(ids[slot])) return 0;
     const m = core[slot] === 0 ? walkingAtAge(ageOf(slot)) : mobility[slot] * walkingAtAge(ageOf(slot));
     return m * (1 - 0.5 * tiredOf(slot));
   }
@@ -361,6 +373,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     ax[slot] = x1;
     ay[slot] = y1;
     moved[slot] += go;
+    movedTick[slot] += go;
     moving[slot] += used;
     if (rise > 0) climbed[slot] += rise;
     carryHeld(slot);
@@ -649,9 +662,37 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     return n;
   }
 
+  /** Blows on an animal with the first held object, through the world's door (§2.17). */
+  function strikeAtAnimal(slot: number, seconds: number, n: number): void {
+    const g = animals.slotOf(refOf[slot]);
+    if (n === 0 || g < 0) {
+      workUsed = 0;
+      finish(slot, ActEnd.FAILED);
+      return;
+    }
+    const o = objects.slotOf(heldScratch[0]);
+    const joules = 0.5 * objF32('mass')[o] * K.blowMs * K.blowMs * strengthNow(slot);
+    const left = K.blows - got[slot];
+    let blows = Math.floor(seconds / K.blowS);
+    if (blows > left) blows = left;
+    strikeAnimal(sim, g, slot, joules, objF32('edge')[o], K.precision, blows, rng, slot * STREAM_WORDS, strikeOut);
+    got[slot] += strikeOut.landed;
+    tally[ActTally.BLOWS_ON_ANIMALS] += strikeOut.landed;
+    workUsed = strikeOut.landed * K.blowS;
+    if (strikeOut.killed) {
+      tally[ActTally.ANIMALS_KILLED] += 1;
+      perception.invalidate(strikeOut.cell);
+    }
+    if (strikeOut.killed || strikeOut.away || got[slot] >= K.blows || strikeOut.landed < blows) finish(slot, ActEnd.DONE);
+  }
+
   function strike(slot: number, seconds: number): void {
     workEffort = Effort.MODERATE;
     const n = heldBy(slot, heldScratch);
+    if (sourceOf[slot] === PerceptSource.ANIMAL) {
+      strikeAtAnimal(slot, seconds, n);
+      return;
+    }
     const target = objects.slotOf(refOf[slot]);
     if (n === 0 || target < 0 || objHolder()[target] !== 0) {
       workUsed = 0;
@@ -713,6 +754,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
   function run(slot: number): void {
     const k0 = kind[slot];
     let rest = dt;
+    movedTick[slot] = 0;
     workEffort = Effort.STILL;
     workUsed = 0;
     if (k0 === Act.NONE || end[slot] !== ActEnd.GOING) {
@@ -875,6 +917,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
       got = f(C.actGot.name);
       drivesAt = agents.column<Float32Array>(C.actDrives.name).data;
       held = agents.column<Uint32Array>(C.held.name).data;
+      movedTick = f(C.movedTickM.name);
       effort = agents.column<Uint8Array>(B.effort.name).data;
       moved = f(B.movedM.name);
       moving = f(B.movingS.name);

@@ -43,6 +43,8 @@ export const DeathCause = {
   CONGENITAL: 9,
   /** A plant's poison at a lethal strength (§4.9.2): body.gut's. */
   POISONING: 10,
+  /** Shock from wounds an animal dealt in the last 6 hours (§2.17): body.injury's. */
+  ANIMAL: 11,
 } as const;
 
 export const METABOLISM = {
@@ -206,7 +208,7 @@ export function leanShiftKg(netKcal: number, fatKg: number, forbesKg: number): n
 
 export const BODY_PARTS = { deaths: 'body.deaths', deathAges: 'body.deathAges' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
-const DEATH_SLOTS = 11;
+const DEATH_SLOTS = 12;
 
 function declareBody(state: SimState): void {
   for (const spec of Object.values(BODY_COLUMNS)) state.agents.ensureColumn(spec);

@@ -163,6 +163,8 @@ export const bodies: Observer = {
       }
       if (deaths.length > DeathCause.OLD_AGE) out['deaths.oldAge'] = deaths[DeathCause.OLD_AGE];
       if (deaths.length > DeathCause.CONGENITAL) out['deaths.congenital'] = deaths[DeathCause.CONGENITAL];
+      if (deaths.length > DeathCause.POISONING) out['deaths.poisoning'] = deaths[DeathCause.POISONING];
+      if (deaths.length > DeathCause.ANIMAL) out['deaths.animal'] = deaths[DeathCause.ANIMAL];
     }
     // Ages at death, in whole years (§3.12): deaths before 15, and the modal age of those after.
     const byAge = view.readings(BODY_PARTS.deathAges);
@@ -195,6 +197,7 @@ export const bodies: Observer = {
       out['injuries.woundInfections'] = injuries[InjuryKind.WOUND_INFECTION];
       out['injuries.gutIllnesses'] = injuries[InjuryKind.GUT_ILLNESS];
       if (injuries.length > InjuryKind.STRAIN) out['injuries.strains'] = injuries[InjuryKind.STRAIN];
+      if (injuries.length > InjuryKind.ANIMAL) out['injuries.byAnimals'] = injuries[InjuryKind.ANIMAL];
     }
     return out;
   },
