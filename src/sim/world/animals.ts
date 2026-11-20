@@ -136,6 +136,16 @@ export const GROUP_KINDS: readonly GroupKind[] = Object.freeze([
   },
 ] satisfies GroupKind[]);
 
+/**
+ * Tall cover in a cell, from its plant covers (§2.13): reeds, trees, half the bushes, and grass
+ * at full height from midsummer to late autumn (0.3 of it otherwise). Cats ambush from it, and
+ * it hides whatever lies in it from eyes (§4.8).
+ */
+export function tallCoverOf(season: number, grass: number, berry: number, nut: number, reed: number): number {
+  const grassTall = season >= 0.3 && season < 0.75 ? 1 : 0.3;
+  return reed + nut + 0.5 * berry + grassTall * grass;
+}
+
 export function groupKind(kind: number): GroupKind {
   const spec = GROUP_KINDS.find((k) => k.kind === kind);
   if (!spec) throw new Error(`No animal kind ${kind}.`);
@@ -673,8 +683,7 @@ export const animals: SystemDef = defineSystem({
     };
 
     function tallCover(k: number, season: number): number {
-      const grassTall = season >= 0.3 && season < 0.75 ? 1 : 0.3;
-      return reedCover[k] + nutCover[k] + 0.5 * berryCover[k] + grassTall * grassCover[k];
+      return tallCoverOf(season, grassCover[k], berryCover[k], nutCover[k], reedCover[k]);
     }
 
     function buildGrids(): void {

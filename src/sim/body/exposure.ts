@@ -7,7 +7,7 @@ import { dayFraction } from '../core/clock.ts';
 import { cosTurn } from '../core/dmath.ts';
 import { defineSystem } from '../core/registry.ts';
 import type { SystemDef } from '../core/registry.ts';
-import { BucketGrid } from '../core/spatial.ts';
+import { NeighbourGrid } from '../core/spatial.ts';
 import type { Sim, SimState } from '../sim.ts';
 import { CLIMATE_CONSTANTS, CLIMATE_FIELDS, CLIMATE_PARTS, MOISTURE_LAYER, airTemperatureC } from '../world/climate.ts';
 import { FIRE_CONSTANTS, FIRE_LAYERS, FireConditions, FireStage, airHumidity, createFireProbe } from '../world/fire.ts';
@@ -59,7 +59,7 @@ export const exposure: SystemDef = defineSystem({
     const shelter = createShelterProbe(sim);
     const fires = createFireProbe(sim);
     const stage = state.world.layerNames().includes(FIRE_LAYERS.stage) ? state.world.layer<Uint8Array>(FIRE_LAYERS.stage) : null;
-    const grid = new BucketGrid(W * cs, Hc * cs, 200);
+    const grid = new NeighbourGrid(W * cs, Hc * cs, 200);
     const share = new Float64Array(3);
     const fireOut = new Float64Array(2);
     let hides = new Float64Array(64);
@@ -109,7 +109,7 @@ export const exposure: SystemDef = defineSystem({
 
       let bodies = 0;
       for (let slot = 0; slot < n; slot++) if (alive[slot] === 1 && sex[slot] !== Sex.NONE) bodies++;
-      if (bodies > 1) grid.build(x, y, alive, n);
+      if (bodies > 1) grid.build(x, y, n, (slot) => alive[slot] === 1 && sex[slot] !== Sex.NONE);
 
       for (let slot = 0; slot < n; slot++) {
         if (alive[slot] !== 1 || sex[slot] === Sex.NONE) continue;
@@ -136,11 +136,8 @@ export const exposure: SystemDef = defineSystem({
         hideClo[slot] = clo < E.hideMostClo ? clo : E.hideMostClo;
         let near = 0;
         if (bodies > 1) {
-          const found = grid.query(px, py, E.contactM, x, y);
-          for (let q = 0; q < found; q++) {
-            const other = grid.result[q];
-            if (other !== slot && sex[other] !== Sex.NONE) near++;
-          }
+          const found = grid.query(px, py, E.contactM);
+          for (let q = 0; q < found; q++) if (grid.result[q] !== slot) near++;
         }
         contact[slot] = E.contactShare * (near < E.contactMost ? near : E.contactMost);
       }
