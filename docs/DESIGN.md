@@ -1117,9 +1117,71 @@ The rule is at most about 0.25 decisions per awake agent per tick (§4.7.12). Ac
 #### 4.9.9 Not in this version
 - *(Done in 3.3b, §2.17: animals keep away from persons, predators take lone persons, struck animals are wounded and fight back. Candidates (§4.9.5) gain strike on an animal percept while something is held; a person in an animal's jaws this tick does not walk.)*
 - No processing of food (pounding, cracking, soaking, cooking), so bitter root is always toxic and grass seed and nuts poorly digested; no water in food.
-- No memory (3.4): no "go there" candidates, no trip cost, no learned fear interrupt. The mind's dials are constants (3.4).
+- *(Done in 3.4, §4.10: memory, "go there" candidates, the trip, the mind's dials on the genome. The learned fear interrupt was not built; §4.10.8.)*
 - Skills do not touch acts (3.6): precision is a novice's.
 - Climbing counted start-to-end per tick; rivers waded freely; no swimming; acts on persons are only approach and avoid (Phase 4).
+
+### 4.10 Memory as built (Phase 3.4) [provisional]
+
+Written in 3.4 (2026-11-20, an [O] milestone, unattended) before the code. It makes §4.7.5–§4.7.10 concrete and puts the mind's dials on the genome. Code: `src/sim/mind/memory.ts` (the table, learning, the episodic buffer, place memory, and the predictor that replaces 3.3's blank one), `src/sim/mind/dials.ts` (the dials); the genome's list in `body/genetics.ts`. **Q12 was not answered, so its default (a) is built: one general kernel for delays and no prepared learning about food and illness** (§4.7.7). Nothing here names a kind of thing, a use or a person; every association starts empty (T5, the blank-slate guardrail).
+
+#### 4.10.1 Storage
+All of it is store columns of category `learned`, so a new agent's memory is zero-filled by the kernel, saved and hashed with the rest, and covered by the blank-slate guardrail with no new code (§4.7.5). Per agent:
+- **The table:** 512 slots. `memKey` (u32; key = cue × 16 + act kind, never 0 because no cue kind is 0, so 0 marks an empty slot), `memNow` and `memLater` (8 × f32 each: the predicted change in each channel during an act and in the hours after it), `memVar` and `memLaterVar` (f32: their variances), `memPainVar` (f32: σ²_pain), `memUsed` (u32: the tick the slot last learned), and `memCount` (u16: slots in use). Open addressing with linear probing from a multiplicative hash of the key. About 43 KB.
+- **The episodic buffer:** 24 records (`epiKey`, `epiPlace`, `epiEnd`, `epiCredit` 8 × f32) and `epiNext`, the record to be written next. About 1 KB. *(§4.7.7 also lists the drives at each act's start; nothing reads them yet, so they are not kept.)*
+- **Place memory:** 64 records (`placeId`: the 400 m place + 1, 0 for none; `placeSeen`; `placeScore`), each with up to 4 remembered things (`placeKey`: an association key; `placeCell`: the map cell where it was). About 2.8 KB.
+
+#### 4.10.2 Learning when an act ends (§4.7.6)
+At a decision, after the look and before choosing, the act that just ended (done, failed, out of time or interrupted; never the agent's first, which has no "before") is learned from. The **outcome** *o* is the drive channels now minus the drives at the act's start (`actDrives`). The **keys** involved, with the context of the look just made (the act's end):
+- (target, act): the act's target cue, or the self cue for rest, sleep and explore. Role: thing.
+- (light, act), (day length, act), (warmth, act), and (light, 0), (day length, 0), (warmth, 0). Role: context.
+- (place, 0). Role: context. *Created only if the error is salient or the place is in place memory* (§4.7.5's rule); otherwise used only if it exists.
+- For each of up to two **salient percepts** (the nearest animals, persons, and fires seen): (cue, act), unless the cue is the target's, and (cue, 0). Role: thing.
+
+Each key's effective variance is *v* = min(prior, stored + *Q* × ticks since it last learned), with prior *V*₀ × `learningRate` for things and a tenth of that for context, and *Q* = 2 × 10⁻⁵ × `learningRate` a tick; a missing key enters at its prior with zero predictions. With *p* the sum of the keys' "now" vectors and δ = *o* − *p*, each key moves by *g* δ with *g* = *v* ÷ (Σ*v* + *R*), *R* = 0.01; its variance becomes *v*(1 − *g*), and its σ²_pain moves by *g*(δ_pain² − σ²_pain). σ²_pain is therefore the spread of pain outcomes around what was predicted; counting it in value (below) at `riskTolerance` 0 is exactly the expected cost of an uncertain harm under the quadratic drive cost, because E[(*d* + *X*)²] = (*d* + μ)² + σ².
+
+**A full table** (384 of 512 in use, three quarters): before new keys are added, the least recently learned of 8 slots, read from a start drawn by hashing the new key with the tick, is forgotten with backward-shift deletion. No random stream is drawn. Keys are looked up again after a forgetting, because forgetting moves entries.
+
+#### 4.10.3 Delays (§4.7.7)
+- When the error is **salient** (Σ|δ| > 0.08), every record in the buffer adds *e* δ to its credit, with eligibility *e* = 2^(−age ÷ `traceHalfLife`), age from the record's act's end to now; records older than 6 half-lives are skipped (*e* < 1/64). At `traceHalfLife` 0 nothing is credited.
+- Then the act that just ended becomes a record: its (target, act) key, its (place, 0) key, its end tick, zero credit. If the buffer is full, the oldest record is **closed** first: its key's "later" vector moves toward its credit by *g* = *v*_later ÷ (*v*_later + *R*), and the variance shrinks to *v*_later(1 − *g*), with *v*_later regrown by *Q* like *v*; the same for its place key (created only if the credit is salient or the place is in place memory).
+- So an act's delayed consequences are learned about a day later, when its record leaves the buffer (24 acts at about 0.25 decisions per awake tick).
+
+#### 4.10.4 Place memory and "go there" (§4.7.9)
+§4.7.9 remembered places and the classes seen there. As built it remembers **things that were worth acting on, where they were**:
+- **Remembering:** when an act on a cell (a plant, carcass, water, stone, wood or shelter cell) ends done and its outcome was worth more than 0.01 by the value rule with the drives at its start (Σ *d*₀² − clamp(*d*₀ + *o*, 0, 1)²), its key and cell join the record of the cell's 400 m place: the score becomes that worth and the place is marked seen now. A new place takes an empty record, or the one seen longest ago; a fifth thing in a record replaces its oldest.
+- **Forgetting:** an act on a cell that fails (nothing to eat, no water) removes that key and cell from place memory. A remembered thing that has changed is therefore tried once, learned from, and forgotten.
+- **Go there:** at a choice, the three records with the highest score, not in the agent's present place, give their things as candidates: the same act on the same cell, with the distance to the cell's centre. They are valued exactly like a perceived thing, except that the Pavlovian association of the place there replaces the one here (μ += *P*(there) − *P*(here)). A remembered thing already among the perceived candidates is not added twice.
+- **Why things rather than places:** a remembered place needs an act to go there and a second choice on arrival, and a value for the place that does not depend on the drives of now; a remembered thing is an ordinary candidate, valued by what it now predicts with the drives of now (devaluation holds), learned by the same keys when it is used, and needs no new act.
+
+#### 4.10.5 Valuing a candidate (§4.7.10)
+At each choice, once: the Pavlovian sum *P* = Σ "now" of (place, 0), (light, 0), (day length, 0), (warmth, 0) and each salient percept's (cue, 0); for each act kind that is a candidate (worked out the first time one is valued), the context's prediction for that act, Σ "now" of (light, act), (day length, act), (warmth, act) and each salient percept's (cue, act); and **the trip** per metre, the agent's own (self, explore) "now" vector, each channel floored at 0, ÷ 2,160 m (half an hour's walk at 1.2 m/s, what one explore walks). Then for a candidate (target, act) at distance *x*:
+- μ = *P* + context(act) + now(target, act) + later(target, act) + trip × *x* (a salient percept that is also the target is not counted twice);
+- *v* = the effective variance of (target, act), or the prior if it is not in the table; σ²_pain its σ²_pain, or 0;
+- V = Σ [*d*² − clamp(*d* + μ, 0, 1)²] − (1 − `riskTolerance`) σ²_pain + `curiosity` √*v*, and the softmax at `explorationTemperature` (§4.9.5).
+The trip is floored at 0 because walking is what it prices: any relief that happened during an explore (a wound healing, the sun coming up) does not grow with distance.
+
+#### 4.10.6 The mind's dials (§4.7.14)
+Five dials join the genome after the body's two (D-047's machinery: two alleles, their mean plus developmental noise at conception, a normal step at mutation, clamped to the range). Each is a faculty's parameter with its alibi in `dials.ts`; none is a drive or a bias toward anything social. Founders draw each allele uniformly from the range below, or log-uniformly where marked, so the expressed value centres on the toy's working value with a spread several times its own size (§0.2: viable and wide; logged as viability choices, not tuned).
+
+| Dial | Range | Neutral (no effect) | Founders' alleles | Noise sd | Mutation sd |
+|---|---|---|---|---|---|
+| `learningRate` (× *V*₀ and *Q*) | 0–4 | 0: nothing is learned | 0.5–1.5 | 0.05 | 0.1 |
+| `traceHalfLife` (hours) | 0–12 | 0: no delayed credit | 0.25–4, log-uniform | 0.05 | 0.25 |
+| `curiosity` | 0–2 | 0: no bonus for the untried | 0–0.6 | 0.03 | 0.05 |
+| `explorationTemperature` | 0.001–1 | 1: choice almost ignores value | 0.003–0.03, log-uniform | 0.001 | 0.002 |
+| `riskTolerance` | −1–1 | 0: the spread counted exactly | −0.5–0.5 | 0.05 | 0.05 |
+
+A pipeline without genetics gives every agent the toy's values (1, 1 hour, 0.3, 0.01, 0). `traceHalfLife` is bounded at 12 hours: past that the 24-act buffer, about a day, ends the trace first.
+
+#### 4.10.7 Cost
+Learning touches at most 12 keys an act and 24 records on a salient error; valuing touches one key a candidate plus the context once per act kind; recall reads 64 scores. §4.7.12's rule (about 0.25 decisions per awake agent-tick) is unchanged. Measured in `STATUS.md` (Benchmarks) and D-053.
+
+#### 4.10.8 Not in this version
+- **The learned fear interrupt** (§4.7.2: a cue whose predicted pain is high coming into view mid-act). It needs a look at moving things every tick for every awake agent, and a look costs about 6 µs, which the budget cannot carry; a cheaper look at moving things alone is work for perception. Until then fear acts at choices: a predicted harm lowers the value of acts on and near what is seen. *(A designed mechanism not built: the owner is told, `GUARDRAILS.md` T11.)*
+- Hidden-cause nodes (3.5).
+- Prepared learning about food and illness (Q12 (a), the default).
+- No memory of when in the year a thing was found; "last seen" only.
 
 ## 5. Interaction primitives
 
