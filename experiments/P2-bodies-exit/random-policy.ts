@@ -17,7 +17,7 @@ import { SURROUNDINGS, drink } from '../../src/sim/body/heat.ts';
 import { exposeGut, injure, waterDose } from '../../src/sim/body/injury.ts';
 import { exposure } from '../../src/sim/body/exposure.ts';
 import { TERRAIN_LAYERS, Water } from '../../src/sim/world/terrain.ts';
-import { HADZA_MAN, HADZA_WOMAN, spawnWithBody } from '../../tests/fixtures/bodies.ts';
+import { HADZA_MAN, HADZA_WOMAN, spawnWithBody, withoutMinds } from '../../tests/fixtures/bodies.ts';
 
 const seed = Number(process.argv[2] ?? 1);
 const N = Number(process.argv[3] ?? 600);
@@ -84,9 +84,11 @@ const randomPolicy = defineSystem({
 });
 
 // Acts go before the bodies (pipeline.ts): insert the policy just before body.exposure.
-const at = SIM_PIPELINE.indexOf(exposure);
+// The pipeline as Phase 2 ran it: no minds (3.3), the random stand-in in their place.
+const REAL = withoutMinds(SIM_PIPELINE);
+const at = REAL.indexOf(exposure);
 if (at < 0) throw new Error('body.exposure is not in the pipeline');
-const pipeline = [...SIM_PIPELINE.slice(0, at), randomPolicy, ...SIM_PIPELINE.slice(at)];
+const pipeline = [...REAL.slice(0, at), randomPolicy, ...REAL.slice(at)];
 
 const config = defaultConfig(seed);
 const sim = createSim(config, pipeline);

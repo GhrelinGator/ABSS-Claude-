@@ -40,6 +40,14 @@ export interface SimConfig {
      */
     readonly recessiveLoad: boolean;
   };
+  /**
+   * The founding population (docs/DESIGN.md §4.9.6), placed at tick 0: how many, and the radius of the
+   * disc around a watered point they are spread over, metres. Optional: without it no agents are placed.
+   */
+  readonly founders?: {
+    readonly count: number;
+    readonly radiusM: number;
+  };
 }
 
 /** The defaults from docs/DESIGN.md §1.1 and §1.2. */
@@ -109,12 +117,23 @@ function positive(where: string, value: unknown): number {
 /** Check a config and return a frozen, normalised copy. Throws on anything unexpected. */
 export function validateConfig(input: unknown): SimConfig {
   // "genetics" came in Phase 2.7; configs written before it get its default.
-  const root = section('config', input, ['seed', 'time', 'world', 'climate'], ['genetics']);
+  const root = section('config', input, ['seed', 'time', 'world', 'climate'], ['genetics', 'founders']);
   const time = section('config.time', root.time, ['ticksPerDay', 'daysPerYear']);
   const world = section('config.world', root.world, ['widthCells', 'heightCells', 'cellSizeM', 'circumscription']);
   const climate = section('config.climate', root.climate, ['variability']);
   const genetics = section('config.genetics', root.genetics ?? { recessiveLoad: true }, ['recessiveLoad']);
-  return Object.freeze({
+  // "founders" came in Phase 3.3; it is kept only when given, so configs without it are unchanged.
+  const founders =
+    root.founders === undefined
+      ? undefined
+      : (() => {
+          const fo = section('config.founders', root.founders, ['count', 'radiusM']);
+          return Object.freeze({
+            count: integer('config.founders.count', fo.count, 0, 1_000_000),
+            radiusM: positive('config.founders.radiusM', fo.radiusM),
+          });
+        })();
+  const base = {
     seed: integer('config.seed', root.seed, 0, 0xffffffff),
     time: Object.freeze({
       ticksPerDay: integer('config.time.ticksPerDay', time.ticksPerDay, 1, 86400),
@@ -132,7 +151,8 @@ export function validateConfig(input: unknown): SimConfig {
     genetics: Object.freeze({
       recessiveLoad: flag('config.genetics.recessiveLoad', genetics.recessiveLoad),
     }),
-  });
+  };
+  return Object.freeze(founders === undefined ? base : { ...base, founders });
 }
 
 /** JSON with object keys in sorted order, so equal configs always produce equal text. */

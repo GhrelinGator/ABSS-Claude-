@@ -132,6 +132,12 @@ export const HEAT_COLUMNS = {
   /** Core temperature, °C; 0 until body.heat first sees the body. */
   coreC: { name: 'coreC', dtype: 'f64', category: 'body' },
   /** Total body water, kg: the conserved stock. */
+  /**
+   * Shivering and sweat in the last tick, each as a share of its most (§4.9.1): what the body felt of
+   * keeping its temperature, read by interoception.
+   */
+  shiverShare: { name: 'shiverShare', dtype: 'f64', category: 'body' },
+  sweatShare: { name: 'sweatShare', dtype: 'f64', category: 'body' },
   water: { name: 'water', dtype: 'f64', category: 'body', conserved: { quantity: 'water', role: 'stock' } },
   waterIn: { name: 'waterIn', dtype: 'f64', category: 'body', conserved: { quantity: 'water', role: 'inflow' } },
   waterOut: { name: 'waterOut', dtype: 'f64', category: 'body', conserved: { quantity: 'water', role: 'outflow' } },
@@ -198,6 +204,8 @@ export const heat: SystemDef = defineSystem({
       const shiver = agents.column<Float64Array>(B.shiverW.name).data;
       const made = agents.column<Float64Array>(B.heatW.name).data;
       const core = agents.column<Float64Array>(C.coreC.name).data;
+      const shiverShare = agents.column<Float64Array>(C.shiverShare.name).data;
+      const sweatShare = agents.column<Float64Array>(C.sweatShare.name).data;
       const water = agents.column<Float64Array>(C.water.name).data;
       const waterIn = agents.column<Float64Array>(C.waterIn.name).data;
       const waterOut = agents.column<Float64Array>(C.waterOut.name).data;
@@ -309,6 +317,8 @@ export const heat: SystemDef = defineSystem({
         const newCore = t + (stored * dt) / capacity;
         core[slot] = newCore;
         shiver[slot] = shiverW;
+        shiverShare[slot] = shiverW > 0 ? shiverW / (H.shiverMostBasal * basalW) : 0;
+        sweatShare[slot] = sweatKgS > 0 ? sweatKgS / (sweatMostPerM2 * area) : 0;
 
         // 4. Water.
         const fuel = (((madeW + shiverW) * dt) / JOULES_PER_KCAL) * H.metabolicWaterKgPerKcal;

@@ -21,7 +21,7 @@ import { CLIMATE_PARTS, airTemperatureC } from '../../src/sim/world/climate.ts';
 import { FIRE_FIELDS, FIRE_PARTS, fireConditions } from '../../src/sim/world/fire.ts';
 import { Material, OBJECT_STORE, ROCK_SHELTER_STORE, RockShelterKind, spawnObject } from '../../src/sim/world/materials.ts';
 import { TERRAIN_LAYERS } from '../../src/sim/world/terrain.ts';
-import { HADZA_MAN, MAN_DAY, dayScript, spawnWithBody } from '../fixtures/bodies.ts';
+import { HADZA_MAN, MAN_DAY, dayScript, spawnWithBody, withoutMinds } from '../fixtures/bodies.ts';
 import type { Step } from '../fixtures/bodies.ts';
 import { fxSurroundings, still } from '../fixtures/surroundings.ts';
 import type { Weather } from '../fixtures/surroundings.ts';
@@ -269,7 +269,7 @@ function smallWorld(seed: number, cells = 48, circumscription = 0.9): Sim {
   raw.world.widthCells = cells;
   raw.world.heightCells = cells;
   raw.world.circumscription = circumscription;
-  return createSim(validateConfig(raw), SIM_PIPELINE);
+  return createSim(validateConfig(raw), withoutMinds(SIM_PIPELINE));
 }
 
 test('body.exposure reads air, wind, sky, hides, fire and neighbours from the world at each body', () => {

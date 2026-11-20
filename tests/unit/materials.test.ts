@@ -25,13 +25,14 @@ import {
   takeWood,
 } from '../../src/sim/world/materials.ts';
 import { TERRAIN_LAYERS, Water } from '../../src/sim/world/terrain.ts';
+import { withoutMinds } from '../fixtures/bodies.ts';
 
 function makeSim(seed: number, cells: number, circumscription = 0.5): Sim {
   const raw = JSON.parse(JSON.stringify(defaultConfig(seed)));
   raw.world.widthCells = cells;
   raw.world.heightCells = cells;
   raw.world.circumscription = circumscription;
-  return createSim(validateConfig(raw), SIM_PIPELINE);
+  return createSim(validateConfig(raw), withoutMinds(SIM_PIPELINE));
 }
 function stream(id: number): Uint32Array {
   const s = new Uint32Array(STREAM_WORDS);
@@ -314,7 +315,7 @@ test('objects and loose material survive a save and load bit for bit', () => {
   strikeObjects(sim, b, a, 25, 0.7, s, 0);
   spawnObject(sim, Material.HIDE, 310, 300, 2, 1.2, 0);
   stepSim(sim, 3 * sim.config.time.ticksPerDay);
-  const copy = loadSim(saveSim(sim), SIM_PIPELINE);
+  const copy = loadSim(saveSim(sim), withoutMinds(SIM_PIPELINE));
   assert.equal(hashSim(copy), hashSim(sim));
   stepSim(sim, 5 * sim.config.time.ticksPerDay);
   stepSim(copy, 5 * copy.config.time.ticksPerDay);

@@ -137,10 +137,17 @@ function readHash(): { seed: number; circumscription: number; variability: numbe
   };
 }
 
+/**
+ * The page's founding population (DESIGN.md §4.9.6): 30 adults near flowing water. Their minds have
+ * learned nothing yet (Phase 3.3), so they choose at random among what they can do.
+ */
+const FOUNDERS = { count: 30, radiusM: 3000 };
+
 function configFor(seed: number, circumscription: number, variability: number): SimConfig {
   const raw = JSON.parse(JSON.stringify(defaultConfig(seed)));
   raw.world.circumscription = circumscription;
   raw.climate.variability = variability;
+  raw.founders = FOUNDERS;
   return validateConfig(raw);
 }
 
@@ -228,9 +235,10 @@ function updateClock(): void {
   const tick = sim.state.tick;
   const minutes = Math.floor(clock.dayFraction(config, tick) * 1440);
   const season = SEASONS[Math.floor((light.seasonFraction(config, tick) + 0.125) * 4) % 4];
+  const people = view ? view.agents.count : 0;
   dateLine.textContent =
     `Year ${clock.yearIndex(config, tick) + 1}, day ${clock.dayOfYear(config, tick) + 1} (${season}), ` +
-    `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+    `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)} · ${people} of ${FOUNDERS.count} people alive`;
   const ambient = light.ambientLight(config, tick);
   const sun = light.sunlight(config, tick);
   const moon = MOONS[Math.floor((light.moonPhase(config, tick) + 1 / 16) * 8) % 8];
@@ -354,6 +362,7 @@ function draw(now: number): void {
   if (mode === 'stone') drawRockShelters();
   drawFires();
   drawAnimals();
+  drawPeople();
   for (const flash of flashes) {
     const age = (now - flash.born) / FLASH_MS;
     const i = (flash.cell % land.W) + 0.5;
@@ -414,6 +423,26 @@ function drawAnimals(): void {
     context.beginPath();
     context.arc(x[s] / cs, y[s] / cs, r, 0, Math.PI * 2);
     context.fill();
+  }
+}
+
+/** Every living person as a white dot with a dark rim (Phase 3.3: founders whose minds have learned nothing). */
+function drawPeople(): void {
+  if (!view || !land) return;
+  const agents = view.agents;
+  const alive = agents.column('alive');
+  const x = agents.column('x');
+  const y = agents.column('y');
+  const cs = land.cellSizeM;
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = 'rgba(20, 20, 20, 0.9)';
+  context.lineWidth = 0.5;
+  for (let s = 0; s < agents.highWater; s++) {
+    if (alive[s] !== 1) continue;
+    context.beginPath();
+    context.arc(x[s] / cs, y[s] / cs, 1.3, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
   }
 }
 

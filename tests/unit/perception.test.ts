@@ -35,7 +35,7 @@ import { MATERIALS, MATERIAL_LAYERS, Material, OBJECT_STORE, STONE_MATERIALS, sp
 import { WATER_PATHOGEN_LAYER } from '../../src/sim/world/pathogens.ts';
 import { PLANT_SPECIES, coverLayer, foodLayer } from '../../src/sim/world/plants.ts';
 import { TERRAIN_LAYERS, Water } from '../../src/sim/world/terrain.ts';
-import { spawnWithBody } from '../fixtures/bodies.ts';
+import { spawnWithBody, withoutMinds } from '../fixtures/bodies.ts';
 
 /** Every agent in a real pipeline has a body. */
 const spawnAgent = (sim: Sim, x: number, y: number) => spawnWithBody(sim, x, y);
@@ -55,7 +55,7 @@ function world(seed: number, extra: SystemDef[] = [], cells = 48): Sim {
   raw.world.widthCells = cells;
   raw.world.heightCells = cells;
   raw.world.circumscription = 0.2;
-  const pipeline = [...SIM_PIPELINE];
+  const pipeline = withoutMinds(SIM_PIPELINE);
   pipeline.splice(pipeline.findIndex((d) => d.name === 'body.exposure'), 0, fxDeclare, ...extra);
   return createSim(validateConfig(raw), pipeline);
 }

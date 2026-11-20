@@ -808,6 +808,8 @@ export function rubWood(sim: Sim, a: number, b: number, energyJ: number, precisi
   let dust = (K.dustKgPerKj * energyJ) / 1000;
   if (dust > 0.5 * mass[b]) dust = 0.5 * mass[b];
   mass[b] -= dust;
+  // Too little work for an ember even on bone-dry wood: nothing to look up (the same result as below).
+  if (energyJ * precision * precision < K.emberEnergyJ) return { ember: false, caught: false, dustKg: dust };
   const x = objects.column<Float64Array>('x').data[a];
   const y = objects.column<Float64Array>('y').data[a];
   const conditions = fireConditions(sim);

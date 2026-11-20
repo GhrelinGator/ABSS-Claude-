@@ -41,6 +41,8 @@ export const DeathCause = {
   OLD_AGE: 8,
   /** Two broken copies of a gene the body cannot live without (§3.14): body.genetics's. */
   CONGENITAL: 9,
+  /** A plant's poison at a lethal strength (§4.9.2): body.gut's. */
+  POISONING: 10,
 } as const;
 
 export const METABOLISM = {
@@ -204,7 +206,7 @@ export function leanShiftKg(netKcal: number, fatKg: number, forbesKg: number): n
 
 export const BODY_PARTS = { deaths: 'body.deaths', deathAges: 'body.deathAges' } as const;
 /** Readings of `body.deaths`: index = DeathCause, value = deaths so far. */
-const DEATH_SLOTS = 10;
+const DEATH_SLOTS = 11;
 
 function declareBody(state: SimState): void {
   for (const spec of Object.values(BODY_COLUMNS)) state.agents.ensureColumn(spec);

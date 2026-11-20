@@ -65,7 +65,8 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 
 - **3.1 [F]** Design the learning architecture (`DESIGN.md` §4.5) in writing first: features, value learning, how delays are handled, memory limits, compute cost per agent. Add it to `DESIGN.md` before coding. *Done 2026-11-20: `DESIGN.md` §4.7, D-049.*
 - **3.2 [O]** Perception (light, terrain, vegetation), individual recognition. *Done 2026-11-20: `DESIGN.md` §4.8, D-050.*
-- **3.3 [O]** Drives (closed list) and action selection, with the solo acts' physics, the body's door for plant toxins, and founders (`DESIGN.md` §4.7.14).
+- **3.3 [O]** Drives (closed list) and action selection, with the solo acts' physics, the body's door for plant toxins, and founders (`DESIGN.md` §4.7.14). *Done 2026-11-20: `DESIGN.md` §4.9, D-051. Minds have learned nothing yet: choice is uniform, the random-policy baseline.*
+- **3.3b [F]** Animals and agents meet (added 2026-11-20, D-051): how animals respond to agents (flight distances by kind, predators choosing agents as prey, isolated ones first, ambush from cover at night) and striking animals (wounds by force and edge, several attackers adding up against large prey, prey fighting back). World mechanisms with alibis, written into `DESIGN.md` before code; no agent knows any of it. Without it fear has nothing to learn but fire, and the Phase 3 exit's ambush predators cannot be a real hidden cause.
 - **3.4 [O]** Episodic buffer, semantic associations, entity-response models.
 - **3.5 [O]** Hidden-cause inference.
 - **3.6 [O]** Skills wired into action success and cost.

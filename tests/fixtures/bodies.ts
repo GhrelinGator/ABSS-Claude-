@@ -17,6 +17,14 @@ import { GENETICS_COLUMNS, formGenome } from '../../src/sim/body/genetics.ts';
 
 const f64 = (sim: Sim, name: string) => sim.state.agents.column<Float64Array>(name).data;
 
+/**
+ * The real pipeline without the systems that place founders and make agents act (§4.9): bodies stand
+ * where a test puts them and do only what the test scripts, as in Phase 2.
+ */
+export function withoutMinds(pipeline: readonly SystemDef[]): SystemDef[] {
+  return pipeline.filter((system) => system.name !== 'mind' && system.name !== 'founders');
+}
+
 /** Load-hours a day of a forager's working day (§3.11): what the Hadza-like adults below are used to. */
 export const FORAGER_LOAD = 8;
 
