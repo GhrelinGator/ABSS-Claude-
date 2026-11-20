@@ -1003,7 +1003,7 @@ This shows **the code does what this section says** on a toy, nothing about the 
 - **3.3 [O] Drives, acts and choice:** interoception (§4.7.4), the solo acts of §5.5 as physics written in a new `DESIGN.md` section before coding (consume — drinking is consuming water —, move, rest, sleep, pick up, drop, carry, strike, manipulate, approach, avoid), the body's door for plant toxins (§2.7: the values exist, no body reads them yet), choice (§4.7.10), and **founders**: formed from their genomes (D-047), their conditioning (`BodySpec.conditionedTo`, D-043) and where and in which season they start, each written down as a body choice, not a tune. Acts must read capacity (D-048), or minds working flat out starve as the random policy did.
 - **3.3b [F] Animals and agents meet** (added in 3.3, §4.9.9): flight from agents, predators taking agents, striking animals.
 - **3.4 [O] Memory** *(done: §4.10, D-053)*: the table, the learning rules, the buffer and delays, place memory; the mind's dials on the genome (`learningRate`, `traceHalfLife`, `curiosity`, `explorationTemperature`, `riskTolerance`), each with its alibi and founders' range. Tests against hand-built cases: one-trial learning, blocking, latent inhibition, extinction, a delayed effect learned and unlearned.
-- **3.5 [O] Hidden-cause nodes** (§4.7.8) and `hiddenCauseBias`.
+- **3.5 [O] Hidden-cause nodes** (§4.7.8) and `hiddenCauseBias` *(done: §4.11)*.
 - **3.6 [O] Skills into acts** (§3.11's `bySkill`).
 - **3.7 [F] Viability and the emergence checks:** cold deaths of naked bodies (D-041, D-048), old age counted twice (D-045), founders' survival; tuning is logged and aimed at plausibility only (T4).
 
@@ -1198,9 +1198,50 @@ Learning touches at most 12 keys an act and 24 records on a salient error; valui
 
 #### 4.10.10 Not in this version
 - **The learned fear interrupt** (§4.7.2: a cue whose predicted pain is high coming into view mid-act). It needs a look at moving things every tick for every awake agent, and a look costs about 6 µs, which the budget cannot carry; a cheaper look at moving things alone is work for perception. Until then fear acts at choices: a predicted harm lowers the value of acts on and near what is seen. *(A designed mechanism not built: the owner is told, `GUARDRAILS.md` T11.)*
-- Hidden-cause nodes (3.5).
+- Hidden-cause nodes (3.5): built in §4.11.
 - Prepared learning about food and illness (Q12 (a), the default).
 - No memory of when in the year a thing was found; "last seen" only.
+
+### 4.11 Hidden causes as built (Phase 3.5) [provisional]
+
+Written in 3.5 (2026-11-20, an [O] milestone, unattended) before the code. It makes §4.4 and §4.7.8 concrete. Code: `src/sim/mind/memory.ts` (nodes live beside the association table and are learned by the same rule), the dial in `src/sim/mind/dials.ts`, the genome's list in `body/genetics.ts`. A node is an ordinary cue (kind 7, §4.7.3) that the mind makes up for itself; nothing here names what a node stands for, and every agent starts with none (T5).
+
+#### 4.11.1 What is kept
+Per agent, in store columns of category `learned`: up to **16 nodes** (§4.7.8), each with
+- `nodeId` (u32): the node's serial, 0 for an empty slot. Its cue is (kind 7, serial). Serials count up per agent (`nodeSerial`) and are never reused within 2²⁴ nodes, so a replaced node's associations are never read as the new node's: they are left in the table unread, and its least-recently-learned forgetting (§4.10.2) clears them first.
+- its **signature**: `nodePlace` (the 400 m place), `nodeLight` (light band), `nodeDay` (day-length band) where it was posited, and `nodeActs` (u16: a bit for each act kind among the act that had just ended and the two acts before it in the episodic buffer);
+- `nodeStrength` (f32: the summed size of the residuals attributed to it) and `nodeLast` (u32: the tick it was last given one).
+Each episodic record also keeps `epiNodes` (2 × u32): the (node, act) keys of the nodes active when its act ended. About 0.5 KB an agent in all.
+
+#### 4.11.2 Active nodes
+A node is **active** in a look when at least two of its place, light and day length match the look's (§4.7.8). When more than two are active, the two with the highest **effective strength** are used: strength × 2^(−ticks since `nodeLast` ÷ one compressed year) [provisional]. *(A year, because day length repeats yearly: a node tied to a season meets its season again at half strength.)* Ties go to the lower slot.
+
+#### 4.11.3 A node takes part like a thing (§4.7.8, §4.3)
+- **Learning now** (§4.10.2): the two active nodes join the keys of an act's end as things, at prior *V*₀ × `learningRate`: (node, act) and (node, 0). They share the error by their Kalman gains like any other key.
+- **Delays** (§4.10.3): a record's `epiNodes` keys gather its credit too; when it closes, their "later" vectors move toward the credit like the target's, if they are still held (never created anew then).
+- **Valuing** (§4.10.5): the Pavlovian sum adds (node, 0) of the active nodes, and the context of an act adds (node, act). For a remembered thing elsewhere ("go there"), the nodes active **there** (its place, with the light and day length of now) replace those active here, as the place's own association already does.
+
+#### 4.11.4 The unexplained residual
+After the update of an act's end, each key has moved by *g*_k δ, so what remains of the error is **r = δ (1 − Σ*g*) = δ *R* ÷ (Σ*v* + *R*)**: the part no involved key was uncertain enough to absorb (§4.7.8). It is large when everything involved is familiar and the outcome still surprised; when a novel thing was involved it is small, because the novel thing took the surprise. Its **size** is Σ|r| over the eight channels.
+
+#### 4.11.5 Positing and strengthening
+When the size is **salient** (above 0.08, the threshold of §4.7.7) and the agent's bias *b* = max(0, `hiddenCauseBias`) is above 0, the residual is **set aside for a hidden cause** with probability *p* = min(1, *b* × size). The draw comes from the agent's own stream, and only when 0 < *p* < 1.
+- **Fit:** the best-fitting node is the active one (two or more of place, light and day length matching) with the most matches, then the most act kinds in common between its `nodeActs` and the last three acts, then the highest effective strength, then the lowest slot. If one fits, it is **strengthened**: its strength grows by the size and `nodeLast` becomes now.
+- **Otherwise a node is posited** with the signature of now and strength equal to the size, in an empty slot or, when all 16 are in use, in place of the one with the lowest effective strength.
+- **The node then learns the residual**, unless it was one of the two that took part in the update (it has already had its share by its gain, §4.11.3): its (node, act) and (node, 0) keys, entering at prior if missing, move by Kalman–Rescorla–Wagner on the error r − (their summed prediction). A new node therefore takes most of a residual at once (both keys at *V*₀, together *g* ≈ 0.89 at `learningRate` 1).
+- **At *b* ≤ 0 nothing is ever set aside**: no node is posited, no node key enters any update or valuation, and the mind is exactly the mind of 3.4. That is the ablation of the Phase 3 exit check and of §7.7–§7.8.
+
+#### 4.11.6 The dial: `hiddenCauseBias`, a liability
+`hiddenCauseBias` could feed hoped-for outcomes (§7.7–§7.8), so founders must start centred on its neutral value (D-005, §0.2). A probability has a floor at 0, and a founders' range that starts at 0 would still give almost every founder some bias. So the dial is a **liability** (Falconer's threshold model for traits that have a floor): the genome carries a value anywhere in **−4 to 4**, and the mind reads max(0, value). Founders' alleles are drawn uniformly from **−2 to 2**, so the expressed value is centred on 0 and **about half the founders never set anything aside**; the rest spread up to about 2 (a residual of size 0.25 then set aside with probability up to one half). Developmental noise sd 0.1, mutation sd 0.2. Every value at or below 0 is neutral, and mutation moves alleles up and down alike, so evolution has a real neutral side to drift into. A pipeline without genetics uses 0: a mind without a genome posits nothing.
+
+#### 4.11.7 Tallies and doors
+The mind's tally (`mind.acts`) counts nodes posited, nodes strengthened and residuals that were salient. Doors for tests and benches: `residual` (the last update's unexplained part), `infer(slot, act, tick)` (the step of §4.11.5 on that residual, in the context last set by `contextOf`), `activeNodes`, `nodeCount`, `node` (a node's signature and strength). The analysis layer reads the node columns through `readonly.ts` (the `minds` observer: nodes held, agents with any, posited and strengthened).
+
+#### 4.11.8 Known limits
+- **Activity by two of three makes nodes broad.** A node posited at night in the long days is active at night in the long days everywhere, and fits every later salient residual there, so an agent's nodes divide mostly by light and season (twelve combinations) and place-specific nodes form only where light and season differ. An exact-match fit would make nodes place-specific; the design's reading (fit = active) was built, and 3.7 can revisit it with a log entry.
+- **A node never stands for an act or a thing.** It is an unseen context; what follows acting while it is active is learned as (node, act) associations, which is all §4.3's entity model asks.
+- **The trigger reads every channel.** Unexplained relief (food or warmth that no known key predicted) is set aside too, as §4.4's "food appearing" asks.
+- Nodes are not merged, split or given up when they stop predicting anything; a node whose associations have gone to zero still takes part where it is active, and goes only when it is the weakest of sixteen.
 
 ## 5. Interaction primitives
 
