@@ -10,11 +10,13 @@ import type { Sim, SimState, StatePart } from '../sim.ts';
 import { Sex, BODY_COLUMNS } from '../body/metabolism.ts';
 import { Material, OBJECT_STORE } from '../world/materials.ts';
 import { ACT_COLUMNS, Act, ActEnd, ActTally, createActs, declareActs } from './acts.ts';
-import { BLANK_PREDICTOR, CHOICE, Candidates, PREDICTION_LENGTH, choose, gatherCandidates, interrupts } from './choice.ts';
+import { CHOICE, Candidates, DEFAULT_CHOICE_DIALS, PREDICTION_LENGTH, choose, gatherCandidates, interrupts } from './choice.ts';
+import { BLANK_PREDICTOR } from './choice.ts';
 import type { Predictor } from './choice.ts';
 import { CueKind, SELF_CUE, cue, materialClass } from './cues.ts';
 import { CHANNELS, Channel, createInteroception } from './interoception.ts';
 import { PERCEPTION, Percepts, createPerception, declarePerception } from './perception.ts';
+import { createMemory, declareMemory } from './memory.ts';
 
 export const MIND_PARTS = { acts: 'mind.acts' } as const;
 
@@ -36,8 +38,8 @@ function actTally(): StatePart {
 }
 
 /**
- * Build the mind system with a given predictor factory (3.3: the blank one; 3.4 passes memory). Tests
- * may pass another; the real pipeline uses `mind` below.
+ * Build the mind system with a given predictor factory: memory in the real pipeline (`mind` below), the
+ * blank predictor for the random-policy baseline (`blankMind`), or a stand-in in tests.
  */
 export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
   // ALIBI: an animal that feels its body, sees around it and does one thing at a time, chosen among what
@@ -47,6 +49,7 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
     declare(state: SimState) {
       declarePerception(state);
       declareActs(state);
+      declareMemory(state);
       state.addPart(actTally());
     },
     create(sim: Sim) {
@@ -87,11 +90,14 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
 
       function decide(slot: number): void {
         perception.perceive(slot, look);
+        // The act that just ended is learned from before the next is chosen (§4.10.2).
+        if (predictor.learn) predictor.learn(slot, look, drives, 0);
         const heldN = heldCuesOf(slot);
         gatherCandidates(look, heldIds, heldCues, heldN, order, cands);
+        if (predictor.recall) predictor.recall(slot, look, cands, drives, 0);
         predictor.begin(slot, look);
         const rng = agents.column<Uint32Array>('rng').data;
-        const i = choose(cands, predictor, drives, 0, prediction, rng, slot * STREAM_WORDS);
+        const i = choose(cands, predictor, drives, 0, prediction, rng, slot * STREAM_WORDS, predictor.dials ?? DEFAULT_CHOICE_DIALS);
         acts.begin(slot, cands.act[i], cands.cue[i], cands.source[i], cands.ref[i], cands.x[i], cands.y[i], drives, 0);
         tally[ActTally.DECISIONS] += 1;
       }
@@ -100,6 +106,7 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
         const tick = state.tick;
         intero.refresh();
         acts.refresh();
+        if (predictor.refresh) predictor.refresh();
         const alive = agents.alive.data;
         const sex = agents.column<Uint8Array>(BODY_COLUMNS.sex.name).data;
         const kind = agents.column<Uint8Array>(ACT_COLUMNS.actKind.name).data;
@@ -164,7 +171,10 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
   });
 }
 
-/** The mind system of the real pipeline: in 3.3 it has learned nothing (§4.9). */
-export const mind: SystemDef = mindSystem(() => BLANK_PREDICTOR);
+/** The mind system of the real pipeline: it learns (§4.10). */
+export const mind: SystemDef = mindSystem(createMemory);
+
+/** The same mind with a predictor that never learns: the random-policy baseline (§4.9, §7.1). */
+export const blankMind: SystemDef = mindSystem(() => BLANK_PREDICTOR);
 
 export { CHOICE };
