@@ -24,7 +24,7 @@ import type { Predictor } from '../../src/sim/mind/choice.ts';
 import { CueKind, SELF_CUE, cue, materialClass, plantClass, PlantLook, CLASS } from '../../src/sim/mind/cues.ts';
 import { FOUNDERS } from '../../src/sim/mind/founders.ts';
 import { CHANNELS, Channel, createInteroception } from '../../src/sim/mind/interoception.ts';
-import { MIND_PARTS, mindSystem } from '../../src/sim/mind/mind.ts';
+import { MIND_PARTS, blankMind, mindSystem } from '../../src/sim/mind/mind.ts';
 import { PerceptSource, Percepts, createPerception } from '../../src/sim/mind/perception.ts';
 import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
 import { createSim, hashSim, loadSim, saveSim, stepSim } from '../../src/sim/sim.ts';
@@ -378,6 +378,13 @@ test('hands: picking up from a cell and lying objects, two at most, dropping, st
   sim.state.agents.column<Float64Array>('y').data[slot] = y;
   acts.refresh();
   const objects = sim.state.store(OBJECT_STORE);
+  // Whatever its mind picked up in that tick goes back on the ground: the test fills the hands itself.
+  const heldNow = sim.state.agents.column<Uint32Array>(ACT_COLUMNS.held.name).data;
+  for (let h = 0; h < 2; h++) {
+    const o = objects.slotOf(heldNow[slot * 2 + h]);
+    if (o >= 0) objects.column<Uint32Array>('holder').data[o] = 0;
+    heldNow[slot * 2 + h] = 0;
+  }
   const flintCue = cue(CueKind.CLASS, materialClass(Material.FLINT, false, false));
   for (let n = 0; n < 3; n++) {
     acts.begin(slot, Act.PICK_UP, flintCue, PerceptSource.CELL, k, x, y, NO_DRIVES, 0);
@@ -391,10 +398,12 @@ test('hands: picking up from a cell and lying objects, two at most, dropping, st
   const holder = objects.column<Uint32Array>('holder').data;
   for (let h = 0; h < 2; h++) assert.equal(holder[objects.slotOf(ids[h])], sim.state.agents.id.data[slot]);
 
-  // Drop one, then strike a lying nodule with the other.
-  acts.begin(slot, Act.DROP, flintCue, PerceptSource.OBJECT, ids[1], 0, 0, NO_DRIVES, 0);
+  // Drop the lighter, then strike a lying nodule with the other (pieces taken from a cell vary in size).
+  const mass = objects.column<Float32Array>('mass').data;
+  const lighter = mass[objects.slotOf(ids[0])] < mass[objects.slotOf(ids[1])] ? ids[0] : ids[1];
+  acts.begin(slot, Act.DROP, flintCue, PerceptSource.OBJECT, lighter, 0, 0, NO_DRIVES, 0);
   acts.run(slot);
-  assert.equal(holder[objects.slotOf(ids[1])], 0);
+  assert.equal(holder[objects.slotOf(lighter)], 0);
   const nodule = spawnObject(sim, Material.FLINT, x + 1, y, 2, 0.15, 0);
   const noduleId = objects.id.data[nodule];
   acts.refresh();
@@ -567,13 +576,14 @@ test('a predictor plugged into the mind system steers what agents do', () => {
     },
   };
   const swap = (p: readonly SystemDef[]) => p.map((s) => (s.name === 'mind' ? mindSystem(() => sleepy) : s));
+  const blank = (p: readonly SystemDef[]) => p.map((s) => (s.name === 'mind' ? blankMind : s));
   const sleeps = (pipeline: readonly SystemDef[]) => {
     const sim = createSim(config(14, 48, { count: 10, radiusM: 1000 }), pipeline);
     stepSim(sim, 288);
     const tally = sim.state.parts.find((p) => p.name === MIND_PARTS.acts)!.readings!() as Float64Array;
     return tally[ActTally.BEGUN + Act.SLEEP] / tally[ActTally.DECISIONS];
   };
-  const blank = sleeps(SIM_PIPELINE);
+  const unsteered = sleeps(blank(SIM_PIPELINE));
   const steered = sleeps(swap(SIM_PIPELINE));
-  assert.ok(steered > 3 * blank, `share of choices that were sleep: ${steered} steered, ${blank} blank`);
+  assert.ok(steered > 3 * unsteered, `share of choices that were sleep: ${steered} steered, ${unsteered} blank`);
 });

@@ -31,6 +31,7 @@ import {
 import { BirthEvent, REPRODUCTION_COLUMNS, REPRODUCTION_PARTS, mate, reproduction } from '../../src/sim/body/reproduction.ts';
 import {
   GENEALOGY_FIELDS,
+  GENE_DIALS,
   GENETICS_COLUMNS,
   GENETICS_PARTS,
   LETHAL_MUTATIONS_PER_GAMETE,
@@ -152,11 +153,12 @@ test('passing on: a fair draw of each parent\'s two copies, mutation at the desi
     const father = founder(sim, Sex.MALE);
     const c = child(sim, mother, father);
     const a = alleles();
+    const width = 2 * GENE_DIALS.length;
     for (const [parent, k] of [[mother, 0], [father, 1]] as const) {
-      for (let d = 0; d < 2; d++) {
-        const got = a[c * 4 + 2 * d + k];
-        const p0 = a[parent * 4 + 2 * d];
-        const p1 = a[parent * 4 + 2 * d + 1];
+      for (let d = 0; d < GENE_DIALS.length; d++) {
+        const got = a[c * width + 2 * d + k];
+        const p0 = a[parent * width + 2 * d];
+        const p1 = a[parent * width + 2 * d + 1];
         passed += 1;
         if (got === p0 && got !== p1) {
           picks += 1;

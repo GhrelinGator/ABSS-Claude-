@@ -10,7 +10,7 @@
 // recessive disorder.
 
 import { ticksPerYear } from '../core/clock.ts';
-import { exp } from '../core/dmath.ts';
+import { exp, log } from '../core/dmath.ts';
 import { defineDial, defineSystem } from '../core/registry.ts';
 import type { DialDef, SystemDef } from '../core/registry.ts';
 import { StreamDomain, globalStreamOffset, nextFloat, nextInt, nextNormal, nextU32 } from '../core/rng.ts';
@@ -18,6 +18,7 @@ import type { ColumnSpec } from '../core/store.ts';
 import type { Sink, Source } from '../core/codec.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { BODY_COLUMNS, DeathCause, Sex, deathDoor } from './metabolism.ts';
+import { CURIOSITY, EXPLORATION_TEMPERATURE, LEARNING_RATE, RISK_TOLERANCE, TRACE_HALF_LIFE } from '../mind/dials.ts';
 
 // ALIBI: bodies of one species grow to different sizes, and a parent's size passes in part to its
 // young; a larger body stores and carries more but costs more to keep and to grow, whether or not any
@@ -32,9 +33,10 @@ export const BASAL_SCALE: DialDef = defineDial({ name: 'basalScale', min: 0.7, m
 /** How a dial is inherited: founders' alleles, developmental noise, mutation (§3.14). Estimates. */
 export interface GeneDial {
   readonly dial: DialDef;
-  /** Founders draw each allele uniformly from [foundersFrom, foundersTo]. */
+  /** Founders draw each allele uniformly from [foundersFrom, foundersTo]; log-uniformly if `foundersLog` (both ends then above 0). */
   readonly foundersFrom: number;
   readonly foundersTo: number;
+  readonly foundersLog?: boolean;
   /** Developmental noise added once, at conception, to the mean of the two alleles (sd). */
   readonly noiseSd: number;
   /** Spread of the normal step by which a mutated allele moves (sd). */
@@ -42,16 +44,30 @@ export interface GeneDial {
 }
 
 /**
- * The dials on the genome, in order. Only the body's dials so far (D-047): the mind's join with the
- * mechanisms that read them (Phases 3–4), and any that is a drive or a bias waits for approval (CLAUDE.md).
+ * The dials on the genome, in order: the body's two (D-047), then the mind's five (3.4, DESIGN.md
+ * §4.10.6), which join with the mechanisms that read them. A dial that is a drive or a bias still waits
+ * for approval (CLAUDE.md). Founders' ranges for the mind's dials are viability choices (§0.2), logged.
  */
 export const GENE_DIALS: readonly GeneDial[] = Object.freeze([
   { dial: FRAME_SCALE, foundersFrom: 0.75, foundersTo: 1.25, noiseSd: 0.04, mutationSd: 0.05 },
   { dial: BASAL_SCALE, foundersFrom: 0.85, foundersTo: 1.15, noiseSd: 0.04, mutationSd: 0.03 },
+  { dial: LEARNING_RATE, foundersFrom: 0.5, foundersTo: 1.5, noiseSd: 0.05, mutationSd: 0.1 },
+  { dial: TRACE_HALF_LIFE, foundersFrom: 0.25, foundersTo: 4, foundersLog: true, noiseSd: 0.05, mutationSd: 0.25 },
+  { dial: CURIOSITY, foundersFrom: 0, foundersTo: 0.6, noiseSd: 0.03, mutationSd: 0.05 },
+  { dial: EXPLORATION_TEMPERATURE, foundersFrom: 0.003, foundersTo: 0.03, foundersLog: true, noiseSd: 0.001, mutationSd: 0.002 },
+  { dial: RISK_TOLERANCE, foundersFrom: -0.5, foundersTo: 0.5, noiseSd: 0.05, mutationSd: 0.05 },
 ]);
 const DIALS = GENE_DIALS.length;
 /** Index of each dial in GENE_DIALS (and in the `alleles` and `fetusDials` columns). */
-export const DialIndex = { FRAME_SCALE: 0, BASAL_SCALE: 1 } as const;
+export const DialIndex = {
+  FRAME_SCALE: 0,
+  BASAL_SCALE: 1,
+  LEARNING_RATE: 2,
+  TRACE_HALF_LIFE: 3,
+  CURIOSITY: 4,
+  EXPLORATION_TEMPERATURE: 5,
+  RISK_TOLERANCE: 6,
+} as const;
 
 /** Every number of genetics, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Genetics*). */
 export const GENETICS = {
@@ -90,6 +106,11 @@ export const GENETICS_COLUMNS = {
   /** Expressed values (alleles' mean plus developmental noise), one column per dial. */
   frameScale: { name: 'frameScale', dtype: 'f64', category: 'body' },
   basalScale: { name: 'basalScale', dtype: 'f64', category: 'body' },
+  learningRate: { name: 'learningRate', dtype: 'f64', category: 'body' },
+  traceHalfLife: { name: 'traceHalfLife', dtype: 'f64', category: 'body' },
+  curiosity: { name: 'curiosity', dtype: 'f64', category: 'body' },
+  explorationTemperature: { name: 'explorationTemperature', dtype: 'f64', category: 'body' },
+  riskTolerance: { name: 'riskTolerance', dtype: 'f64', category: 'body' },
   /** Age, years, at which a recessive disorder kills the body; 0 if none will. */
   disorderAtYears: { name: 'disorderAtYears', dtype: 'f64', category: 'body' },
   /** The fetus's genome, on its mother's row while she is pregnant: alleles, broken loci, expressed values. */
@@ -99,7 +120,18 @@ export const GENETICS_COLUMNS = {
 } as const satisfies Record<string, ColumnSpec>;
 const C = GENETICS_COLUMNS;
 /** The expressed column of each dial, in GENE_DIALS order. */
-const EXPRESSED: readonly string[] = [C.frameScale.name, C.basalScale.name];
+const EXPRESSED: readonly string[] = [
+  C.frameScale.name,
+  C.basalScale.name,
+  C.learningRate.name,
+  C.traceHalfLife.name,
+  C.curiosity.name,
+  C.explorationTemperature.name,
+  C.riskTolerance.name,
+];
+if (EXPRESSED.length !== GENE_DIALS.length || GENE_DIALS.some((g, d) => g.dial.name !== EXPRESSED[d])) {
+  throw new Error('genetics: the expressed columns do not match the dials on the genome.');
+}
 
 /** The genealogy's record: id, mother's id, father's id, sex, birth tick, loci with two broken copies. */
 export const GENEALOGY_FIELDS = 6;
@@ -215,7 +247,12 @@ export function formGenome(sim: Sim, slot: number): void {
   const ao = slot * 2 * DIALS;
   for (let d = 0; d < DIALS; d++) {
     const g = GENE_DIALS[d];
-    for (let k = 0; k < 2; k++) alleles[ao + 2 * d + k] = g.foundersFrom + (g.foundersTo - g.foundersFrom) * nextFloat(s, o);
+    for (let k = 0; k < 2; k++) {
+      const u = nextFloat(s, o);
+      alleles[ao + 2 * d + k] = g.foundersLog
+        ? g.foundersFrom * exp(u * log(g.foundersTo / g.foundersFrom))
+        : g.foundersFrom + (g.foundersTo - g.foundersFrom) * u;
+    }
   }
   const expressed = new Float64Array(DIALS);
   express(sim, alleles, ao, expressed, 0);

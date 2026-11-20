@@ -1,11 +1,11 @@
-// Choosing (docs/DESIGN.md §4.7.10, §4.9.5): the candidates physics allows, each valued by the change
-// in the drive channels its predictions say it brings, weighed by the drives as they are now, and a
-// softmax over them. Predictions come through one interface: 3.3's predictor has learned nothing, so
-// every candidate is valued alike; 3.4's memory fills it.
+// Choosing (docs/DESIGN.md §4.7.10, §4.9.5, §4.10.5): the candidates physics allows, each valued by the
+// change in the drive channels its predictions say it brings, weighed by the drives as they are now, and
+// a softmax over them. Predictions come through one interface: the blank predictor has learned nothing,
+// so every candidate is valued alike (the random-policy baseline); memory (3.4) is the real one.
 
 import { exp } from '../core/dmath.ts';
 import { nextFloat } from '../core/rng.ts';
-import { Act } from './acts.ts';
+import { ACTS, Act } from './acts.ts';
 import { CHANNELS, Channel } from './interoception.ts';
 import { ClassKind, CueKind, classKind, cueKind, cuePayload, SELF_CUE } from './cues.ts';
 import { PerceptSource } from './perception.ts';
@@ -13,11 +13,11 @@ import type { Percepts } from './perception.ts';
 
 export const CHOICE = {
   /** Percepts considered, nearest first, and the most of them that may be persons [provisional]. */
-  percepts: 12,
+  percepts: 24,
   persons: 4,
   /** Most candidates (§4.9.5). */
-  most: 64,
-  /** The mind's dials, constants until 3.4 puts them on the genome (§4.7.10's toy values) [provisional]. */
+  most: 96,
+  /** The choosing dials of a mind with no genome, and of the blank predictor (§4.7.10's toy values; 3.4 puts them on the genome) [provisional]. */
   curiosity: 0.3,
   explorationTemperature: 0.01,
   riskTolerance: 0,
@@ -29,12 +29,35 @@ const K = CHOICE;
 /** What a predictor writes: the predicted change in each channel, then v and σ²_pain. */
 export const PREDICTION_LENGTH = CHANNELS + 2;
 
-/** Where a mind's predictions come from (§4.7.5–§4.7.9). */
+/** The dials a choice reads (§4.7.10, §4.10.6). */
+export interface ChoiceDials {
+  curiosity: number;
+  explorationTemperature: number;
+  riskTolerance: number;
+}
+export const DEFAULT_CHOICE_DIALS: Readonly<ChoiceDials> = Object.freeze({
+  curiosity: K.curiosity,
+  explorationTemperature: K.explorationTemperature,
+  riskTolerance: K.riskTolerance,
+});
+
+/** Where a mind's predictions come from (§4.7.5–§4.7.9, §4.10). */
 export interface Predictor {
+  /** Fetch whatever it reads afresh: once a tick, before any agent decides. */
+  refresh?(): void;
+  /** Learn from agent `slot`'s act that just ended, before it chooses again (§4.10.2). */
+  learn?(slot: number, look: Percepts, drives: Float64Array, offset: number): void;
+  /** Add remembered things to the candidates, by their worth to drives `drives` (from `offset`) (§4.10.4). */
+  recall?(slot: number, look: Percepts, cands: Candidates, drives: Float64Array, offset: number): void;
   /** A choice is about to be valued by agent `slot`, in the context of this look. */
   begin(slot: number, look: Percepts): void;
-  /** Predict for act `act` on cue `c` (with the trip of `distM`): changes in `out[0..7]`, v in `out[8]`, σ²_pain in `out[9]`. */
-  predict(c: number, act: number, distM: number, out: Float64Array): void;
+  /**
+   * Predict for act `act` on cue `c` (with the trip of `distM`; `there`, a place cue, if the thing is
+   * remembered elsewhere): changes in `out[0..7]`, v in `out[8]`, σ²_pain in `out[9]`.
+   */
+  predict(c: number, act: number, distM: number, out: Float64Array, there?: number): void;
+  /** The choosing dials of the agent last begun; the defaults if absent. */
+  readonly dials?: ChoiceDials;
 }
 
 /** A predictor that has learned nothing (3.3): no change expected, prior uncertainty everywhere. */
@@ -71,9 +94,11 @@ export class Candidates {
   readonly x = new Float64Array(K.most);
   readonly y = new Float64Array(K.most);
   readonly dist = new Float64Array(K.most);
+  /** For a remembered thing, the place cue where it was (§4.10.4); 0 for what is seen. */
+  readonly place = new Uint32Array(K.most);
   readonly value = new Float64Array(K.most);
 
-  add(act: number, c: number, source: number, ref: number, x: number, y: number, dist: number): void {
+  add(act: number, c: number, source: number, ref: number, x: number, y: number, dist: number, place = 0): void {
     if (this.n >= K.most) return;
     const i = this.n++;
     this.act[i] = act;
@@ -83,6 +108,7 @@ export class Candidates {
     this.x[i] = x;
     this.y[i] = y;
     this.dist[i] = dist;
+    this.place[i] = place;
   }
 }
 
@@ -129,7 +155,8 @@ export function gatherCandidates(look: Percepts, heldIds: Float64Array, heldCues
       case ClassKind.STONE:
       case ClassKind.WOOD:
       case ClassKind.HIDE:
-        out.add(Act.PICK_UP, c, src, ref, x, y, d);
+        // A thing can be taken up only into a free hand (3.4: offered with both hands full, it could only fail).
+        if (heldN < ACTS.hands) out.add(Act.PICK_UP, c, src, ref, x, y, d);
         if (src === PerceptSource.OBJECT && heldN > 0) out.add(Act.STRIKE, c, src, ref, x, y, d);
         break;
       case ClassKind.ANIMAL:
@@ -151,7 +178,7 @@ export function gatherCandidates(look: Percepts, heldIds: Float64Array, heldCues
 
 /**
  * Value every candidate with `predictor` for drives `d` (from `offset`) and draw one by softmax from the
- * agent's stream (`s`, `o`). Returns its index.
+ * agent's stream (`s`, `o`), with the agent's choosing dials. Returns its index.
  */
 export function choose(
   cands: Candidates,
@@ -161,20 +188,22 @@ export function choose(
   scratch: Float64Array,
   s: Uint32Array,
   o: number,
+  dials: Readonly<ChoiceDials> = DEFAULT_CHOICE_DIALS,
 ): number {
   const n = cands.n;
   let best = -Infinity;
   for (let i = 0; i < n; i++) {
-    predictor.predict(cands.cue[i], cands.act[i], cands.dist[i], scratch);
-    const v = valueOf(d, offset, scratch, K.curiosity, K.riskTolerance);
+    predictor.predict(cands.cue[i], cands.act[i], cands.dist[i], scratch, cands.place[i]);
+    const v = valueOf(d, offset, scratch, dials.curiosity, dials.riskTolerance);
     cands.value[i] = v;
     if (v > best) best = v;
   }
   let sum = 0;
   for (let i = 0; i < n; i++) {
-    // exp(0) is exactly 1; skipping it for the best candidates changes nothing but the time.
-    const z = (cands.value[i] - best) / K.explorationTemperature;
-    const w = z === 0 ? 1 : exp(z);
+    // exp(0) is exactly 1, and below e^-37 a weight is under half the rounding step of a sum of at least
+    // 1 (the best's own weight): skipping exp for both changes nothing but the time.
+    const z = (cands.value[i] - best) / dials.explorationTemperature;
+    const w = z === 0 ? 1 : z < -37 ? 0 : exp(z);
     cands.value[i] = w;
     sum += w;
   }
