@@ -43,6 +43,12 @@ export interface Interoception {
   refresh(): void;
   /** Write agent `slot`'s eight channels into `out` from `offset`. */
   read(slot: number, out: Float32Array | Float64Array, offset: number): void;
+  /**
+   * The part of agent `slot`'s pain the gut adds (§4.13.1): its pain now less the pain the same body would
+   * feel with no poison acting and no gut infection. Not a channel: nothing values it; the second kernel
+   * of memory reads it to tell gut illness from other harm.
+   */
+  gutPain(slot: number): number;
 }
 
 function clamp01(x: number): number {
@@ -160,6 +166,23 @@ export function createInteroception(sim: Sim): Interoception {
 
       out[offset + Channel.MATING] = 0;
       out[offset + Channel.SEPARATION] = 0;
+    },
+    gutPain(slot) {
+      // The same factors as read()'s pain, with and without the gut's two.
+      let free = 1 - clamp01(wound[slot] / K.woundMostCm2);
+      free *= 1 - clamp01(burn[slot] * K.burnPerShare);
+      free *= 1 - clamp01(leg[slot] > arm[slot] ? leg[slot] : arm[slot]);
+      free *= 1 - clamp01(strain[slot]);
+      const g = gutInf[slot];
+      const p = poisonActive[slot];
+      if (!(g > 0) && !(p > 0)) return 0;
+      const leanKg = lean[slot];
+      const fatKg = fatKgOf(energy[slot], gut[slot], leanKg);
+      const mass = leanKg + (fatKg > 0 ? fatKg : 0);
+      const without = free * (1 - clamp01(woundInf[slot]));
+      const withGut = free * (1 - clamp01(woundInf[slot] + g)) * (1 - clamp01(poisonStrength(p, mass) / GUT.painAt));
+      const u = without - withGut;
+      return u > 0 ? u : 0;
     },
   };
 }

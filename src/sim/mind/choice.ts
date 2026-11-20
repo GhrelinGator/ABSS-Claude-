@@ -45,8 +45,11 @@ export const DEFAULT_CHOICE_DIALS: Readonly<ChoiceDials> = Object.freeze({
 export interface Predictor {
   /** Fetch whatever it reads afresh: once a tick, before any agent decides. */
   refresh?(): void;
-  /** Learn from agent `slot`'s act that just ended, before it chooses again (§4.10.2). */
-  learn?(slot: number, look: Percepts, drives: Float64Array, offset: number): void;
+  /**
+   * Learn from agent `slot`'s act that just ended, before it chooses again (§4.10.2), with the drives now
+   * and the part of pain the gut adds now (§4.13.1; 0 if not given).
+   */
+  learn?(slot: number, look: Percepts, drives: Float64Array, offset: number, gutPain?: number): void;
   /** Add remembered things to the candidates, by their worth to drives `drives` (from `offset`) (§4.10.4). */
   recall?(slot: number, look: Percepts, cands: Candidates, drives: Float64Array, offset: number): void;
   /** A choice is about to be valued by agent `slot`, in the context of this look. */

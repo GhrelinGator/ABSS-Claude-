@@ -4,7 +4,8 @@
 // consequences back to the acts that came before, by eligibility; and a memory of things worth acting
 // on and where they were. It is also the predictor choice reads (§4.7.10), replacing 3.3's blank one.
 // Since 3.5 it also keeps hidden-cause nodes (§4.11): what no known cause could explain, set aside with
-// where, in what light and in what season it happened, and learned about like anything seen.
+// where, in what light and in what season it happened, and learned about like anything seen. Since 3.6b
+// a second, longer kernel ties the gut's part of later pain to acts of eating and drinking (§4.13).
 //
 // Every number an agent holds here is learned content, kept in store columns of category `learned`, so
 // a new agent starts with nothing (T5) and the blank-slate guardrail covers it with no extra code. The
@@ -103,6 +104,10 @@ export const MEMORY_COLUMNS = {
   nodeSerial: { name: 'nodeSerial', dtype: 'u32', category: 'learned' },
   /** The (node, act) keys of the nodes active when each record's act ended. */
   epiNodes: { name: 'epiNodes', dtype: 'u32', category: 'learned', width: E * K.activeNodes },
+  /** A consume record's credit on pain from the second kernel, beyond its general credit (§4.13.2). */
+  epiGut: { name: 'epiGut', dtype: 'f32', category: 'learned', width: E },
+  /** The part of pain the gut added as the act under way began (§4.13.1): body state, like actDrives. */
+  actGutPain: { name: 'actGutPain', dtype: 'f32', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
 const C = MEMORY_COLUMNS;
 
@@ -153,6 +158,8 @@ export interface MindDials extends ChoiceDials {
   traceHalfLife: number;
   /** As the genome carries it: a liability, read as max(0, value). */
   hiddenCauseBias: number;
+  /** Half-life, hours, of the second kernel for consume acts on the gut's part of pain (§4.13.3). */
+  gutTraceHalfLife: number;
 }
 
 /** A node as `node()` copies it: serial, place, light, day length, act-kind mask, strength, last given a residual. */
@@ -164,8 +171,11 @@ export const ENTRY_LENGTH = 2 * CHANNELS + 4;
 export interface Memory extends Predictor {
   /** Fetch columns afresh: once a tick, before any agent decides. */
   refresh(): void;
-  /** Learn from agent `slot`'s act that just ended, with the look made now and the drives now (§4.10.2). */
-  learn(slot: number, look: Percepts, drives: Float64Array, offset: number): void;
+  /**
+   * Learn from agent `slot`'s act that just ended, with the look made now, the drives now and the part of
+   * pain the gut adds now (§4.10.2, §4.13; 0 if not given).
+   */
+  learn(slot: number, look: Percepts, drives: Float64Array, offset: number, gutPain?: number): void;
   /** Add remembered things as candidates, the most worth to drives `drives` (from `offset`) first (§4.10.4). */
   recall(slot: number, look: Percepts, cands: Candidates, drives: Float64Array, offset: number): void;
   /** The dials of the agent last begun. */
@@ -180,8 +190,11 @@ export interface Memory extends Predictor {
    * error is left in `error`. Returns Σ|δ|.
    */
   update(slot: number, keys: Uint32Array, n: number, o: ArrayLike<number>, tick: number, placeKey?: number, start?: ArrayLike<number>, startOff?: number): number;
-  /** Credit every record in the buffer with `error` by its eligibility at `tick`. */
-  credit(slot: number, error: ArrayLike<number>, tick: number): void;
+  /**
+   * Credit every record in the buffer with `error` by its eligibility at `tick`, and consume records also
+   * with the gut's part of the pain error, `gutError`, by the second kernel (§4.13.2).
+   */
+  credit(slot: number, error: ArrayLike<number>, tick: number, gutError?: number): void;
   /** Push an ended act into the buffer, with the (node, act) keys of the nodes active then; closes the oldest record if it is full. */
   push(slot: number, key: number, placeKey: number, tick: number, node0?: number, node1?: number): void;
   /** The error of the last update. */
@@ -251,6 +264,8 @@ export function createMemory(sim: Sim): Memory {
   let nLast: Uint32Array;
   let nSerial: Uint32Array;
   let eNodes: Uint32Array;
+  let eGut: Float32Array;
+  let gutAt: Float32Array;
   let rng: Uint32Array;
   let ax: Float64Array;
   let ay: Float64Array;
@@ -292,6 +307,8 @@ export function createMemory(sim: Sim): Memory {
     nLast = agents.column<Uint32Array>(C.nodeLast.name).data;
     nSerial = agents.column<Uint32Array>(C.nodeSerial.name).data;
     eNodes = agents.column<Uint32Array>(C.epiNodes.name).data;
+    eGut = agents.column<Float32Array>(C.epiGut.name).data;
+    gutAt = agents.column<Float32Array>(C.actGutPain.name).data;
     rng = agents.column<Uint32Array>('rng').data;
     ax = agents.column<Float64Array>('x').data;
     ay = agents.column<Float64Array>('y').data;
@@ -304,7 +321,7 @@ export function createMemory(sim: Sim): Memory {
     if (genomes) {
       formed = agents.column<Uint8Array>(GENETICS_COLUMNS.genomeFormed.name).data;
       const G = GENETICS_COLUMNS;
-      dialColumns = [G.learningRate, G.traceHalfLife, G.curiosity, G.explorationTemperature, G.riskTolerance, G.hiddenCauseBias].map(
+      dialColumns = [G.learningRate, G.traceHalfLife, G.curiosity, G.explorationTemperature, G.riskTolerance, G.hiddenCauseBias, G.gutTraceHalfLife].map(
         (spec) => agents.column<Float64Array>(spec.name).data,
       );
     }
@@ -316,6 +333,7 @@ export function createMemory(sim: Sim): Memory {
   let prior = K.priorVariance;
   let regrowth = K.regrowthPerHour / ticksPerHour;
   let traceTicks = 0;
+  let gutTicks = 0;
 
   function readDials(slot: number): MindDials {
     if (formed && formed[slot] === 1) {
@@ -325,6 +343,7 @@ export function createMemory(sim: Sim): Memory {
       dials.explorationTemperature = dialColumns[3][slot];
       dials.riskTolerance = dialColumns[4][slot];
       dials.hiddenCauseBias = dialColumns[5][slot];
+      dials.gutTraceHalfLife = dialColumns[6][slot];
     } else {
       dials.learningRate = MIND_DIAL_DEFAULTS.learningRate;
       dials.traceHalfLife = MIND_DIAL_DEFAULTS.traceHalfLife;
@@ -332,10 +351,12 @@ export function createMemory(sim: Sim): Memory {
       dials.explorationTemperature = MIND_DIAL_DEFAULTS.explorationTemperature;
       dials.riskTolerance = MIND_DIAL_DEFAULTS.riskTolerance;
       dials.hiddenCauseBias = MIND_DIAL_DEFAULTS.hiddenCauseBias;
+      dials.gutTraceHalfLife = MIND_DIAL_DEFAULTS.gutTraceHalfLife;
     }
     prior = K.priorVariance * dials.learningRate;
     regrowth = (K.regrowthPerHour / ticksPerHour) * dials.learningRate;
     traceTicks = dials.traceHalfLife * ticksPerHour;
+    gutTicks = dials.gutTraceHalfLife * ticksPerHour;
     return dials;
   }
 
@@ -586,21 +607,37 @@ export function createMemory(sim: Sim): Memory {
 
   // ---- delays (§4.10.3)
 
-  function credit(a: number, err: ArrayLike<number>, tick: number): void {
-    if (!(traceTicks > 0)) return;
+  function credit(a: number, err: ArrayLike<number>, tick: number, gutErr: number): void {
+    const general = traceTicks > 0;
+    // The second kernel adds only where it reaches further than the first (§4.13.2).
+    const gut = gutErr !== 0 && gutTicks > traceTicks;
+    if (!general && !gut) return;
     const base = a * E;
     for (let r = 0; r < E; r++) {
       const j = base + r;
-      if (eKey[j] === 0) continue;
-      const x = (tick - eEnd[j]) / traceTicks;
-      if (x > K.traceHalfLives) continue;
-      const e = exp(-x * LN2);
-      const o = j * CHANNELS;
-      for (let ch = 0; ch < CHANNELS; ch++) eCredit[o + ch] += e * err[ch];
+      const k = eKey[j];
+      if (k === 0) continue;
+      const age = tick - eEnd[j];
+      let e = 0;
+      if (general) {
+        const x = age / traceTicks;
+        if (x <= K.traceHalfLives) {
+          e = exp(-x * LN2);
+          const o = j * CHANNELS;
+          for (let ch = 0; ch < CHANNELS; ch++) eCredit[o + ch] += e * err[ch];
+        }
+      }
+      if (gut && actOfKey(k) === Act.CONSUME) {
+        const y = age / gutTicks;
+        if (y <= K.traceHalfLives) {
+          const eg = exp(-y * LN2);
+          if (eg > e) eGut[j] += (eg - e) * gutErr;
+        }
+      }
     }
   }
 
-  function closeInto(a: number, k: number, c: Float32Array, co: number, tick: number, mustExist: boolean): void {
+  function closeInto(a: number, k: number, c: Float32Array, co: number, tick: number, mustExist: boolean, extraPain = 0): void {
     let s = find(a, k);
     if (s < 0) {
       if (mustExist) return;
@@ -616,14 +653,15 @@ export function createMemory(sim: Sim): Memory {
     const v = vLater[s];
     const g = v / (v + K.outcomeNoise);
     const o8 = s * CHANNELS;
-    for (let ch = 0; ch < CHANNELS; ch++) later[o8 + ch] += g * (c[co + ch] - later[o8 + ch]);
+    for (let ch = 0; ch < CHANNELS; ch++) later[o8 + ch] += g * (c[co + ch] + (ch === Channel.PAIN ? extraPain : 0) - later[o8 + ch]);
     vLater[s] = v * (1 - g);
   }
 
   /** A record leaves the buffer: its keys' delayed predictions move toward the credit it gathered. */
   function close(a: number, j: number, tick: number): void {
     const co = j * CHANNELS;
-    closeInto(a, eKey[j], eCredit, co, tick, false);
+    // What was swallowed takes the second kernel's credit too; where, and the nodes, do not (§4.13.2).
+    closeInto(a, eKey[j], eCredit, co, tick, false, eGut[j]);
     const pk = ePlace[j];
     if (pk !== 0) {
       let size = 0;
@@ -646,6 +684,7 @@ export function createMemory(sim: Sim): Memory {
     eEnd[j] = tick;
     eNodes[j * K.activeNodes] = node0;
     eNodes[j * K.activeNodes + 1] = node1;
+    eGut[j] = 0;
     const o = j * CHANNELS;
     for (let ch = 0; ch < CHANNELS; ch++) eCredit[o + ch] = 0;
     eNext[a] = (eNext[a] + 1) % E;
@@ -957,8 +996,13 @@ export function createMemory(sim: Sim): Memory {
   const keys = new Uint32Array(16);
   const outcome = new Float64Array(CHANNELS);
 
-  function learn(slot: number, look: Percepts, drives: Float64Array, offset: number): void {
+  function learn(slot: number, look: Percepts, drives: Float64Array, offset: number, gutPain = 0): void {
     const act = actKind[slot];
+    // The gut's part of pain as the act that ended began, and now, as the next begins (§4.13.1).
+    // Both as stored (32-bit), so an unchanged gut shows a change of exactly 0.
+    const gutBefore = gutAt[slot];
+    const gutNow = Math.fround(gutPain);
+    gutAt[slot] = gutNow;
     if (act === Act.NONE) return;
     const tick = state.tick;
     readDials(slot);
@@ -1001,7 +1045,13 @@ export function createMemory(sim: Sim): Memory {
     }
     const placeKey = keyOf(look.place, 0);
     const size = update(slot, keys, m, outcome, tick, placeKey, actDrives, d0);
-    if (size > K.salient) credit(slot, error, tick);
+    if (size > K.salient) {
+      // The gut's part of the pain error: what the gut's own change could account for (§4.13.2).
+      const dp = error[Channel.PAIN];
+      const du = gutNow - gutBefore;
+      const gutErr = dp > 0 && du > 0 ? (dp < du ? dp : du) : dp < 0 && du < 0 ? (dp > du ? dp : du) : 0;
+      credit(slot, error, tick, gutErr);
+    }
     // What nothing known absorbed may be set aside for a hidden cause (§4.11.5).
     infer(slot, act, place, lightNow, dayNow, tick);
     push(slot, targetKey, placeKey, tick, node0, node1);
@@ -1247,9 +1297,9 @@ export function createMemory(sim: Sim): Memory {
       for (let i = 0; i < n; i++) keys[i] = ks[i];
       return update(slot, keys, n, o, tick, placeKey, start ?? null, startOff);
     },
-    credit: (slot, err, tick) => {
+    credit: (slot, err, tick, gutErr = 0) => {
       readDials(slot);
-      credit(slot, err, tick);
+      credit(slot, err, tick, gutErr);
     },
     push: (slot, k, placeKey, tick, node0 = 0, node1 = 0) => {
       readDials(slot);
