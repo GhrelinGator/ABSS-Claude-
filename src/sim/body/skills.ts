@@ -117,6 +117,21 @@ function bodySlot(sim: Sim, slot: number, door: string): void {
   }
 }
 
+/** Add `seconds` of practice at column index `at` now (the doors and the reader share this). */
+function addPractice(sim: Sim, hours: Float32Array, last: Uint32Array, at: number, seconds: number): void {
+  const tick = sim.state.tick;
+  hours[at] = kept(sim, hours[at], tick - last[at]) + (seconds / 3600) * lifeHoursPerHour(sim);
+  last[at] = tick;
+}
+
+/** Skill now at column index `at` for a body born at tick `born` (the doors and the reader share this). */
+function levelAt(sim: Sim, hours: Float32Array, last: Uint32Array, at: number, born: number): number {
+  const tick = sim.state.tick;
+  const practised = skillOf(kept(sim, hours[at], tick - last[at]));
+  const perYear = sim.config.time.ticksPerDay * sim.config.time.daysPerYear;
+  return practised * skillAtAge((tick - born) / perYear);
+}
+
 /**
  * Practice: whatever makes a body act on a thing calls this with the seconds it spent at it. Nothing
  * is counted in the tick the body was spawned: no system may write learned content then (§1.5).
@@ -126,13 +141,10 @@ export function practice(sim: Sim, slot: number, act: number, kind: number, seco
   const index = skillIndex(act, kind);
   if (!(seconds >= 0 && Number.isFinite(seconds))) throw new RangeError(`practice: ${seconds} s.`);
   const agents = sim.state.agents;
-  const tick = sim.state.tick;
-  if (agents.column<Float64Array>('spawnTick').data[slot] === tick || seconds === 0) return;
-  const at = slot * SKILL_PAIRS + index;
+  if (agents.column<Float64Array>('spawnTick').data[slot] === sim.state.tick || seconds === 0) return;
   const hours = agents.column<Float32Array>(SKILL_COLUMNS.skillPractice.name).data;
   const last = agents.column<Uint32Array>(SKILL_COLUMNS.skillTick.name).data;
-  hours[at] = kept(sim, hours[at], tick - last[at]) + (seconds / 3600) * lifeHoursPerHour(sim);
-  last[at] = tick;
+  addPractice(sim, hours, last, slot * SKILL_PAIRS + index, seconds);
 }
 
 /** Practice in life-hours a body holds now for an act on a kind, after any disuse. */
@@ -150,8 +162,49 @@ export function practiceHours(sim: Sim, slot: number, act: number, kind: number)
  * taken of its expression (§3.12).
  */
 export function skillLevel(sim: Sim, slot: number, act: number, kind: number): number {
-  const practised = skillOf(practiceHours(sim, slot, act, kind));
-  const perYear = sim.config.time.ticksPerDay * sim.config.time.daysPerYear;
-  const age = (sim.state.tick - sim.state.agents.column<Float64Array>(BODY_COLUMNS.born.name).data[slot]) / perYear;
-  return practised * skillAtAge(age);
+  bodySlot(sim, slot, 'skillLevel');
+  const agents = sim.state.agents;
+  return levelAt(
+    sim,
+    agents.column<Float32Array>(SKILL_COLUMNS.skillPractice.name).data,
+    agents.column<Uint32Array>(SKILL_COLUMNS.skillTick.name).data,
+    slot * SKILL_PAIRS + skillIndex(act, kind),
+    agents.column<Float64Array>(BODY_COLUMNS.born.name).data[slot],
+  );
+}
+
+/** Skill read and practice added by acts every tick, without the doors' lookups (§4.12). */
+export interface SkillAccess {
+  /** Fetch the columns afresh: once a tick, before any act runs (the store may have grown). */
+  refresh(): void;
+  /** As `skillLevel`, for a live agent with a body. */
+  level(slot: number, act: number, kind: number): number;
+  /** As `practice`, for a live agent with a body: nothing in the tick it was spawned. */
+  add(slot: number, act: number, kind: number, seconds: number): void;
+}
+
+/** A reader of skills for a system that reads and practises them every tick (the acts, §4.12). */
+export function createSkillAccess(sim: Sim): SkillAccess {
+  const agents = sim.state.agents;
+  let hours: Float32Array = new Float32Array(0);
+  let last: Uint32Array = new Uint32Array(0);
+  let born: Float64Array = new Float64Array(0);
+  let spawned: Float64Array = new Float64Array(0);
+  return {
+    refresh() {
+      hours = agents.column<Float32Array>(SKILL_COLUMNS.skillPractice.name).data;
+      last = agents.column<Uint32Array>(SKILL_COLUMNS.skillTick.name).data;
+      born = agents.column<Float64Array>(BODY_COLUMNS.born.name).data;
+      spawned = agents.column<Float64Array>('spawnTick').data;
+    },
+    level(slot, act, kind) {
+      return levelAt(sim, hours, last, slot * SKILL_PAIRS + skillIndex(act, kind), born[slot]);
+    },
+    add(slot, act, kind, seconds) {
+      const at = slot * SKILL_PAIRS + skillIndex(act, kind);
+      if (!(seconds >= 0 && Number.isFinite(seconds))) throw new RangeError(`practice: ${seconds} s.`);
+      if (spawned[slot] === sim.state.tick || seconds === 0) return;
+      addPractice(sim, hours, last, at, seconds);
+    },
+  };
 }

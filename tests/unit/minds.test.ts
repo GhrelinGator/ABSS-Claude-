@@ -192,7 +192,7 @@ test('sleep pressure rises awake and falls asleep with the two-process time cons
   assert.ok(Math.abs(at(5) - (0.5 + SLEEP.circadianAmplitude)) < 1e-9);
 });
 
-test('eating a plant moves food from the cell to the gut and the stomach at the rate by hand; a cell with none fails', () => {
+test('eating a plant moves food from the cell to the gut and the stomach at a novice\'s rate by hand; a cell with none fails', () => {
   const sim = world(7);
   const { acts, tally } = handOn(sim);
   const s = species('tuber');
@@ -210,7 +210,8 @@ test('eating a plant moves food from the cell to the gut and the stomach at the 
   assert.ok(Math.abs(before - layer[k] - eaten) < 1e-3);
   const sp = PLANT_SPECIES[s];
   const density = before / ((sim.config.world.cellSizeM * sim.config.world.cellSizeM) / 10_000);
-  const expected = ((ACTS.plantKgPerHour.tuber * density) / (density + ACTS.halfRateKgHa)) * (600 / 3600);
+  // A novice's rate (§4.12): nothing is practised before the first act.
+  const expected = ((ACTS.plantKgPerHour.tuber * ACTS.plantNoviceShare.tuber * density) / (density + ACTS.halfRateKgHa)) * (600 / 3600);
   assert.ok(Math.abs(eaten - expected) < 1e-3, `ate ${eaten} kg, expected ${expected}`);
   assert.ok(Math.abs(f64(sim, BODY_COLUMNS.gut.name)[slot] - gutBefore - eaten * sp.kcalPerKg * sp.rawDigestible) < 1e-3);
   assert.ok(Math.abs(f64(sim, GUT_COLUMNS.stomachKg.name)[slot] - eaten) < 1e-6);
@@ -265,7 +266,8 @@ test('poisonous plants go through the poison door; meat is cut faster with a kee
   }
   const byHand = f64(sim, GUT_COLUMNS.stomachKg.name)[hand];
   const byEdge = f64(sim, GUT_COLUMNS.stomachKg.name)[knife];
-  assert.ok(Math.abs(byEdge / byHand - ACTS.meatKgPerHourEdge / ACTS.meatKgPerHourHand) < 1e-6, `${byHand} by hand, ${byEdge} with an edge`);
+  const novices = (ACTS.meatKgPerHourEdge * ACTS.meatNoviceShareEdge) / (ACTS.meatKgPerHourHand * ACTS.meatNoviceShareHand);
+  assert.ok(Math.abs(byEdge / byHand - novices) < 1e-6, `${byHand} by hand, ${byEdge} with an edge`);
   assert.ok(f64(sim, INJURY_COLUMNS.gutDose.name)[hand] > 0, 'foul meat swallowed');
 
   // Water: a body short of 2 kg drinks it back, and the cell's pathogens with it.
@@ -557,7 +559,19 @@ test('minds in the real pipeline: deterministic, the same after save and load, e
   stepSim(a, 144 * 4);
   assert.deepEqual(auditConserved(a.state.agents), []);
   const tally = a.state.parts.find((p) => p.name === MIND_PARTS.acts)!.readings!() as Float64Array;
-  const rate = tally[ActTally.DECISIONS] / tally[ActTally.AWAKE_TICKS];
+  // The decision rate of 30 agents over five days spreads from about 0.2 to 0.32 between seeds (3.6,
+  // on main and with skills alike), so it is pooled over four seeds; bench/acts.ts at 500 agents is
+  // the measure of record (§4.9.7).
+  let decisions = tally[ActTally.DECISIONS];
+  let awake = tally[ActTally.AWAKE_TICKS];
+  for (const seed of [14, 15, 16]) {
+    const other = createSim(config(seed, 64, { count: 30, radiusM: 2000 }), SIM_PIPELINE);
+    stepSim(other, 300 + 144 * 4);
+    const t = other.state.parts.find((p) => p.name === MIND_PARTS.acts)!.readings!() as Float64Array;
+    decisions += t[ActTally.DECISIONS];
+    awake += t[ActTally.AWAKE_TICKS];
+  }
+  const rate = decisions / awake;
   assert.ok(rate > 0.05 && rate <= 0.3, `decisions per awake agent-tick ${rate}`);
   let ate = 0;
   for (let s = 0; s < PLANT_SPECIES.length; s++) ate += tally[ActTally.PLANT_KG + s];

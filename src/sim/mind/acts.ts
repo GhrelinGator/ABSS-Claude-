@@ -2,7 +2,8 @@
 // act first walks to its goal if it is out of reach, then works for the time left. What the body did
 // is written to metabolism's columns (effort, metres, seconds moving, metres climbed, load), so the
 // bodies charge for it in the same tick. Physics decides what an act can do to a thing; the mind's
-// knowledge never does.
+// knowledge never does. Since 3.6 an act that works on a thing achieves what the body's skill at it
+// allows, between a novice's and an expert's, and adds the seconds it worked as practice (§4.12).
 
 import { ticksPerYear } from '../core/clock.ts';
 import { cosTurn, sinTurn } from '../core/dmath.ts';
@@ -16,6 +17,7 @@ import { INJURY_COLUMNS, exposeGut, meatDose, waterDose } from '../body/injury.t
 import { capacityAtAge, strengthAtAge, walkingAtAge } from '../body/lifecourse.ts';
 import { BODY_COLUMNS, Effort, METABOLISM, ingest } from '../body/metabolism.ts';
 import { SLEEP, SLEEP_COLUMNS, sleepiness } from '../body/sleep.ts';
+import { SkillAct, SkillKind, animalKind, bySkill, createSkillAccess, materialKind, plantKind } from '../body/skills.ts';
 import { ANIMAL_STORE, CARCASS_LAYER, CARCASS_LOAD_LAYER, MOVED_TICK_COLUMN, bitesOf, strikeAnimal } from '../world/animals.ts';
 import type { StrikeOutcome } from '../world/animals.ts';
 import { sparksAt, rubWood } from '../world/fire.ts';
@@ -63,14 +65,18 @@ export const ACTS = {
   insideM: 0.5,
   /** Walks are checked for lakes every this many metres. */
   shoreStepM: 20,
-  /** Eating plants by hand, kg an hour at a dense stand, by catalogue name; density at which it is half that, kg a hectare. */
+  /** Eating plants by hand, an expert's kg an hour at a dense stand, by catalogue name; density at which it is half that, kg a hectare. */
   plantKgPerHour: { grass: 0.3, tuber: 0.5, berry: 1.5, nut: 1, greens: 1, bitterRoot: 0.5, nightshade: 1.5, reed: 0.5 } as Readonly<Record<string, number>>,
+  /** A novice's share of an expert's rate (§4.12): picked 0.7, stripped 0.5, dug by hand 0.4, opened 0.3. */
+  plantNoviceShare: { grass: 0.5, tuber: 0.4, berry: 0.7, nut: 0.3, greens: 0.7, bitterRoot: 0.4, nightshade: 0.7, reed: 0.4 } as Readonly<Record<string, number>>,
   halfRateKgHa: 20,
   /** Time spent finding there is nothing to eat, s. */
   searchS: 300,
-  /** Meat: kg an hour by hand and with a keen edge held; the least edge that cuts; kcal a kg; raw digestibility. */
+  /** Meat: an expert's kg an hour by hand and with a keen edge held, and a novice's share of each (§4.12); the least edge that cuts; kcal a kg; raw digestibility. */
   meatKgPerHourHand: 0.2,
   meatKgPerHourEdge: 2,
+  meatNoviceShareHand: 0.7,
+  meatNoviceShareEdge: 0.4,
   cuttingEdge: 0.5,
   meatKcalPerKg: 1500,
   meatDigestible: 0.9,
@@ -90,8 +96,9 @@ export const ACTS = {
   rubS: 120,
   rubW: 40,
   manipulateS: 600,
-  /** A novice's precision, until skills reach acts (3.6). */
-  precision: 0.5,
+  /** Precision of a blow or a rub (§2.15–§2.17): a novice's and an expert's (§4.12). */
+  precisionNovice: 0.5,
+  precisionExpert: 0.9,
   /** Eating ends after this much work, s; rest ends below this tiredness. */
   eatMostS: 7200,
   restedBelow: 0.1,
@@ -193,6 +200,17 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     if (r === undefined) throw new Error(`Acts: no eating rate for the plant species "${sp.name}".`);
     return r;
   });
+  const plantNovice = PLANT_SPECIES.map((sp, i) => {
+    const share = K.plantNoviceShare[sp.name];
+    if (share === undefined) throw new Error(`Acts: no novice's share for the plant species "${sp.name}".`);
+    return plantRate[i] * share;
+  });
+
+  // Skills (§4.12): read once a tick by a working act, practised by the seconds it worked.
+  const skills = createSkillAccess(sim);
+  function precisionOf(slot: number, act: number, kind: number): number {
+    return bySkill(K.precisionNovice, K.precisionExpert, skills.level(slot, act, kind));
+  }
 
   // Layers: fixed for the run once the world exists; read lazily (create runs before world setup, §1.5).
   let elevation: Float32Array | null = null;
@@ -471,7 +489,9 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     const layer = food[s];
     const stock = layer[k];
     const density = stock / hectares;
-    const rate = (plantRate[s] * density) / (density + K.halfRateKgHa) * handsOf(slot);
+    const skillKind = plantKind(s);
+    const byHand = bySkill(plantNovice[s], plantRate[s], skills.level(slot, SkillAct.CONSUME, skillKind));
+    const rate = (byHand * density) / (density + K.halfRateKgHa) * handsOf(slot);
     workEffort = sp.food.kind === 'stock' ? Effort.MODERATE : Effort.LIGHT;
     if (!(stock > 0.001) || !(rate > 0)) {
       workUsed = seconds < K.searchS ? seconds : K.searchS;
@@ -506,6 +526,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
       got[slot] += kg;
     }
     workUsed = (kg / rate) * 3600;
+    if (kg > 0) skills.add(slot, SkillAct.CONSUME, skillKind, workUsed);
     if (full || layer[k] <= 0.001 || workS[slot] + workUsed >= K.eatMostS) finish(slot, ActEnd.DONE);
   }
 
@@ -519,7 +540,9 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     let edged = false;
     const edge = objF32('edge');
     for (let h = 0; h < n; h++) if (edge[objects.slotOf(heldScratch[h])] >= K.cuttingEdge) edged = true;
-    const rate = (edged ? K.meatKgPerHourEdge : K.meatKgPerHourHand) * handsOf(slot);
+    const expert = edged ? K.meatKgPerHourEdge : K.meatKgPerHourHand;
+    const novice = expert * (edged ? K.meatNoviceShareEdge : K.meatNoviceShareHand);
+    const rate = bySkill(novice, expert, skills.level(slot, SkillAct.CONSUME, SkillKind.CARCASS)) * handsOf(slot);
     if (!(stock > 0.001) || !(rate > 0)) {
       workUsed = seconds < K.searchS ? seconds : K.searchS;
       finish(slot, workS[slot] === 0 ? ActEnd.FAILED : ActEnd.DONE);
@@ -549,6 +572,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
       got[slot] += kg;
     }
     workUsed = (kg / rate) * 3600;
+    if (kg > 0) skills.add(slot, SkillAct.CONSUME, SkillKind.CARCASS, workUsed);
     if (full || meat[k] <= 0.001 || workS[slot] + workUsed >= K.eatMostS) finish(slot, ActEnd.DONE);
   }
 
@@ -654,15 +678,15 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     finish(slot, ActEnd.DONE);
   }
 
-  /** Strike `b` with `a` (object slots) `blows` times; returns the blows struck. */
-  function blowsOn(slot: number, a: number, b: number, blows: number): number {
+  /** Strike `b` with `a` (object slots) `blows` times at `precision`; returns the blows struck. */
+  function blowsOn(slot: number, a: number, b: number, blows: number, precision: number): number {
     const sOff = slot * STREAM_WORDS;
     const force = strengthNow(slot);
     let n = 0;
     for (; n < blows; n++) {
       if (objects.alive.data[a] !== 1 || objects.alive.data[b] !== 1) break;
       const energy = 0.5 * objF32('mass')[a] * K.blowMs * K.blowMs * force;
-      const out = strikeObjects(sim, a, b, energy, K.precision, rng, sOff);
+      const out = strikeObjects(sim, a, b, energy, precision, rng, sOff);
       tally[ActTally.PIECES] += out.pieces.length;
       if (out.sparks > 0 && sparksAt(sim, ax[slot], ay[slot], out.sparks, out.sparkHeat, rng, sOff)) tally[ActTally.FIRES_LIT] += 1;
     }
@@ -682,10 +706,13 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     const left = K.blows - got[slot];
     let blows = Math.floor(seconds / K.blowS);
     if (blows > left) blows = left;
-    strikeAnimal(sim, g, slot, joules, objF32('edge')[o], K.precision, blows, rng, slot * STREAM_WORDS, strikeOut);
+    const skillKind = animalKind(animals.column<Uint8Array>('kind').data[g]);
+    const precision = precisionOf(slot, SkillAct.STRIKE, skillKind);
+    strikeAnimal(sim, g, slot, joules, objF32('edge')[o], precision, blows, rng, slot * STREAM_WORDS, strikeOut);
     got[slot] += strikeOut.landed;
     tally[ActTally.BLOWS_ON_ANIMALS] += strikeOut.landed;
     workUsed = strikeOut.landed * K.blowS;
+    skills.add(slot, SkillAct.STRIKE, skillKind, workUsed);
     if (strikeOut.killed) {
       tally[ActTally.ANIMALS_KILLED] += 1;
       perception.invalidate(strikeOut.cell);
@@ -710,9 +737,11 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     const left = K.blows - got[slot];
     let blows = Math.floor(seconds / K.blowS);
     if (blows > left) blows = left;
-    const struck = blowsOn(slot, striker, target, blows);
+    const skillKind = materialKind(objects.column<Uint8Array>('material').data[target]);
+    const struck = blowsOn(slot, striker, target, blows, precisionOf(slot, SkillAct.STRIKE, skillKind));
     got[slot] += struck;
     workUsed = struck * K.blowS;
+    skills.add(slot, SkillAct.STRIKE, skillKind, workUsed);
     if (got[slot] >= K.blows || struck < blows) finish(slot, ActEnd.DONE);
   }
 
@@ -729,12 +758,16 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     const material = objects.column<Uint8Array>('material').data;
     let left = K.manipulateS - workS[slot];
     if (left > seconds) left = seconds;
+    // The one worked is the second held: wood when rubbing, the struck one when striking (§4.12).
+    const skillKind = materialKind(material[b]);
+    const precision = precisionOf(slot, SkillAct.MANIPULATE, skillKind);
     if (material[a] === Material.WOOD && material[b] === Material.WOOD) {
       const attempts = Math.floor(left / K.rubS);
       const energy = K.rubS * K.rubW * strengthNow(slot);
       let caught = false;
-      for (let t = 0; t < attempts && !caught; t++) {
-        const r = rubWood(sim, a, b, energy, K.precision, rng, slot * STREAM_WORDS);
+      let made = 0;
+      for (; made < attempts && !caught; made++) {
+        const r = rubWood(sim, a, b, energy, precision, rng, slot * STREAM_WORDS);
         if (r.ember) tally[ActTally.EMBERS] += 1;
         if (r.caught) {
           tally[ActTally.FIRES_LIT] += 1;
@@ -742,9 +775,11 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
         }
       }
       workUsed = left;
+      skills.add(slot, SkillAct.MANIPULATE, skillKind, made * K.rubS);
     } else {
       const blows = Math.floor(left / K.blowS);
-      const struck = blowsOn(slot, a, b, blows);
+      const struck = blowsOn(slot, a, b, blows, precision);
+      skills.add(slot, SkillAct.MANIPULATE, skillKind, struck * K.blowS);
       workUsed = struck < blows ? struck * K.blowS : left;
       if (struck < blows) {
         finish(slot, ActEnd.DONE);
@@ -908,6 +943,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
   return {
     refresh() {
       layers();
+      skills.refresh();
       ax = f('x');
       ay = f('y');
       ids = agents.id.data;
