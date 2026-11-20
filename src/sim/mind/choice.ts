@@ -132,6 +132,10 @@ export function gatherCandidates(look: Percepts, heldIds: Float64Array, heldCues
         out.add(Act.PICK_UP, c, src, ref, x, y, d);
         if (src === PerceptSource.OBJECT && heldN > 0) out.add(Act.STRIKE, c, src, ref, x, y, d);
         break;
+      case ClassKind.ANIMAL:
+        // A deer, aurochs, wolf or big cat can be struck with something held (§2.17).
+        if (src === PerceptSource.ANIMAL && heldN > 0) out.add(Act.STRIKE, c, src, ref, x, y, d);
+        break;
       default:
         break;
     }
