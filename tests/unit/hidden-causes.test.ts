@@ -19,6 +19,8 @@ import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
 import { createSim, stepSim } from '../../src/sim/sim.ts';
 import type { Sim } from '../../src/sim/sim.ts';
 import { spawnWithBody } from '../fixtures/bodies.ts';
+import { getObserver } from '../../src/analysis/index.ts';
+import { viewOf } from '../../src/sim/readonly.ts';
 
 const thing = (n: number) => cue(CueKind.CLASS, n);
 const WARM = cue(CueKind.WARMTH, 1);
@@ -318,6 +320,12 @@ test('nodes in the real pipeline: none at all at bias 0; at bias 2 they form fro
     held += n;
   }
   assert.ok(held > 0, `the living hold ${held} nodes`);
+  // The analysis layer sees the same through the read-only door.
+  const seen = getObserver('minds').observe(viewOf(on));
+  assert.equal(seen.nodesPosited, tally[ActTally.NODES_POSITED]);
+  assert.ok(Math.abs((seen.meanNodes as number) * (seen.minds as number) - held) < 1e-9);
+  assert.ok((seen.shareWithNodes as number) > 0 && (seen.meanNodeStrength as number) > MEMORY.salient);
+  assert.equal(getObserver('minds').observe(viewOf(off)).meanNodes, 0);
   for (const spec of [MEMORY_COLUMNS.nodeId, MEMORY_COLUMNS.nodeStrength, MEMORY_COLUMNS.epiNodes, MEMORY_COLUMNS.nodeSerial]) {
     assert.equal(spec.category, 'learned', `${spec.name} is learned content`);
   }
