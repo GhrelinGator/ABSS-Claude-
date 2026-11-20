@@ -111,6 +111,15 @@ Searches in session 26 found the sources below but returned no text, so every nu
 - **Interbirth intervals** (§9): about 3.4 years (Hadza), 4 (!Kung), 3.2 (Ache), as remembered.
 - **Not yet sourced at all:** fetal fat by week, the share of a pregnancy's added mass, the onset of milk after a birth, the age at which infants digest solid food and walk, newborn sweat and urine.
 
+### Genetics (Phase 2.7, 2026-11-20; from memory, not checked against sources)
+
+Check these in 2.8.
+- **Inbreeding depression in people:** Bittles & Black (2010), "Consanguinity, human evolution, and complex diseases," *PNAS* 107 suppl. 1: children of first cousins have about 3.5% more deaths before adulthood than children of unrelated parents, over many populations. Bittles & Neel (1994), *Nature Genetics* 8:117–121: lethal equivalents in human studies of about 0.7–1.4 a gamete (as remembered). Gao et al. (2015), *Genetics* 199:1243–1254: a Hutterite estimate of about 0.58 recessive lethal mutations carried per person (counting only those that kill or sterilise before adulthood).
+- **Lethal equivalents and mutation–selection balance:** Morton, Crow & Muller (1956); for a fully recessive lethal the equilibrium frequency is √(*u*/*s*).
+- **Mutational variance of quantitative traits:** Lynch & Walsh (1998), *Genetics and Analysis of Quantitative Traits*, and Houle et al. (1996): new variance a generation about 0.1–1% of the environmental variance.
+- **Heritability and variation of the two body dials:** adult height and size are highly heritable (about 0.6–0.8); resting metabolic rate at the same lean mass varies by about 7–8% between people with a heritability of about 0.4–0.5 (Bouchard and others, as remembered); circumpolar peoples have higher resting rates than their size predicts (Leonard et al., as remembered), which is the trade the `basalScale` dial carries.
+- **Not yet sourced at all:** the half of recessive lethality that acts before birth; the spread of ages at which lethal recessive disorders kill; the 1% chance a dial's allele mutates.
+
 ## Plants and foraging (✓ checked 2026-11-15 by web search)
 
 - ✓ Einkorn yields: about 1–2 t/ha (2000m2.eu crop profile); about 832 lb/acre (≈ 930 kg/ha) in low-input Wyoming trials (University of Wyoming Extension, via sciencesocieties.org). Wild stands are put below these (§2.12).
