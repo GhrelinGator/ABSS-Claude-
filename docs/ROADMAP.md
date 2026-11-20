@@ -70,6 +70,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 - **3.4 [O]** Episodic buffer, semantic associations, entity-response models. *Done 2026-11-20: `DESIGN.md` §4.10, D-053. Learners eat and drink far more than random agents and some outlive them by weeks, but more die of thirst in the first ten days; the mind is over the compute budget (Q13).*
 - **3.5 [O]** Hidden-cause inference. *Done 2026-11-20: `DESIGN.md` §4.11, D-054. Nodes form from what no known cause explained; with every founder's `hiddenCauseBias` at 2, fewer were killed by animals but they drank about 40% less and more died of thirst (a description; the check is 3.7's).*
 - **3.6 [O]** Skills wired into action success and cost.
+- **3.6b [O]** Prepared taste-aversion learning (added 2026-11-20, the owner's answer to Q12, D-056). A second, longer eligibility kernel for eating and drinking acts on the illness channels (`DESIGN.md` §4.7.7, §4.10.9), its strength a heritable dial that founders draw widely and evolution can turn to zero, with an alibi (toxins and spoiled food exist with no one else around, and gut illness follows eating by hours). The owner's condition: it depends on hunger, and starving agents are not picky. Choice already weighs predictions by the drives of the moment (§4.7.6), so first write a test that a starving agent with a learned aversion eats that food when nothing else is in reach; if it does not, change how predicted illness is weighed against hunger (logged, with an alibi), not the learning. Write the design into `DESIGN.md` before the code.
 - **3.7 [F]** Viability tuning (logged), then emergence checks.
 
 **Emergence checks:**
@@ -128,6 +129,8 @@ Detectors get built incrementally in Phases 3–5 as checks need them. This phas
 ## Phase 7: Experiments on the essay's hypotheses [F], open-ended
 
 Each experiment: preregistration in `experiments/` → batch runs → write-up, including negative results. These are the questions from `ORIGIN.md`, tested instead of assumed.
+
+**7.0 [O], before the long evolutionary runs** (the owner's answer to Q13, D-057): port the mind's hot loops to Rust compiled to WebAssembly (D-007's plan), with state hashes and cross-engine digests identical to the TypeScript, so 500 agents run near §1.7's speed again. Measure before and after.
 
 | ID | Question | Manipulation | Detectors |
 |---|---|---|---|
