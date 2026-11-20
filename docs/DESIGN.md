@@ -1004,7 +1004,7 @@ This shows **the code does what this section says** on a toy, nothing about the 
 - **3.3b [F] Animals and agents meet** (added in 3.3, §4.9.9): flight from agents, predators taking agents, striking animals.
 - **3.4 [O] Memory** *(done: §4.10, D-053)*: the table, the learning rules, the buffer and delays, place memory; the mind's dials on the genome (`learningRate`, `traceHalfLife`, `curiosity`, `explorationTemperature`, `riskTolerance`), each with its alibi and founders' range. Tests against hand-built cases: one-trial learning, blocking, latent inhibition, extinction, a delayed effect learned and unlearned.
 - **3.5 [O] Hidden-cause nodes** (§4.7.8) and `hiddenCauseBias` *(done: §4.11)*.
-- **3.6 [O] Skills into acts** (§3.11's `bySkill`).
+- **3.6 [O] Skills into acts** (§3.11's `bySkill`) *(done: §4.12)*.
 - **3.7 [F] Viability and the emergence checks:** cold deaths of naked bodies (D-041, D-048), old age counted twice (D-045), founders' survival; tuning is logged and aimed at plausibility only (T4).
 
 #### 4.7.15 Not in this version (known limits)
@@ -1087,7 +1087,7 @@ An act has a kind, a target (a percept's cue and what it refers to, §4.8, or no
 | strike | a lying object, or (3.3b) a deer, aurochs, wolf or big cat, with the first held object | five blows of ½ × the striker's mass × (8 m/s)² × strength joules each, precision 0.5, through `strikeObjects`, or on an animal through `strikeAnimal` (§2.17: it may run after the first blow, or fight back) [estimates] | moderate | five blows, or the animal gone or dead | nothing held |
 | manipulate | the two held objects | two pieces of wood are rubbed: attempts of 2 minutes at 40 W × strength through `rubWood`; anything else is struck together as in strike | heavy | 10 minutes | fewer than two held |
 
-**Carry** is not an act: whatever is held is carried through every act. **Precision** is a novice's 0.5 until 3.6 wires skills in. Eating and drinking take from the world what is there when the act runs; when an act changes what lies or grows in a cell, it calls perception's `invalidate(cell)`. When a body dies, what it held drops where it lay.
+**Carry** is not an act: whatever is held is carried through every act. **Precision** is a novice's 0.5 until 3.6 wires skills in *(3.6: rates and precision by skill, §4.12)*. Eating and drinking take from the world what is there when the act runs; when an act changes what lies or grows in a cell, it calls perception's `invalidate(cell)`. When a body dies, what it held drops where it lay.
 
 #### 4.9.4 The tick
 The mind system runs after the world and before the bodies (`pipeline.ts`), in two phases (§1.6):
@@ -1118,7 +1118,7 @@ The rule is at most about 0.25 decisions per awake agent per tick (§4.7.12). Ac
 - *(Done in 3.3b, §2.17: animals keep away from persons, predators take lone persons, struck animals are wounded and fight back. Candidates (§4.9.5) gain strike on an animal percept while something is held; a person in an animal's jaws this tick does not walk.)*
 - No processing of food (pounding, cracking, soaking, cooking), so bitter root is always toxic and grass seed and nuts poorly digested; no water in food.
 - *(Done in 3.4, §4.10: memory, "go there" candidates, the trip, the mind's dials on the genome. Candidates now come from every class seen, and pick up only with a free hand (§4.10.7). The learned fear interrupt was not built; §4.10.10.)*
-- Skills do not touch acts (3.6): precision is a novice's.
+- *(Done in 3.6, §4.12: eating rates and precision by skill, practice as acts work.)*
 - Climbing counted start-to-end per tick; rivers waded freely; no swimming; acts on persons are only approach and avoid (Phase 4).
 
 ### 4.10 Memory as built (Phase 3.4) [provisional]
@@ -1258,6 +1258,34 @@ The mind's tally (`mind.acts`) counts nodes posited, nodes strengthened and resi
 - **A node never stands for an act or a thing.** It is an unseen context; what follows acting while it is active is learned as (node, act) associations, which is all §4.3's entity model asks.
 - **The trigger reads every channel.** Unexplained relief (food or warmth that no known key predicted) is set aside too, as §4.4's "food appearing" asks.
 - Nodes are not merged, split or given up when they stop predicting anything; a node whose associations have gone to zero still takes part where it is active, and goes only when it is the weakest of sixteen.
+
+### 4.12 Skills in acts (Phase 3.6) [provisional]
+
+Written in 3.6 (2026-11-20, an [O] milestone, unattended) before the code. It wires §3.11's skills into §4.9.3's acts. Numbers marked [estimate] are remembered or reasoned, not tuned toward anything; none was set after an agent ran with skills. Code: `src/sim/mind/acts.ts`; a fast reader in `src/sim/body/skills.ts`.
+
+**The rule** (§3.11). An act that works on a thing reads the body's skill at that act on that kind of thing, *s* = `skillLevel` (the practice curve, less what age has taken), once a tick before it works, and achieves `bySkill(novice, expert, s)` = novice + (expert − novice) × *s*, per second (a rate) or per try (a blow's or a rub's precision). After it works, the seconds it spent working on the thing are added as practice (`practice`), so a skill read this tick is the practice of earlier ticks. Walking to the thing is not practice, nor is searching a cell that has nothing left. **Skill never changes an act's effort**, so an expert spends the same energy a second as a novice and gets more for it, which is where its saving comes from. Strength, mass, mobility, arm use and tiredness still act as before (§4.9.2, §4.9.3); skill multiplies none of them.
+
+**Which pair.** §3.11 keeps practice for four acts on 23 kinds of thing. As built, the act consume on a plant includes getting the food (picking, stripping, digging by hand, opening) as well as eating it (§4.9.3), and getting it is what limits the rate, so it reads and practises **consume × the species**; §3.11's pick up × a species is kept for an act that pulls or digs a plant up to carry it, which does not exist. Pick up of loose stone, fallen wood or a lying object is lifting, not a practised technique, and at ten-minute ticks its minute of handling changes nothing: **it gets no skill and records no practice** in this version.
+
+| Act | Skill pair (§3.11) | What skill moves | Novice | Expert |
+|---|---|---|---|---|
+| consume, plant | consume × the species | kg an hour at a dense stand (§4.9.3's *rate*) | the expert's rate × a share by the kind of work: **picked** (berries, nightshade, greens) **0.7**; **stripped** (grass seed) **0.5**; **dug by hand** (tuber, bitter root, reed) **0.4**; **opened** (nuts) **0.3** | §4.9.3's rates: berries and nightshade 1.5, nuts 1, greens 1, grass seed 0.3, roots 0.5 |
+| consume, carcass | consume × carcass | kg an hour | by hand 0.14 (0.7 of the expert's), with a keen edge 0.8 (0.4 of it) | by hand 0.2, with a keen edge 2 (§4.9.3) |
+| strike, a lying object | strike × its material | precision of each blow (§2.15: the chance a flake comes off, and its edge) | 0.5 | 0.9 |
+| strike, an animal | strike × its kind (deer, aurochs, wolf, big cat) | precision of each blow (§2.17: the share of its energy landing where it hurts) | 0.5 | 0.9 |
+| manipulate, rubbing two pieces of wood | manipulate × wood | precision of each 2-minute rub (§2.16: energy × precision² makes the heat) | 0.5 | 0.9 |
+| manipulate, striking two held things | manipulate × the material of the one struck (the second held) | precision of each blow | 0.5 | 0.9 |
+| consume water, approach, avoid, explore, rest, sleep, pick up, drop | none | — | — | — |
+
+**Why the experts' numbers are §4.9.3's.** §4.9.3's eating rates were set from what adult foragers achieve (Hadza returns, lowered for working by hand, `RESEARCH.md`), and adult foragers have practised for decades, so they are an expert's. A founder is a novice at everything (skills are `learned`, §3.11, T5), so **founders now eat more slowly than in 3.3–3.5 until they practise**: a novice digs roots at 0.4 of 3.5's rate. That is the honest reading of the old numbers, not a tune; viability is 3.7's (T4).
+
+**Why these novice shares** [estimates]. Kaplan et al. (2000) sort forager foods into collected, extracted and hunted, with skill mattering least for the first and most for the last; Pretelli et al. (2022, `RESEARCH.md`): tubers and game need more skill than fruit. Children's returns on fruit come near adults' once body size is allowed for (Bird & Bliege Bird 2002; Blurton Jones & Marlowe 2002, as remembered), so an adult novice picking fruit or leaves gets most of an expert's rate (0.7); stripping seed heads is fiddlier (0.5); digging roots out by hand is extraction (0.4); opening hard nuts is the classic slow skill (chimpanzees take years to crack nuts well, Boesch & Boesch, as remembered; 0.3). Tearing meat by hand is mostly strength (0.7); cutting it from a carcass with a stone edge is a technique (0.4).
+
+**Why precision 0.5 to 0.9** [estimate]. 0.5 was already the novice's (§2.15, §4.9.3). 0.9: practised stone-workers detach a flake with most blows that carry enough energy, and land most of a blow where they aim. On friction it gives, by arithmetic: an expert's 2-minute rub at 40 W × strength 1 delivers 4,800 × 0.81 = 3,888 J of heat against 2,500 needed on bone-dry wood, so an ember in about 77 seconds of rubbing, near §2.16's "about a minute" for real hand-drill fire; a novice's (1,200 J) never makes one. **The first ember needs a lot of practice and depends on strength:** precision must reach √(2,500 ÷ (4,800 × strength)): 0.72 at strength 1 (skill 0.55, about 400 life-hours, some 53 real hours of rubbing at 7.6 life-hours an hour), 0.75 for a founding man of strength about 0.92 (skill 0.63, about 84 real hours), 0.82 for a founding woman of about 0.77 (skill 0.81, about 340 real hours), and more on damp wood. Real hand-drill fire is known to take novices long practice; whether 40 W × strength (§4.9.3) is right for a technique that is more speed than force is a question for a Fable look, not changed here. Struck animals: an expert lands 1.8 times a novice's energy a blow, so a lone striker with a 1 kg cobble (§2.17) needs about 25 blows for a deer rather than 45.
+
+**Cost.** One read (*s*) and one write (practice) per working act a tick, through a reader that keeps the skill columns between ticks (`createSkillAccess`), with the same arithmetic as the doors.
+
+**Tests** (`tests/unit/skills-in-acts.test.ts`): a practised eater eats faster than a novice at the same stand, by bySkill's share; eating adds its working seconds as practice to consume × that species and nothing to other pairs, and nothing in the tick a body is spawned; searching an empty cell adds none; a novice's rub never makes an ember on dry wood and an expert's does; an expert's blows on stone flake more often than a novice's; practice from striking an animal goes to strike × its kind; effort is the same for a novice and an expert.
 
 ## 5. Interaction primitives
 
