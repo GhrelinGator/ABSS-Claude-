@@ -21,7 +21,7 @@ import { createSim, stepSim } from '../src/sim/sim.ts';
 import type { StepProbe } from '../src/sim/sim.ts';
 import { TERRAIN_LAYERS, Water } from '../src/sim/world/terrain.ts';
 import { getMachineInfo } from '../src/harness/manifest.ts';
-import { HADZA_MAN, HADZA_WOMAN, fxKeeper, spawnWithBody } from '../tests/fixtures/bodies.ts';
+import { HADZA_MAN, HADZA_WOMAN, fxKeeper, spawnWithBody, withoutMinds } from '../tests/fixtures/bodies.ts';
 
 const N = Number(process.argv[2] ?? 500);
 const DAYS = Number(process.argv[3] ?? 4);
@@ -103,7 +103,7 @@ const fxLooker = defineSystem({
 });
 
 const config = defaultConfig(seed);
-const pipeline = [...SIM_PIPELINE];
+const pipeline = withoutMinds(SIM_PIPELINE);
 const at = pipeline.findIndex((d) => d.name === 'body.exposure');
 // Looks come first in a tick (the decide phase reads tick-start state, §1.6), then the moves, as acts will.
 pipeline.splice(at, 0, fxLooker, fxMover, fxKeeper);

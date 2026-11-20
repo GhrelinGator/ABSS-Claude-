@@ -15,7 +15,7 @@ import type { StepProbe } from '../src/sim/sim.ts';
 import { SIM_PIPELINE } from '../src/sim/pipeline.ts';
 import { TERRAIN_LAYERS, Water } from '../src/sim/world/terrain.ts';
 import { getMachineInfo } from '../src/harness/manifest.ts';
-import { HADZA_MAN, HADZA_WOMAN, fxKeeper, spawnWithBody } from '../tests/fixtures/bodies.ts';
+import { HADZA_MAN, HADZA_WOMAN, fxKeeper, spawnWithBody, withoutMinds } from '../tests/fixtures/bodies.ts';
 
 const N = Number(process.argv[2] ?? 500);
 const DAYS = Number(process.argv[3] ?? 4);
@@ -24,7 +24,7 @@ const BUDGET_US = 6.94; // DESIGN.md §1.7
 
 const config = defaultConfig(seed);
 // The keeper goes where acts will go: after the world, before the bodies.
-const pipeline = [...SIM_PIPELINE];
+const pipeline = withoutMinds(SIM_PIPELINE);
 pipeline.splice(pipeline.findIndex((d) => d.name === 'body.exposure'), 0, fxKeeper);
 const t0 = performance.now();
 const sim = createSim(config, pipeline);

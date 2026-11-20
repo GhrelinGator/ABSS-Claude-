@@ -168,7 +168,9 @@ export function choose(
   }
   let sum = 0;
   for (let i = 0; i < n; i++) {
-    const w = exp((cands.value[i] - best) / K.explorationTemperature);
+    // exp(0) is exactly 1; skipping it for the best candidates changes nothing but the time.
+    const z = (cands.value[i] - best) / K.explorationTemperature;
+    const w = z === 0 ? 1 : exp(z);
     cands.value[i] = w;
     sum += w;
   }
