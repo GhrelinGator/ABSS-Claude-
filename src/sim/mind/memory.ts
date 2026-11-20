@@ -3,16 +3,19 @@
 // after it, learned by Kalman–Rescorla–Wagner when an act ends; an episodic buffer that hands delayed
 // consequences back to the acts that came before, by eligibility; and a memory of things worth acting
 // on and where they were. It is also the predictor choice reads (§4.7.10), replacing 3.3's blank one.
+// Since 3.5 it also keeps hidden-cause nodes (§4.11): what no known cause could explain, set aside with
+// where, in what light and in what season it happened, and learned about like anything seen.
 //
 // Every number an agent holds here is learned content, kept in store columns of category `learned`, so
 // a new agent starts with nothing (T5) and the blank-slate guardrail covers it with no extra code. The
 // mind gets cues, never labels: nothing here knows what a class of thing is or is for.
 
 import { exp } from '../core/dmath.ts';
+import { STREAM_WORDS, nextFloat } from '../core/rng.ts';
 import type { ColumnSpec } from '../core/store.ts';
 import type { Sim, SimState } from '../sim.ts';
 import { GENETICS_COLUMNS } from '../body/genetics.ts';
-import { ACTS, ACT_COLUMNS, ACT_KINDS, Act, ActEnd } from './acts.ts';
+import { ACTS, ACT_COLUMNS, ACT_KINDS, ACT_TALLY_PART, Act, ActEnd, ActTally } from './acts.ts';
 import type { Candidates, ChoiceDials, Predictor } from './choice.ts';
 import { ClassKind, CueKind, SELF_CUE, classKind, cue, cueKind, cuePayload } from './cues.ts';
 import { MIND_DIAL_DEFAULTS } from './dials.ts';
@@ -46,6 +49,13 @@ export const MEMORY = {
   rememberAbove: 0.01,
   /** Salient percepts in a context (§4.7.3). */
   salientPercepts: 2,
+  /** Hidden-cause nodes an agent, and the most active at once (§4.11.1, §4.11.2). */
+  nodes: 16,
+  activeNodes: 2,
+  /** A node's strength halves over this many compressed years since it was last given a residual (§4.11.2). */
+  nodeHalfLifeYears: 1,
+  /** Act kinds in a node's signature: the act that ended and the ones before it in the buffer (§4.11.1). */
+  recentActs: 3,
 } as const;
 const K = MEMORY;
 const S = K.slots;
@@ -55,7 +65,10 @@ const MASK = S - 1;
 const E = K.records;
 const P = K.places;
 const T = K.thingsPerPlace;
+const N = K.nodes;
 const LN2 = 0.6931471805599453;
+/** Largest node serial before they start again from 1 (24-bit cue payloads). */
+const SERIAL_MAX = 0xffffff;
 
 /** What one agent remembers (§4.10.1). All learned content. */
 export const MEMORY_COLUMNS = {
@@ -79,6 +92,17 @@ export const MEMORY_COLUMNS = {
   /** The channel a remembered thing relieved most, and by how much, the last time it was used. */
   placeChannel: { name: 'placeChannel', dtype: 'u8', category: 'learned', width: P * T },
   placeRelief: { name: 'placeRelief', dtype: 'f32', category: 'learned', width: P * T },
+  /** Hidden-cause nodes (§4.11.1): serial (0: empty), signature, strength and when last given a residual. */
+  nodeId: { name: 'nodeId', dtype: 'u32', category: 'learned', width: N },
+  nodePlace: { name: 'nodePlace', dtype: 'u32', category: 'learned', width: N },
+  nodeLight: { name: 'nodeLight', dtype: 'u8', category: 'learned', width: N },
+  nodeDay: { name: 'nodeDay', dtype: 'u8', category: 'learned', width: N },
+  nodeActs: { name: 'nodeActs', dtype: 'u16', category: 'learned', width: N },
+  nodeStrength: { name: 'nodeStrength', dtype: 'f32', category: 'learned', width: N },
+  nodeLast: { name: 'nodeLast', dtype: 'u32', category: 'learned', width: N },
+  nodeSerial: { name: 'nodeSerial', dtype: 'u32', category: 'learned' },
+  /** The (node, act) keys of the nodes active when each record's act ended. */
+  epiNodes: { name: 'epiNodes', dtype: 'u32', category: 'learned', width: E * K.activeNodes },
 } as const satisfies Record<string, ColumnSpec>;
 const C = MEMORY_COLUMNS;
 
@@ -90,6 +114,13 @@ export function declareMemory(state: SimState): void {
 export function keyOf(c: number, act: number): number {
   return ((c << 4) | act) >>> 0;
 }
+function bitCount16(x: number): number {
+  let n = 0;
+  for (let v = x & 0xffff; v !== 0; v &= v - 1) n++;
+  return n;
+}
+if (MEMORY.activeNodes !== 2) throw new Error('memory: the buffer keeps two node keys a record.');
+
 export function cueOfKey(k: number): number {
   return k >>> 4;
 }
@@ -116,11 +147,16 @@ export function worthOf(d: ArrayLike<number>, dOff: number, o: ArrayLike<number>
   return v;
 }
 
-/** One agent's dials as memory and choice read them (§4.10.6). */
+/** One agent's dials as memory and choice read them (§4.10.6, §4.11.6). */
 export interface MindDials extends ChoiceDials {
   learningRate: number;
   traceHalfLife: number;
+  /** As the genome carries it: a liability, read as max(0, value). */
+  hiddenCauseBias: number;
 }
+
+/** A node as `node()` copies it: serial, place, light, day length, act-kind mask, strength, last given a residual. */
+export const NODE_LENGTH = 7;
 
 /** A slot's contents, for tests and observers: now (8), later (8), variance, later variance, σ²_pain, last learned. */
 export const ENTRY_LENGTH = 2 * CHANNELS + 4;
@@ -146,10 +182,24 @@ export interface Memory extends Predictor {
   update(slot: number, keys: Uint32Array, n: number, o: ArrayLike<number>, tick: number, placeKey?: number, start?: ArrayLike<number>, startOff?: number): number;
   /** Credit every record in the buffer with `error` by its eligibility at `tick`. */
   credit(slot: number, error: ArrayLike<number>, tick: number): void;
-  /** Push an ended act into the buffer, closing the oldest record if it is full. */
-  push(slot: number, key: number, placeKey: number, tick: number): void;
+  /** Push an ended act into the buffer, with the (node, act) keys of the nodes active then; closes the oldest record if it is full. */
+  push(slot: number, key: number, placeKey: number, tick: number, node0?: number, node1?: number): void;
   /** The error of the last update. */
   readonly error: Float64Array;
+  /** What no key of the last update absorbed: error × R ÷ (Σv + R) (§4.11.4). */
+  readonly residual: Float64Array;
+  /**
+   * The step of §4.11.5 on the last update's residual, for agent `slot` after act `act` in the context of
+   * `look`, with the nodes active in it counted as having taken part. Returns the node's slot (0..15) that
+   * was posited or strengthened, or -1.
+   */
+  infer(slot: number, look: Percepts, act: number, tick: number): number;
+  /** The cues of the nodes active in `look` now (at most two; the strongest when more are). */
+  activeNodes(slot: number, look: Percepts, out: Uint32Array): number;
+  /** Nodes held. */
+  nodeCount(slot: number): number;
+  /** Copy node `q` (0..15) into `out` (NODE_LENGTH numbers); false if the slot is empty. */
+  node(slot: number, q: number, out: Float64Array): boolean;
   /** Copy a key's entry into `out` (ENTRY_LENGTH numbers); false if the key is not held. */
   entry(slot: number, key: number, out: Float64Array): boolean;
   /** Keys in use. */
@@ -169,6 +219,9 @@ export function createMemory(sim: Sim): Memory {
   const placeColumns = Math.ceil(worldWidthM(config) / PERCEPTION.placeM);
   const tripPerM = 1 / (ACTS.walkMs * ACTS.exploreS);
   const genomes = agents.hasColumn(GENETICS_COLUMNS.genomeFormed.name);
+  const nodeHalfLifeTicks = K.nodeHalfLifeYears * config.time.daysPerYear * config.time.ticksPerDay;
+  const tallyPart = state.parts.find((p) => p.name === ACT_TALLY_PART);
+  const tally = (tallyPart?.readings?.() as Float64Array | undefined) ?? new Float64Array(ActTally.LENGTH);
 
   let key: Uint32Array;
   let now: Float32Array;
@@ -189,6 +242,16 @@ export function createMemory(sim: Sim): Memory {
   let pRelief: Float32Array;
   let pKey: Uint32Array;
   let pCell: Uint32Array;
+  let nId: Uint32Array;
+  let nPlace: Uint32Array;
+  let nLight: Uint8Array;
+  let nDay: Uint8Array;
+  let nActs: Uint16Array;
+  let nStrength: Float32Array;
+  let nLast: Uint32Array;
+  let nSerial: Uint32Array;
+  let eNodes: Uint32Array;
+  let rng: Uint32Array;
   let ax: Float64Array;
   let ay: Float64Array;
   let actKind: Uint8Array;
@@ -220,6 +283,16 @@ export function createMemory(sim: Sim): Memory {
     pRelief = agents.column<Float32Array>(C.placeRelief.name).data;
     pKey = agents.column<Uint32Array>(C.placeKey.name).data;
     pCell = agents.column<Uint32Array>(C.placeCell.name).data;
+    nId = agents.column<Uint32Array>(C.nodeId.name).data;
+    nPlace = agents.column<Uint32Array>(C.nodePlace.name).data;
+    nLight = agents.column<Uint8Array>(C.nodeLight.name).data;
+    nDay = agents.column<Uint8Array>(C.nodeDay.name).data;
+    nActs = agents.column<Uint16Array>(C.nodeActs.name).data;
+    nStrength = agents.column<Float32Array>(C.nodeStrength.name).data;
+    nLast = agents.column<Uint32Array>(C.nodeLast.name).data;
+    nSerial = agents.column<Uint32Array>(C.nodeSerial.name).data;
+    eNodes = agents.column<Uint32Array>(C.epiNodes.name).data;
+    rng = agents.column<Uint32Array>('rng').data;
     ax = agents.column<Float64Array>('x').data;
     ay = agents.column<Float64Array>('y').data;
     actKind = agents.column<Uint8Array>(ACT_COLUMNS.actKind.name).data;
@@ -231,7 +304,7 @@ export function createMemory(sim: Sim): Memory {
     if (genomes) {
       formed = agents.column<Uint8Array>(GENETICS_COLUMNS.genomeFormed.name).data;
       const G = GENETICS_COLUMNS;
-      dialColumns = [G.learningRate, G.traceHalfLife, G.curiosity, G.explorationTemperature, G.riskTolerance].map(
+      dialColumns = [G.learningRate, G.traceHalfLife, G.curiosity, G.explorationTemperature, G.riskTolerance, G.hiddenCauseBias].map(
         (spec) => agents.column<Float64Array>(spec.name).data,
       );
     }
@@ -251,12 +324,14 @@ export function createMemory(sim: Sim): Memory {
       dials.curiosity = dialColumns[2][slot];
       dials.explorationTemperature = dialColumns[3][slot];
       dials.riskTolerance = dialColumns[4][slot];
+      dials.hiddenCauseBias = dialColumns[5][slot];
     } else {
       dials.learningRate = MIND_DIAL_DEFAULTS.learningRate;
       dials.traceHalfLife = MIND_DIAL_DEFAULTS.traceHalfLife;
       dials.curiosity = MIND_DIAL_DEFAULTS.curiosity;
       dials.explorationTemperature = MIND_DIAL_DEFAULTS.explorationTemperature;
       dials.riskTolerance = MIND_DIAL_DEFAULTS.riskTolerance;
+      dials.hiddenCauseBias = MIND_DIAL_DEFAULTS.hiddenCauseBias;
     }
     prior = K.priorVariance * dials.learningRate;
     regrowth = (K.regrowthPerHour / ticksPerHour) * dials.learningRate;
@@ -314,7 +389,7 @@ export function createMemory(sim: Sim): Memory {
   }
 
   // Keys in the update under way: never chosen to be forgotten.
-  const keep = new Uint32Array(16);
+  const keep = new Uint32Array(24);
   let keepN = 0;
 
   /** Forget the least recently learned of `sampled` slots read from a start hashed from `k` and `tick` (§4.10.2). */
@@ -395,10 +470,12 @@ export function createMemory(sim: Sim): Memory {
 
   // ---- learning now (§4.10.2)
 
-  const slots = new Int32Array(16);
-  const gains = new Float64Array(16);
+  const slots = new Int32Array(24);
+  const gains = new Float64Array(24);
   const pred = new Float64Array(CHANNELS);
   const error = new Float64Array(CHANNELS);
+  const residual = new Float64Array(CHANNELS);
+  let residualSize = 0;
 
   function findAll(a: number, keys: Uint32Array, n: number): number {
     let missing = 0;
@@ -488,6 +565,13 @@ export function createMemory(sim: Sim): Memory {
       size += Math.abs(error[ch]);
     }
     const denom = sumV + K.outcomeNoise;
+    // What no key absorbed (§4.11.4): each key moves by g δ, so δ (1 − Σg) = δ R ÷ (Σv + R) is left.
+    const left = K.outcomeNoise / denom;
+    residualSize = 0;
+    for (let ch = 0; ch < CHANNELS; ch++) {
+      residual[ch] = error[ch] * left;
+      residualSize += Math.abs(residual[ch]);
+    }
     const painError2 = error[Channel.PAIN] * error[Channel.PAIN];
     for (let i = 0; i < n; i++) {
       const s = slots[i];
@@ -547,14 +631,21 @@ export function createMemory(sim: Sim): Memory {
       const createIt = size > K.salient || placeKnown(a, cuePayload(cueOfKey(pk)));
       closeInto(a, pk, eCredit, co, tick, !createIt);
     }
+    // The nodes active when its act ended learn what followed, if they are still held (§4.11.3).
+    for (let q = 0; q < K.activeNodes; q++) {
+      const nk = eNodes[j * K.activeNodes + q];
+      if (nk !== 0) closeInto(a, nk, eCredit, co, tick, true);
+    }
   }
 
-  function push(a: number, k: number, placeKey: number, tick: number): void {
+  function push(a: number, k: number, placeKey: number, tick: number, node0 = 0, node1 = 0): void {
     const j = a * E + eNext[a];
     if (eKey[j] !== 0) close(a, j, tick);
     eKey[j] = k;
     ePlace[j] = placeKey;
     eEnd[j] = tick;
+    eNodes[j * K.activeNodes] = node0;
+    eNodes[j * K.activeNodes + 1] = node1;
     const o = j * CHANNELS;
     for (let ch = 0; ch < CHANNELS; ch++) eCredit[o + ch] = 0;
     eNext[a] = (eNext[a] + 1) % E;
@@ -640,6 +731,192 @@ export function createMemory(sim: Sim): Memory {
     }
   }
 
+  // ---- hidden-cause nodes (§4.11)
+
+  function nodeCue(j: number): number {
+    return cue(CueKind.NODE, nId[j]);
+  }
+
+  function matches(j: number, place: number, light: number, day: number): number {
+    return (nPlace[j] === place ? 1 : 0) + (nLight[j] === light ? 1 : 0) + (nDay[j] === day ? 1 : 0);
+  }
+
+  /** Strength, halved for every compressed year since the node was last given a residual (§4.11.2). */
+  function effectiveStrength(j: number, tick: number): number {
+    const age = tick - nLast[j];
+    return age > 0 ? nStrength[j] * exp((-age / nodeHalfLifeTicks) * LN2) : nStrength[j];
+  }
+
+  const fitting = new Int32Array(N);
+
+  /**
+   * Agent `a`'s nodes active at (place, light, day length): two or more of the three match. At most two,
+   * the strongest when more are active (ties to the lower slot); global indices into `out`.
+   */
+  function activeAt(a: number, place: number, light: number, day: number, tick: number, out: Int32Array): number {
+    const base = a * N;
+    let n = 0;
+    for (let q = 0; q < N; q++) {
+      const j = base + q;
+      if (nId[j] !== 0 && matches(j, place, light, day) >= 2) fitting[n++] = j;
+    }
+    if (n <= K.activeNodes) {
+      for (let i = 0; i < n; i++) out[i] = fitting[i];
+      return n;
+    }
+    let b0 = -1;
+    let b1 = -1;
+    let s0 = -Infinity;
+    let s1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const j = fitting[i];
+      const st = effectiveStrength(j, tick);
+      if (st > s0) {
+        b1 = b0;
+        s1 = s0;
+        b0 = j;
+        s0 = st;
+      } else if (st > s1) {
+        b1 = j;
+        s1 = st;
+      }
+    }
+    out[0] = b0;
+    out[1] = b1;
+    return 2;
+  }
+
+  function hasNodes(a: number): boolean {
+    const base = a * N;
+    for (let q = 0; q < N; q++) if (nId[base + q] !== 0) return true;
+    return false;
+  }
+
+  /** Act kinds of the act that just ended (`act`) and the records before it in the buffer (§4.11.1). */
+  function recentMask(a: number, act: number): number {
+    let mask = 1 << act;
+    for (let back = 1; back < K.recentActs; back++) {
+      const j = a * E + ((eNext[a] + E - back) % E);
+      if (eKey[j] !== 0) mask |= 1 << actOfKey(eKey[j]);
+    }
+    return mask;
+  }
+
+  // The nodes that took part in the update under way (§4.11.3, §4.11.5).
+  const took = new Int32Array(K.activeNodes);
+  let tookN = 0;
+  const nodeKeys = new Uint32Array(2);
+  const nodeSlots = new Int32Array(2);
+
+  /** Node `j`'s (node, act) and (node, 0) keys learn the residual, entering at prior if missing (§4.11.5). */
+  function assign(a: number, j: number, act: number, tick: number): void {
+    const nc = nodeCue(j);
+    nodeKeys[0] = keyOf(nc, act);
+    nodeKeys[1] = keyOf(nc, 0);
+    let missing = 0;
+    for (let i = 0; i < 2; i++) {
+      nodeSlots[i] = find(a, nodeKeys[i]);
+      if (nodeSlots[i] < 0) missing++;
+    }
+    if (missing > 0 && count[a] + missing > K.most) {
+      keepN = 0;
+      keep[keepN++] = nodeKeys[0];
+      keep[keepN++] = nodeKeys[1];
+      while (count[a] + missing > K.most) forgetOne(a, nodeKeys[0], tick);
+      keepN = 0;
+      for (let i = 0; i < 2; i++) nodeSlots[i] = find(a, nodeKeys[i]);
+    }
+    for (let i = 0; i < 2; i++) if (nodeSlots[i] < 0) nodeSlots[i] = add(a, nodeKeys[i], tick);
+    let sumV = 0;
+    for (let ch = 0; ch < CHANNELS; ch++) pred[ch] = 0;
+    for (let i = 0; i < 2; i++) {
+      const s = nodeSlots[i];
+      touch(s, nodeKeys[i], tick);
+      sumV += vNow[s];
+      for (let ch = 0; ch < CHANNELS; ch++) pred[ch] += now[s * CHANNELS + ch];
+    }
+    const denom = sumV + K.outcomeNoise;
+    const painError = residual[Channel.PAIN] - pred[Channel.PAIN];
+    for (let i = 0; i < 2; i++) {
+      const s = nodeSlots[i];
+      const v = vNow[s];
+      const g = v / denom;
+      const o8 = s * CHANNELS;
+      for (let ch = 0; ch < CHANNELS; ch++) now[o8 + ch] += g * (residual[ch] - pred[ch]);
+      vNow[s] = v * (1 - g);
+      vPain[s] += g * (painError * painError - vPain[s]);
+    }
+  }
+
+  /**
+   * §4.11.5 on the residual of the last update, for agent `a` (its dials read) after act `act` at (place,
+   * light, day length); `took[0..tookN)` are the nodes that took part. Returns the node's slot or -1.
+   */
+  function infer(a: number, act: number, place: number, light: number, day: number, tick: number): number {
+    if (!(residualSize > K.salient)) return -1;
+    tally[ActTally.RESIDUALS_SALIENT] += 1;
+    const b = dials.hiddenCauseBias;
+    if (!(b > 0)) return -1;
+    const p = b * residualSize;
+    if (p < 1 && !(nextFloat(rng, a * STREAM_WORDS) < p)) return -1;
+    const recent = recentMask(a, act);
+    const base = a * N;
+    // The best fit: most of place, light and day length matching (two at least), then most act kinds in
+    // common, then the strongest, then the lowest slot.
+    let j = -1;
+    let bestM = 0;
+    let bestO = 0;
+    let bestS = 0;
+    for (let q = 0; q < N; q++) {
+      const i = base + q;
+      if (nId[i] === 0) continue;
+      const m = matches(i, place, light, day);
+      if (m < 2) continue;
+      const o = bitCount16(nActs[i] & recent);
+      const st = effectiveStrength(i, tick);
+      if (j < 0 || m > bestM || (m === bestM && (o > bestO || (o === bestO && st > bestS)))) {
+        j = i;
+        bestM = m;
+        bestO = o;
+        bestS = st;
+      }
+    }
+    if (j >= 0) {
+      nStrength[j] += residualSize;
+      nLast[j] = tick;
+      tally[ActTally.NODES_STRENGTHENED] += 1;
+      // A node that took part has had its share of the error by its gain already.
+      for (let i = 0; i < tookN; i++) if (took[i] === j) return j - base;
+    } else {
+      // Posited: in an empty slot, or in place of the weakest.
+      let weakest = -1;
+      let ws = Infinity;
+      for (let q = 0; q < N && j < 0; q++) {
+        const i = base + q;
+        if (nId[i] === 0) j = i;
+        else {
+          const st = effectiveStrength(i, tick);
+          if (st < ws) {
+            ws = st;
+            weakest = i;
+          }
+        }
+      }
+      if (j < 0) j = weakest;
+      nSerial[a] = nSerial[a] >= SERIAL_MAX ? 1 : nSerial[a] + 1;
+      nId[j] = nSerial[a];
+      nPlace[j] = place;
+      nLight[j] = light;
+      nDay[j] = day;
+      nActs[j] = recent;
+      nStrength[j] = residualSize;
+      nLast[j] = tick;
+      tally[ActTally.NODES_POSITED] += 1;
+    }
+    assign(a, j, act, tick);
+    return j - base;
+  }
+
   // ---- what a look gives as context (§4.7.3)
 
   const salient = new Uint32Array(K.salientPercepts);
@@ -703,6 +980,18 @@ export function createMemory(sim: Sim): Memory {
       if (s !== target) keys[n++] = keyOf(s, act);
       keys[n++] = keyOf(s, 0);
     }
+    // The nodes active here take part as things (§4.11.3).
+    const place = cuePayload(look.place);
+    const lightNow = cuePayload(look.light);
+    const dayNow = cuePayload(look.dayLength);
+    tookN = activeAt(slot, place, lightNow, dayNow, tick, took);
+    for (let i = 0; i < tookN; i++) {
+      const nc = nodeCue(took[i]);
+      keys[n++] = keyOf(nc, act);
+      keys[n++] = keyOf(nc, 0);
+    }
+    const node0 = tookN > 0 ? keyOf(nodeCue(took[0]), act) : 0;
+    const node1 = tookN > 1 ? keyOf(nodeCue(took[1]), act) : 0;
     // A key named twice would be counted twice.
     let m = 0;
     for (let i = 0; i < n; i++) {
@@ -713,7 +1002,9 @@ export function createMemory(sim: Sim): Memory {
     const placeKey = keyOf(look.place, 0);
     const size = update(slot, keys, m, outcome, tick, placeKey, actDrives, d0);
     if (size > K.salient) credit(slot, error, tick);
-    push(slot, targetKey, placeKey, tick);
+    // What nothing known absorbed may be set aside for a hidden cause (§4.11.5).
+    infer(slot, act, place, lightNow, dayNow, tick);
+    push(slot, targetKey, placeKey, tick, node0, node1);
 
     // Things worth acting on, where they were.
     if (actSource[slot] === PerceptSource.CELL) {
@@ -810,6 +1101,12 @@ export function createMemory(sim: Sim): Memory {
   let light = 0;
   let dayLength = 0;
   let warmth = 0;
+  // Nodes active here and, for a remembered thing elsewhere, there (§4.11.3).
+  const here = new Int32Array(K.activeNodes);
+  const hereCue = new Uint32Array(K.activeNodes);
+  let hereN = 0;
+  let anyNodes = false;
+  const thereIdx = new Int32Array(K.activeNodes);
 
   function addNow(a: number, k: number, out: Float64Array, o: number): boolean {
     const s = find(a, k);
@@ -817,6 +1114,13 @@ export function createMemory(sim: Sim): Memory {
     const f = s * CHANNELS;
     for (let ch = 0; ch < CHANNELS; ch++) out[o + ch] += now[f + ch];
     return true;
+  }
+
+  function subNow(a: number, k: number, out: Float64Array): void {
+    const s = find(a, k);
+    if (s < 0) return;
+    const f = s * CHANNELS;
+    for (let ch = 0; ch < CHANNELS; ch++) out[ch] -= now[f + ch];
   }
 
   function begin(slot: number, look: Percepts): void {
@@ -836,6 +1140,12 @@ export function createMemory(sim: Sim): Memory {
     addNow(slot, keyOf(dayLength, 0), pav, 0);
     addNow(slot, keyOf(warmth, 0), pav, 0);
     for (let i = 0; i < salientN; i++) addNow(slot, keyOf(salient[i], 0), pav, 0);
+    anyNodes = hasNodes(slot);
+    hereN = anyNodes ? activeAt(slot, cuePayload(look.place), cuePayload(light), cuePayload(dayLength), tickNow, here) : 0;
+    for (let i = 0; i < hereN; i++) {
+      hereCue[i] = nodeCue(here[i]);
+      addNow(slot, keyOf(hereCue[i], 0), pav, 0);
+    }
     trip.fill(0);
     const s = find(slot, keyOf(SELF_CUE, Act.EXPLORE));
     if (s >= 0) {
@@ -853,6 +1163,7 @@ export function createMemory(sim: Sim): Memory {
     addNow(who, keyOf(light, act), ctxAct, o);
     addNow(who, keyOf(dayLength, act), ctxAct, o);
     addNow(who, keyOf(warmth, act), ctxAct, o);
+    for (let i = 0; i < hereN; i++) addNow(who, keyOf(hereCue[i], act), ctxAct, o);
     for (let i = 0; i < salientN; i++) {
       const so = (i * ACT_KINDS + act) * CHANNELS;
       for (let ch = 0; ch < CHANNELS; ch++) salAct[so + ch] = 0;
@@ -874,6 +1185,25 @@ export function createMemory(sim: Sim): Memory {
     if (there !== 0 && there !== herePlace) {
       const s = find(who, keyOf(there, 0));
       for (let ch = 0; ch < CHANNELS; ch++) out[ch] += (s >= 0 ? now[s * CHANNELS + ch] : 0) - herePav[ch];
+      // The nodes active there replace those active here (§4.11.3).
+      if (anyNodes) {
+        const thereN = activeAt(who, cuePayload(there), cuePayload(light), cuePayload(dayLength), tickNow, thereIdx);
+        for (let i = 0; i < thereN; i++) {
+          let also = false;
+          for (let q = 0; q < hereN; q++) if (here[q] === thereIdx[i]) also = true;
+          if (also) continue;
+          const nc = nodeCue(thereIdx[i]);
+          addNow(who, keyOf(nc, 0), out, 0);
+          addNow(who, keyOf(nc, act), out, 0);
+        }
+        for (let q = 0; q < hereN; q++) {
+          let also = false;
+          for (let i = 0; i < thereN; i++) if (here[q] === thereIdx[i]) also = true;
+          if (also) continue;
+          subNow(who, keyOf(hereCue[q], 0), out);
+          subNow(who, keyOf(hereCue[q], act), out);
+        }
+      }
     }
     const k = keyOf(c, act);
     const s = find(who, k);
@@ -921,11 +1251,42 @@ export function createMemory(sim: Sim): Memory {
       readDials(slot);
       credit(slot, err, tick);
     },
-    push: (slot, k, placeKey, tick) => {
+    push: (slot, k, placeKey, tick, node0 = 0, node1 = 0) => {
       readDials(slot);
-      push(slot, k, placeKey, tick);
+      push(slot, k, placeKey, tick, node0, node1);
     },
     error,
+    residual,
+    infer: (slot, look, act, tick) => {
+      readDials(slot);
+      const place = cuePayload(look.place);
+      const l = cuePayload(look.light);
+      const d = cuePayload(look.dayLength);
+      tookN = activeAt(slot, place, l, d, tick, took);
+      return infer(slot, act, place, l, d, tick);
+    },
+    activeNodes: (slot, look, out) => {
+      const n = activeAt(slot, cuePayload(look.place), cuePayload(look.light), cuePayload(look.dayLength), state.tick, took);
+      for (let i = 0; i < n; i++) out[i] = nodeCue(took[i]);
+      return n;
+    },
+    nodeCount: (slot) => {
+      let n = 0;
+      for (let q = 0; q < N; q++) if (nId[slot * N + q] !== 0) n++;
+      return n;
+    },
+    node: (slot, q, out) => {
+      const j = slot * N + q;
+      if (nId[j] === 0) return false;
+      out[0] = nId[j];
+      out[1] = nPlace[j];
+      out[2] = nLight[j];
+      out[3] = nDay[j];
+      out[4] = nActs[j];
+      out[5] = nStrength[j];
+      out[6] = nLast[j];
+      return true;
+    },
     entry,
     count: (slot) => count[slot],
     remember,

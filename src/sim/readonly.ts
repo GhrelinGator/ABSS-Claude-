@@ -38,6 +38,8 @@ export {
   stoneLayer,
 } from './world/materials.ts';
 export { Soil, TERRAIN_LAYERS, Water } from './world/terrain.ts';
+export { ACT_TALLY_PART, ActTally } from './mind/acts.ts';
+export { MEMORY, MEMORY_COLUMNS } from './mind/memory.ts';
 
 /** A numeric array that can be read but not written. */
 export interface RoArray {

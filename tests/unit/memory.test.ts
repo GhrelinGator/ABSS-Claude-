@@ -359,7 +359,8 @@ test('the mind\'s dials are on the genome: founders spread around the toy\'s val
   const temp = values(G.explorationTemperature.name);
   const risk = values(G.riskTolerance.name);
   assert.ok(Math.abs(mean(lr) - 1) < 0.05 && lr[0] >= 0.3 && lr[lr.length - 1] <= 1.7, `learningRate ${mean(lr)}`);
-  assert.ok(median(trace) > 0.8 && median(trace) < 1.25 && trace[0] > 0.2 && trace[trace.length - 1] < 4.3, `traceHalfLife median ${median(trace)} h`);
+  // The mean of two log-uniform alleles on 0.25–4 h has its median at about 1.24 h; 400 founders' sample median lies within 1.07–1.42 in 999 draws of 1,000 (3.5: the 3.4 bound of 1.25 sat on the true median).
+  assert.ok(median(trace) > 1.05 && median(trace) < 1.45 && trace[0] > 0.2 && trace[trace.length - 1] < 4.3, `traceHalfLife median ${median(trace)} h`);
   assert.ok(Math.abs(mean(cur) - 0.3) < 0.03 && cur[0] >= 0, `curiosity ${mean(cur)}`);
   assert.ok(median(temp) > 0.008 && median(temp) < 0.0125, `explorationTemperature median ${median(temp)}`);
   assert.ok(Math.abs(mean(risk)) < 0.05 && risk[0] >= -0.6 && risk[risk.length - 1] <= 0.6, `riskTolerance ${mean(risk)}`);

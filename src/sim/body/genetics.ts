@@ -18,7 +18,7 @@ import type { ColumnSpec } from '../core/store.ts';
 import type { Sink, Source } from '../core/codec.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { BODY_COLUMNS, DeathCause, Sex, deathDoor } from './metabolism.ts';
-import { CURIOSITY, EXPLORATION_TEMPERATURE, LEARNING_RATE, RISK_TOLERANCE, TRACE_HALF_LIFE } from '../mind/dials.ts';
+import { CURIOSITY, EXPLORATION_TEMPERATURE, HIDDEN_CAUSE_BIAS, LEARNING_RATE, RISK_TOLERANCE, TRACE_HALF_LIFE } from '../mind/dials.ts';
 
 // ALIBI: bodies of one species grow to different sizes, and a parent's size passes in part to its
 // young; a larger body stores and carries more but costs more to keep and to grow, whether or not any
@@ -45,8 +45,10 @@ export interface GeneDial {
 
 /**
  * The dials on the genome, in order: the body's two (D-047), then the mind's five (3.4, DESIGN.md
- * §4.10.6), which join with the mechanisms that read them. A dial that is a drive or a bias still waits
- * for approval (CLAUDE.md). Founders' ranges for the mind's dials are viability choices (§0.2), logged.
+ * §4.10.6), then `hiddenCauseBias` (3.5, §4.11.6, in the design's dial list since D-004 and D-005); each
+ * joins with the mechanism that reads it. A drive, or a bias the design does not already list, still
+ * waits for approval (CLAUDE.md). Founders' ranges for the mind's survival-critical dials are viability
+ * choices (§0.2), logged; `hiddenCauseBias` starts centred on its neutral value instead (D-005).
  */
 export const GENE_DIALS: readonly GeneDial[] = Object.freeze([
   { dial: FRAME_SCALE, foundersFrom: 0.75, foundersTo: 1.25, noiseSd: 0.04, mutationSd: 0.05 },
@@ -56,6 +58,8 @@ export const GENE_DIALS: readonly GeneDial[] = Object.freeze([
   { dial: CURIOSITY, foundersFrom: 0, foundersTo: 0.6, noiseSd: 0.03, mutationSd: 0.05 },
   { dial: EXPLORATION_TEMPERATURE, foundersFrom: 0.003, foundersTo: 0.03, foundersLog: true, noiseSd: 0.001, mutationSd: 0.002 },
   { dial: RISK_TOLERANCE, foundersFrom: -0.5, foundersTo: 0.5, noiseSd: 0.05, mutationSd: 0.05 },
+  // 3.5 (§4.11.6): a liability centred on its neutral 0, so about half the founders never set anything aside.
+  { dial: HIDDEN_CAUSE_BIAS, foundersFrom: -2, foundersTo: 2, noiseSd: 0.1, mutationSd: 0.2 },
 ]);
 const DIALS = GENE_DIALS.length;
 /** Index of each dial in GENE_DIALS (and in the `alleles` and `fetusDials` columns). */
@@ -67,6 +71,7 @@ export const DialIndex = {
   CURIOSITY: 4,
   EXPLORATION_TEMPERATURE: 5,
   RISK_TOLERANCE: 6,
+  HIDDEN_CAUSE_BIAS: 7,
 } as const;
 
 /** Every number of genetics, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Genetics*). */
@@ -111,6 +116,7 @@ export const GENETICS_COLUMNS = {
   curiosity: { name: 'curiosity', dtype: 'f64', category: 'body' },
   explorationTemperature: { name: 'explorationTemperature', dtype: 'f64', category: 'body' },
   riskTolerance: { name: 'riskTolerance', dtype: 'f64', category: 'body' },
+  hiddenCauseBias: { name: 'hiddenCauseBias', dtype: 'f64', category: 'body' },
   /** Age, years, at which a recessive disorder kills the body; 0 if none will. */
   disorderAtYears: { name: 'disorderAtYears', dtype: 'f64', category: 'body' },
   /** The fetus's genome, on its mother's row while she is pregnant: alleles, broken loci, expressed values. */
@@ -128,6 +134,7 @@ const EXPRESSED: readonly string[] = [
   C.curiosity.name,
   C.explorationTemperature.name,
   C.riskTolerance.name,
+  C.hiddenCauseBias.name,
 ];
 if (EXPRESSED.length !== GENE_DIALS.length || GENE_DIALS.some((g, d) => g.dial.name !== EXPRESSED[d])) {
   throw new Error('genetics: the expressed columns do not match the dials on the genome.');
