@@ -78,50 +78,97 @@ export interface PerceivedClass {
   readonly still: boolean;
 }
 
+/**
+ * What physics makes of a perceived class: which acts it allows (§4.9.3). Acts and the candidates of a
+ * choice read it; a mind never does (it gets only the class number).
+ */
+export const ClassKind = {
+  PLANT: 1,
+  HARE: 2,
+  CARCASS: 3,
+  STONE: 4,
+  WOOD: 5,
+  LITTER: 6,
+  WATER: 7,
+  SHELTER: 8,
+  HIDE: 9,
+  ANIMAL: 10,
+  FIGURE: 11,
+  FIRE: 12,
+} as const;
+
 function buildClasses() {
   const classes: PerceivedClass[] = [];
+  const kinds: number[] = [];
+  const whats: number[] = [];
+  let kindNow = 0;
+  let whatNow = -1;
   const add = (name: string, group: number, still: boolean): number => {
     classes.push(Object.freeze({ name, group, still }));
+    kinds.push(kindNow);
+    whats.push(whatNow);
     return classes.length - 1;
+  };
+  const as = (kind: number, what = -1) => {
+    kindNow = kind;
+    whatNow = what;
   };
   // Still classes first, so each has a bit in a cell's 64-bit still mask.
   const plant: number[] = [];
-  for (const species of PLANT_SPECIES) {
+  for (const [index, species] of PLANT_SPECIES.entries()) {
+    as(ClassKind.PLANT, index);
     // Nut trees are the only trees (§2.15's canopy); berry bushes and reeds stand about head high; the rest are herbs.
     const group = species.name === 'nut' ? SightGroup.TREE : species.woody || species.name === 'reed' ? SightGroup.BUSH : SightGroup.GROUND;
     plant.push(add(`${species.name}, bare`, group, true));
     add(`${species.name}, in leaf`, group, true);
     add(`${species.name}, bearing`, group, true);
   }
+  as(ClassKind.HARE);
   const hare = add('hare', SightGroup.GROUND, true);
+  as(ClassKind.CARCASS);
   const carcass = add('carcass', SightGroup.BUSH, true);
   // Material classes, by material id: plain (loose stone, or a stone object), edged, small and long wood, hide.
   const plainOf = new Int16Array(MATERIALS.length + 1).fill(-1);
   for (const m of MATERIALS) {
+    as(ClassKind.STONE, m.id);
     if (m.id >= Material.FLINT && m.id <= Material.PYRITE) plainOf[m.id] = add(`${m.name}, lying`, SightGroup.GROUND, true);
   }
+  as(ClassKind.WOOD, 0);
   const smallWood = add('wood, small', SightGroup.GROUND, true);
+  as(ClassKind.WOOD, 1);
   const longWood = add('wood, long', SightGroup.BUSH, true);
+  as(ClassKind.LITTER);
   const litter = add('litter', SightGroup.GROUND, true);
+  as(ClassKind.WATER);
   const flowing = add('water, flowing', SightGroup.TREE, true);
   const standing = add('water, standing', SightGroup.TREE, true);
+  as(ClassKind.SHELTER);
   const overhang = add('rock overhang', SightGroup.TREE, true);
   const cave = add('cave', SightGroup.TREE, true);
   const stillCount = classes.length;
   // Classes seen only fresh: edged stone and hides (objects only), animals, a person's shape, fire.
   const edgedOf = new Int16Array(MATERIALS.length + 1).fill(-1);
   for (const m of MATERIALS) {
+    as(ClassKind.STONE, m.id);
     if (m.id >= Material.FLINT && m.id <= Material.PYRITE) edgedOf[m.id] = add(`${m.name}, keen edge`, SightGroup.GROUND, false);
   }
+  as(ClassKind.HIDE);
   const hide = add('hide', SightGroup.GROUND, false);
   const animalOf = new Int16Array(16).fill(-1);
-  for (const g of GROUP_KINDS) animalOf[g.kind] = add(g.name, SightGroup.LARGE, false);
+  for (const g of GROUP_KINDS) {
+    as(ClassKind.ANIMAL, g.kind);
+    animalOf[g.kind] = add(g.name, SightGroup.LARGE, false);
+  }
+  as(ClassKind.FIGURE);
   const figure = add('a person too far away to tell who', SightGroup.LARGE, false);
+  as(ClassKind.FIRE);
   const flaming = add('fire, flaming', SightGroup.FIRE, false);
   const smouldering = add('fire, smouldering', SightGroup.FIRE, false);
   if (stillCount > 64) throw new Error(`cues: ${stillCount} still classes do not fit a 64-bit mask.`);
   return {
     classes: Object.freeze(classes),
+    kindOf: Uint8Array.from(kinds),
+    whatOf: Int16Array.from(whats),
     stillCount,
     plant: Object.freeze(plant),
     hare,
@@ -185,3 +232,16 @@ export function animalClass(kind: number): number {
 }
 
 export const PLANT_LOOK_COUNT = PLANT_LOOKS;
+
+/** What physics makes of class `c` (ClassKind), 0 for none. */
+export function classKind(c: number): number {
+  return c >= 0 && c < BUILT.kindOf.length ? BUILT.kindOf[c] : 0;
+}
+
+/**
+ * Which one of its kind class `c` is: a plant's catalogue index, a stone's material id, 0 for small and
+ * 1 for long wood, an animal group's kind; -1 for the rest.
+ */
+export function classWhat(c: number): number {
+  return c >= 0 && c < BUILT.whatOf.length ? BUILT.whatOf[c] : -1;
+}

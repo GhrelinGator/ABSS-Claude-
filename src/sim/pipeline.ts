@@ -7,6 +7,10 @@ import { aging } from './body/aging.ts';
 import { exposure } from './body/exposure.ts';
 import { fitness } from './body/fitness.ts';
 import { genetics } from './body/genetics.ts';
+import { gut } from './body/gut.ts';
+import { sleep } from './body/sleep.ts';
+import { founders } from './mind/founders.ts';
+import { mind } from './mind/mind.ts';
 import { heat } from './body/heat.ts';
 import { injury } from './body/injury.ts';
 import { metabolism } from './body/metabolism.ts';
@@ -36,6 +40,10 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   fire,
   // Systems that make agents act (Phase 3 on) go here, before the bodies, so each body is
   // exposed where it ended its acts and charged for what it did in the same tick.
+  // Phase 3.3: the founding population, placed at tick 0 when the config asks for one.
+  founders,
+  // Phase 3.3: agents feel, look, choose and act (perception, 3.2, is its look).
+  mind,
   // Phase 2.2: what each body is in, read from the world at its position.
   exposure,
   // Phase 2.3: wounds, bleeding, broken bones, burns, lightning, infections, healing.
@@ -44,6 +52,10 @@ export const SIM_PIPELINE: readonly SystemDef[] = Object.freeze([
   heat,
   // Phase 2.6: conception, the fetus, birth, milk; after heat, so what they cost is charged by metabolism this tick.
   reproduction,
+  // Phase 3.3: the stomach's bulk and plant poisons; before metabolism, so food vomited is never absorbed.
+  gut,
+  // Phase 3.3: sleep pressure; before metabolism, which clears the tick's effort.
+  sleep,
   // Phase 2.1: what agents' bodies spend, store and starve on.
   metabolism,
   // Phase 2.4: fitness and fatigue from the tick's exertion, strains, trained muscle (skills are kept here too).

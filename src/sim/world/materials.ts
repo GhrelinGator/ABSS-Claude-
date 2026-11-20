@@ -296,6 +296,12 @@ export const OBJECT_STORE = 'objects';
 export const ROCK_SHELTER_STORE = 'rockShelters';
 
 export const MATERIAL_CONSTANTS = {
+  /**
+   * The least piece that breaks off as an object, kg: anything smaller is grit that stays with the piece it
+   * came from, and an object worn below it is gone as crumbs (found in 3.3: repeated blows on ever smaller
+   * pieces reached zero mass).
+   */
+  leastPieceKg: 0.001,
   /** Loose hand-sized stone lying on the surface, kg per hectare, by soil (rock, thin, loam, alluvium, sand). */
   looseStonePerHa: [30000, 8000, 300, 1500, 100],
   /** River beds and gravel bars, and spring heads, kg per hectare. Lakes: none within reach. */
@@ -598,6 +604,12 @@ export function strikeObjects(
       } else {
         let loss = spec.crumbleKgPerJ * e;
         if (loss > 0.5 * mass) loss = 0.5 * mass;
+        if (mass - loss < MATERIAL_CONSTANTS.leastPieceKg) {
+          // Worn to grit: the whole piece is crumbs.
+          crumbsKg += mass;
+          store.remove(slot);
+          continue;
+        }
         store.column<Float32Array>('mass').data[slot] = mass - loss;
         store.column<Float32Array>('length').data[slot] = stoneLength(mass - loss, spec.densityKgM3);
         crumbsKg += loss;
@@ -642,6 +654,8 @@ function splitInto(
   let given = 0;
   for (let n = 1; n < shares.length; n++) {
     const m = mass * shares[n];
+    // Grit too small to be a piece stays with the piece it came from.
+    if (m < MATERIAL_CONSTANTS.leastPieceKg) continue;
     given += m;
     const length = lengthM > 0 ? lengthM * shares[n] : stoneLength(m, spec.densityKgM3);
     const piece = spawnObject(sim, spec.id, x, y, m, length, keen());

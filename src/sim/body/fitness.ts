@@ -55,6 +55,9 @@ export const FITNESS = {
   /** Strength = (lean mass ÷ this)^(2/3) × (1 − strainLoss × strain). */
   strengthLeanKg: 50,
   strengthStrainLoss: 0.5,
+  /** Tiredness (§4.9.2): the acute load's time constant, hours, and the acute load, load-hours × capacity, at which it is 1 [estimates]. */
+  acuteHours: 4,
+  acuteMostLoadHours: 4,
 } as const;
 const K = FITNESS;
 
@@ -63,6 +66,11 @@ export const FITNESS_COLUMNS = {
   fitness: { name: 'fitness', dtype: 'f64', category: 'body' },
   fatigue: { name: 'fatigue', dtype: 'f64', category: 'body' },
   chronicLoad: { name: 'chronicLoad', dtype: 'f64', category: 'body' },
+  /**
+   * The load of the last hours, load-hours, leaking away with a time constant of `acuteHours` (§4.9.2):
+   * tiredness, which acts read.
+   */
+  acuteLoad: { name: 'acuteLoad', dtype: 'f64', category: 'body' },
   /** Lean mass added by work on top of the frame, kg; built lean mass includes it. */
   trainedKg: { name: 'trainedKg', dtype: 'f64', category: 'body' },
 } as const satisfies Record<string, ColumnSpec>;
@@ -77,6 +85,12 @@ export function capacity(fitness: number, fatigue: number): number {
   const p = K.fitnessGain * K.fitnessDays * fitness - K.fatigueGain * K.fatigueDays * fatigue;
   const c = 1 + (K.capacitySpread * (p - REFERENCE_PERFORMANCE)) / REFERENCE_PERFORMANCE;
   return c < K.leastCapacity ? K.leastCapacity : c > K.mostCapacity ? K.mostCapacity : c;
+}
+
+/** Tiredness, 0 to 1, from the acute load (load-hours) and capacity (§4.9.2). */
+export function tiredness(acuteLoad: number, cap: number): number {
+  const t = acuteLoad / (K.acuteMostLoadHours * cap);
+  return t < 0 ? 0 : t > 1 ? 1 : t;
 }
 
 /** How much the acute:chronic ratio multiplies the risk of a strain. */
@@ -146,6 +160,7 @@ export const fitness: SystemDef = defineSystem({
     const keepFitness = exp(-tickDays / K.fitnessDays);
     const keepFatigue = exp(-tickDays / K.fatigueDays);
     const keepChronic = exp(-tickDays / K.chronicDays);
+    const keepAcute = exp(-hours / K.acuteHours);
     const lossShare = 1 - exp(-tickDays / K.muscleLossDays);
     const gainShare = 1 - exp(-tickDays / K.muscleGainDays);
     const leanDensity = METABOLISM.leanKcalPerKg;
@@ -170,6 +185,7 @@ export const fitness: SystemDef = defineSystem({
       const tired = f64(C.fatigue.name);
       const chronic = f64(C.chronicLoad.name);
       const trained = f64(C.trainedKg.name);
+      const acute = f64(C.acuteLoad.name);
 
       for (let slot = 0; slot < agents.highWater; slot++) {
         if (alive[slot] !== 1) continue;
@@ -196,6 +212,7 @@ export const fitness: SystemDef = defineSystem({
         fit[slot] = fit[slot] * keepFitness + (1 - keepFitness) * perDay;
         tired[slot] = tired[slot] * keepFatigue + (1 - keepFatigue) * perDay;
         chronic[slot] = chronic[slot] * keepChronic + (1 - keepChronic) * perDay;
+        acute[slot] = acute[slot] * keepAcute + load;
 
         // 3. Strains, while the body works.
         if (load > 0) {

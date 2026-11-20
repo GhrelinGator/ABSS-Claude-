@@ -13,7 +13,7 @@ import { SIM_PIPELINE } from '../../src/sim/pipeline.ts';
 import { createSim, stepSim } from '../../src/sim/sim.ts';
 import { defineSystem } from '../../src/sim/core/registry.ts';
 import { BODY_COLUMNS, metabolism } from '../../src/sim/body/metabolism.ts';
-import { fxBodyWork, populateWithBodies } from '../fixtures/bodies.ts';
+import { fxBodyWork, populateWithBodies, withoutMinds } from '../fixtures/bodies.ts';
 import { FIXTURE_PIPELINE, FX_KCAL, fxBurn, fxChurn, fxLeak, fxWander } from '../fixtures/systems.ts';
 import { splitWords } from './lib/scan.ts';
 
@@ -57,7 +57,7 @@ test('a conserved quantity needs a stock, an inflow, and an outflow', () => {
 });
 
 test('the real pipeline balances bodies that eat, work, fatten and starve, and cannot hold untracked energy or water', () => {
-  const sim = createSim(defaultConfig(13), [...SIM_PIPELINE, fxBodyWork]);
+  const sim = createSim(defaultConfig(13), [...withoutMinds(SIM_PIPELINE), fxBodyWork]);
   populateWithBodies(sim, 50, 100, 100);
   for (let t = 0; t < 6_000; t += 500) {
     stepSim(sim, 500);

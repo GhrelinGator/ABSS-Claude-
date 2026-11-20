@@ -39,6 +39,8 @@ export const StreamDomain = {
   REPRODUCTION: 12,
   /** Founders' genomes, gametes, mutations, developmental noise (Phase 2.7): its own stream, so no draw above changed. */
   GENETICS: 13,
+  /** Where founders start and their sexes and ages (Phase 3.3): its own stream, so no draw above changed. */
+  FOUNDERS: 14,
 } as const;
 
 export type StreamDomainId = (typeof StreamDomain)[keyof typeof StreamDomain];
