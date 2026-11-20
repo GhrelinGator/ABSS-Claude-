@@ -200,9 +200,10 @@ export function choose(
   }
   let sum = 0;
   for (let i = 0; i < n; i++) {
-    // exp(0) is exactly 1; skipping it for the best candidates changes nothing but the time.
+    // exp(0) is exactly 1, and below e^-37 a weight is under half the rounding step of a sum of at least
+    // 1 (the best's own weight): skipping exp for both changes nothing but the time.
     const z = (cands.value[i] - best) / dials.explorationTemperature;
-    const w = z === 0 ? 1 : exp(z);
+    const w = z === 0 ? 1 : z < -37 ? 0 : exp(z);
     cands.value[i] = w;
     sum += w;
   }
