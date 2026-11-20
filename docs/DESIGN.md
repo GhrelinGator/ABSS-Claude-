@@ -1393,11 +1393,37 @@ ALIBI: a body that eats a juicy fruit takes in its water whether or not anyone e
 - **Bitter root is a quarter to a third of what learners eat** (2,014 and 1,777 kg), and its share rose over the run on both seeds, as without water in food (§4.13.6).
 
 #### 4.14.4 What is left
-- **Q14 (the owner):** search and trying the untried when a drive is pressing (§4.14.1). With water in food it no longer decides who dies of thirst, but it is the same gap that keeps learners on food they know when it runs short.
-- **Starvation:** not changed. Its links (food in reach, the novice's rates, failed acts, search) are 3.7b's to measure before anything is classified.
-- **Cold:** not changed. The season founders start in and the climate setting are world choices that would be viability tunes; none is made before Phase 3's checks show what learners can learn of fire and shelter.
+*(Rewritten in 3.7b, 2026-11-20.)*
+- **Q14 (the owner):** search and trying the untried when a drive is pressing (§4.14.1). With water in food it no longer decides who dies of thirst. **It does not decide who starves either** (§4.14.5: the best food within 1.5 km is barely better than within 400 m), so it is no longer viability's question; it stays §7.1's first link and the owner's.
+- **Starvation:** measured in 3.7b (§4.14.5); its first broken link is the energy an hour of work returns against what the hour costs. Whether that is a miscalibration or a true limit of naked, toolless, fireless novices is ambiguous, so nothing changed: Q15, for the owner (T-018).
+- **Cold:** not changed. The season founders start in and the climate setting are world choices that would be viability tunes; none is made before learners can feed themselves.
 - **Old age counted twice** (D-045): not measurable until bodies live to old age.
-- **Persistence for five generations** (the Phase 3 exit) needs births, and conception is a door only Phase 4's acts will call (§3.13). 3.7b must take a reading (a scripted stand-in for mating in the experiment only, as 2.6's tests do, or the persistence check moved to Phase 4's exit) and write it down.
+- **Persistence for five generations** cannot be measured in Phase 3 (D-060): no woman is fertile under the present energy balance (`experiments/P3-minds-exit/results.md`, the births reading), and births need mating and nursing, doors only Phase 4's acts call (§3.13). It moves to Phase 4's exit; Phase 3's exit keeps a single-generation viability check in its place (`ROADMAP.md`).
+- **Phase 3's four checks** were preregistered and run in 3.7b (`experiments/P3-minds-exit/`): foraging efficiency over a lifetime and a measurable base rate of spurious nodes pass; avoidance of delayed-toxic plants and harm reduced by nodes fail; nodes do form.
+
+#### 4.14.5 Starvation's links (3.7b)
+`experiments/P3-viability/starvation.ts` follows every founder tick by tick (100 founders, a 3 km disc, 40 days, seeds 7 and 8) and measures the chain hungry → food in reach → chooses to eat it → eats it at some rate → eats enough for what the body spends. For the learners that starved (63 and 73 of 100; the line is lean mass at 2/3 of built lean, §3.8):
+
+| Link | Seed 7 | Seed 8 |
+|---|---|---|
+| Energy a day (median): in / out, kcal | 1,379 / 4,048 | 844 / 3,889 |
+| Hours a day (median): awake / asleep / food going down | 20.3 / 3.7 / 13.7 | 20.8 / 3.2 / 11.5 |
+| Awake time consuming | 71% | 61% |
+| Handling rate: kcal an hour in which food went down (median) | 99 | 92 |
+| Best rate in reach, at its own skill and rested: within 400 m / within 1.5 km | 281 / 292 | 243 / 259 |
+| ... not counting the poisonous plants, within 400 m | 199 | 155 |
+| An expert's best within 400 m | 516 | 517 |
+| Tiredness while food went down (mean) | 0.82 | 0.77 |
+| Hours of work a day to cover what it spent, at the best rate within 400 m | 14.1 | 15.0 |
+| Acts begun while hunger > 0.5: consume / explore | 44% / 2% | 47% / 9% |
+| Consume acts on a target beyond 400 m (remembered places) | 692 of 25,620 | 647 of 28,751 |
+| Consume acts failed (whole population), days 1–15 → after day 20 | 42–58% → 0–20% | 54–71% → 0–12% |
+
+- **Food in reach is not the broken link:** food that could be eaten is within sight nearly everywhere founders are, and searching wider would barely help: the best rate within 1.5 km is 4–7% above the best within 400 m. Search (Q14) does not decide who starves.
+- **Choosing to eat is not the broken link:** starving learners eat for 11–14 hours a day and spend 60–75% of their waking hours on consume acts. Failed acts (a plant seen whose food was gone or not bearing) cost about five minutes each and fall away after day 20.
+- **The broken link is the economics of an hour's work.** Digging is moderate effort, 4.1 × basal (§3.8): about 190–250 kcal an hour for a founder, some 125–165 more than standing. A novice digging tubers by hand, rested, takes in 0.2 kg × 600 digestible kcal = 120 kcal an hour, less than the work costs; an expert 300. Bitter root, the richest root (1,200 digestible kcal a kg), gives a novice 240 and an expert 600, and is a quarter to a third of what learners eat. After hours of digging, tiredness of about 0.8 slows hand work by 40% (×(1 − ½ tiredness), §4.9.2), so the rate realised is 92–99 kcal an hour against 240–280 possible at the founder's own skill rested. A body that must dig 14–15 hours to cover what digging costs cannot, so learners dig 12–14 hours, sleep 3–4 (sleep is an act the mind chooses, and nothing in the body forces it), spend 1.5–2 times a Hadza forager's day (§9), and lose 2,700–3,000 kcal a day.
+- **Interoception:** hunger is half the gut's emptiness and half the fat's depletion (§4.9.1), so a body eating to the end starves at a hunger of about 0.5–0.8; no starving learner's hunger reached 0.9.
+- **Classification: ambiguous (T-018), so Q15 goes to the owner and nothing changed.** It is (b), a miscalibration, if eating by hand returns less than it should: §2.12 names real foraging return rates as a Phase 3 calibration target, and the rates by hand (§4.9.3, §4.12) are estimates "after Hadza returns, from memory", for foragers who dig with sticks and cook. It is (d), a true result, if naked novices with no edge, no stick and no fire cannot live on raw wild roots, which is close to Wrangham's argument that humans cannot live on raw wild food. The faster foods the world has need what founders lack: meat with a keen edge returns about 2,700 kcal an hour against 270 by hand (§4.9.3), digging with a stick is not physics yet, and cooking is not built (§4.9.9).
 
 ## 5. Interaction primitives
 

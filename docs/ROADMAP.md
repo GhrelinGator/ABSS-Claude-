@@ -72,7 +72,8 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 - **3.6 [O]** Skills wired into action success and cost. *Done 2026-11-20: `DESIGN.md` §4.12, D-055. Eating rates and precision run from a novice's to an expert's by practice; founders start as novices, so they eat about a third less and more starve; no novice can make fire by friction.*
 - **3.6b [O]** Prepared taste-aversion learning (added 2026-11-20, the owner's answer to Q12, D-056). A second, longer eligibility kernel for eating and drinking acts on the illness channels (`DESIGN.md` §4.7.7, §4.10.9), its strength a heritable dial that founders draw widely and evolution can turn to zero, with an alibi (toxins and spoiled food exist with no one else around, and gut illness follows eating by hours). The owner's condition: it depends on hunger, and starving agents are not picky. Choice already weighs predictions by the drives of the moment (§4.7.6), so first write a test that a starving agent with a learned aversion eats that food when nothing else is in reach; if it does not, change how predicted illness is weighed against hunger (logged, with an alibi), not the learning. Write the design into `DESIGN.md` before the code. *Done 2026-11-20: `DESIGN.md` §4.13, D-058. The kernel reads the gut's part of pain; the hunger test passed with no change to choice; founders learn bitter root's delayed pain 3–4 times as strongly as without it, but what they eat did not measurably change in 40 days.*
 - **3.7 [F]** Viability tuning (logged), then emergence checks. *Thirst part done 2026-11-20: `DESIGN.md` §4.14, D-059. Learners died of thirst because bodies took no water from food and nothing made them search or try untried acts; water in food was added (a body mechanism), and thirst no longer kills; the mind's gap is Q14 for the owner. Starvation is now the first cause of death.*
-- **3.7b [F]** (split from 3.7, D-059) Measure starvation's links and classify them (`GUARDRAILS.md` §4); preregister Phase 3's four checks and run them against their ablations; take and write down a reading on births for the persistence check (conception is a door only Phase 4's acts call). If Q14 is answered first, build the answer first.
+- **3.7b [F]** (split from 3.7, D-059) Measure starvation's links and classify them (`GUARDRAILS.md` §4); preregister Phase 3's four checks and run them against their ablations; take and write down a reading on births for the persistence check (conception is a door only Phase 4's acts call). If Q14 is answered first, build the answer first. *Done 2026-11-20 on Opus: `DESIGN.md` §4.14.5, D-060, T-018, `experiments/P3-minds-exit/`. Starvation's first broken link is an hour of digging by hand returning about what it costs; its classification is ambiguous, so it is Q15 for the owner. Checks 1, 3a and 4 pass; 2 and 3b fail. No woman is fertile under the present energy balance, so persistence moved to Phase 4's exit.*
+- **3.7c [F]** (waits on Q14 and Q15) Build the owner's answers, written into `DESIGN.md` first; re-run the preregistered checks on seeds 11–18 with the same definitions (check 2 especially, which cannot pass while founders starve); then the single-generation viability check.
 
 **Emergence checks:**
 - Foraging efficiency rises over a lifetime vs. a random-policy baseline (§7.1).
@@ -80,7 +81,7 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 - Hidden-cause nodes form. Where real hidden causes exist, they reduce harm compared with `hiddenCauseBias` = 0 (the alibi is real).
 - Spurious hidden-cause associations have a measurable base rate (raw material for §7.7).
 
-**Exit:** the checks above pass against their ablations; a population of solo learners persists for 5 generations (viability tuning allowed and logged).
+**Exit:** the checks above pass against their ablations; ~~a population of solo learners persists for 5 generations~~ *(moved to Phase 4's exit, D-060: births need mating and nursing, doors only Phase 4's acts call)*; **single-generation viability** (D-060): on most seeds, at least half of founders alive after one compressed year (48 days), and women fertile (fertility factor above 0) on at least half of their adult woman-days (viability tuning allowed and logged).
 
 ---
 
@@ -97,6 +98,8 @@ Nothing interesting happens in this phase. It builds the rails that keep everyth
 - Gives flow preferentially along bonds and to injured bonded individuals (§7.3), versus a shuffled-ledger null.
 - Sustained-dyad duration rises with child cost (§7.4), versus a cheap-children ablation.
 - **The Westermarck test (§7.5):** with inbreeding depression on, `coRearedMateAversion` evolves upward; with it off, the dial drifts. This is the project's first full emergence result. Write it up in `experiments/`.
+
+**Exit** *(added 2026-11-20, D-060)*: the checks above pass against their nulls; a population persists for 5 generations (moved from Phase 3's exit: births need the mating and nursing acts this phase builds; viability tuning allowed and logged).
 
 ---
 
