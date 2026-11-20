@@ -999,6 +999,77 @@ Distances to a cell are to its nearest point, so the agent's own cell is always 
 
 **Not in this version:** what others are doing and carrying (§4.1, §5.1: Phase 4); sound and smell (a predator heard in the dark would be a new faculty, for the owner); vultures (they are a count, not at places); haze, rain and fog; the eye's height on a hill beyond the line-of-sight test; stillness of persons (3.3's acts know who is resting).
 
+### 4.9 Drives, acts and choice (Phase 3.3) [provisional]
+
+Written in 3.3 (2026-11-20, an [O] milestone, unattended) before the code. It makes §4.7.2, §4.7.4 and §4.7.10 concrete, gives the solo acts of §5.5 their physics, adds the body state the acts and drives need, and places founders. Numbers marked [estimate] are physiology or physics remembered or reasoned, not tuned toward anything; none was set after an agent ran. Code: `src/sim/mind/interoception.ts`, `acts.ts`, `choice.ts`, `founders.ts`, `mind.ts`; `src/sim/body/gut.ts` and `sleep.ts`; a column each in `heat.ts` and `fitness.ts`.
+
+**What 3.3's minds are.** They feel their drives, see, and choose among the acts physics allows, but they **remember nothing**: the association table, its learning and place memory are 3.4's. Choice reads predictions through one interface (`Predictor`), and 3.3's predictor has learned nothing, so every candidate is valued alike and the choice is uniform among what physics allows. That is the random-policy baseline §7.1 compares learners with, built from the same acts learners will use. Agents in 3.3 die of what they meet; that is expected and is not a viability problem until 3.4–3.7 give them memory.
+
+#### 4.9.1 Interoception: the eight channels
+Each channel is 0 to 1, with 1 at the body's limit (§4.7.4), read from body state by `drivesOf(sim, slot, out)`:
+- **Hunger** = ½ × (1 − fill) + ½ × depletion. *Fill* is how full the gut is: the larger of the food energy waiting in it ÷ 6 hours of absorption (1,080 kcal at §3.8's 3 kcal a minute) and the stomach's mass ÷ its most (below). *Depletion* = 1 − fat-days ÷ 40, clamped to 0–1, where fat-days is the fat's energy ÷ the body's basal kcal a day [estimate: a lean forager carries about 40–60 days of basal need as fat]. A healthy body with an empty gut feels 0.5 and a full one 0; a starving one feels at least 0.5 whatever it just ate, and 1 with an empty gut. The two halves stand for the gut's short signal and the fat stores' long one (ghrelin and leptin, without naming them) [provisional].
+- **Thirst** = water deficit ÷ (15% of body mass), §3.9's fatal deficit, clamped.
+- **Cold** = the larger of (set point − core) ÷ (set point − 26 °C) and shivering as a share of its most (§3.9). **Heat** = the larger of (core − set point) ÷ (42 °C − set point) and sweat as a share of its most. The set point is 37 °C plus fever, so a rising fever feels cold. *Change from §4.7.4:* core temperature alone would leave a body shivering at its most, its core still at 37 °C, feeling nothing until it begins to die; what a body feels as cold is mostly its skin and the effort to stay warm. `body.heat` now keeps both shares (`shiverShare`, `sweatShare`) as columns.
+- **Pain** = 1 − Π(1 − *p*ᵢ) over: open wounds (cm² ÷ 100), burns (share of skin burned × 5), the worse broken bone (its share of use lost), strain, infection (wound severity + gut severity), and active plant toxin (below) [estimates: what counts as the most pain of each kind].
+- **Fatigue** = 1 − (1 − sleepiness)(1 − tiredness), both below.
+- **Mating** and **separation**: 0 until Phase 4.
+
+#### 4.9.2 Body state the acts and drives need
+All of it is body, not mind, with an alibi that needs no one else (D-034: added without waiting, the owner told).
+- **The stomach** (`body.gut`, column `stomachKg`): food mass swallowed and not yet passed on, at most **2 kg**, passing on at **0.3 kg an hour** [estimates: a meal of about a kilogram leaves the stomach in three to four hours]. Eating stops when it is full. Its energy is already in `gut` (§3.8); the stomach adds only bulk, so leafy food fills a body before it feeds it. ALIBI: a stomach holds only so much, whatever is in it.
+- **Plant toxins** (`body.gut`, door `poison(sim, slot, dose, delayHours)`): the unit of dose is what Phase 1.4's catalogue gives per kg eaten raw (bitter root 1, nightshade 2), defined here: a dose's **strength** is units × 50 ÷ body mass, so one unit is one unit in a 50 kg adult. The dose waits in an hourly ring for its delay (§2.12: 4 hours for bitter root, 3 for nightshade), then is **active**, cleared with a half-life of **6 hours**. Active toxin hurts (its pain share is strength ÷ 4); at strength **2** the body **vomits**: what is in the stomach and gut is lost (an energy outflow); at strength **8** it dies (**poisoning**, a new cause of death) [estimates for fictional plants, set before any mind ran: a kilogram of nightshade makes a 50 kg body vomit three hours later, four kilograms eaten before the first is felt kill it]. Processing that removes bitter root's toxin (soaking, cooking) needs acts not yet built; all eating is raw. ALIBI: plants defend themselves with poisons, and an animal that eats them is poisoned whether or not anyone else exists.
+- **Sleep pressure** (`body.sleep`, column `sleepPressure`): Borbély's process S, rising while awake toward 1 with a time constant of 18.2 hours and falling while asleep with 4.2 hours (Daan, Beersma & Borbély 1984, from memory). **Sleepiness** = S − 0.12 × *C*, with *C* = cos(2π(hour − 17)/24) the circadian process locked to the local solar hour, highest in late afternoon (two-process model amplitude, from memory). A body sleeps when its act is sleep (effort `SLEEP`). Sleep is over when sleepiness falls to **0.17** (the model's lower threshold). ALIBI: every animal with a nervous system sleeps, and a clock tied to the light lets a body that sees by day rest at night; no other body is needed.
+- **Tiredness** (`body.fitness`, column `acuteLoad`): the tick's load (§3.11: load-hours above light effort) leaks away with a time constant of **4 hours** [estimate: glycogen and the muscle's own fatigue recover over hours]. Tiredness = acute load ÷ (4 load-hours × capacity), clamped to 1 [estimate]. **This is how acts read capacity (D-048):** every act's speed and work rate are × mobility × (1 − ½ tiredness), so a tired or unfit body slows, its exertion falls, and it cannot keep up the 4,500 kcal days of 2.8's random stand-in. ALIBI: muscles that have worked hard for hours must recover before working hard again.
+
+#### 4.9.3 The solo acts
+An act has a kind, a target (a percept's cue and what it refers to, §4.8, or nothing), and a goal position. Each tick an act runs for the tick's 600 seconds: **first it walks** toward its goal if it is out of reach, **then it works** for the time left. What the body did is written to §3.8's columns (effort, metres moved, seconds moving, metres climbed, load), so metabolism, heat and fitness charge for it in the same tick.
+
+**Walking.** 1.2 m/s × mobility × (1 − ½ tiredness) [Hadza walking speed, from memory]; running (avoid only) 3 m/s × the same. A straight line; climbing counted as the rise from the tick's start to its end when positive (ups and downs within a tick are lost: a simplification). The map's edge stops a walk; **lakes cannot be entered** (a walk stops at the shore); rivers and springs are waded. A target in a cell is reached at the cell's nearest point (inside it, or at the shore of a lake); a thing is reached within 2 m. Held objects move with the body and weigh on it (`loadKg`, every tick).
+
+| Act | Target | Work, after walking | Effort | Done | Fails |
+|---|---|---|---|---|---|
+| consume, plant | a cell with a plant class | eats the species' food there (§2.12's food layer, kg per cell), at *rate* × *D* ÷ (*D* + 20 kg/ha) kg an hour, *D* its density per hectare; rates by hand [estimates, after Hadza returns, from memory]: berries and nightshade 1.5, nuts 1, greens 1, grass seed 0.3, roots dug by hand (tuber, bitter root, reed) 0.5. Energy = kg × kcal per kg × raw digestibility through `ingest`; mass to the stomach; toxin through `poison` | light; moderate when digging | stomach full, fill ≥ 1, the food gone, or 2 hours | nothing eaten in its first tick of work |
+| consume, carcass | a cell with carcass meat | meat at 0.2 kg an hour by hand, 2 with a keen edge held (edge ≥ 0.5) [estimates]; 1,500 kcal a kg [estimate, lean game], raw digestibility 0.9; pathogens through `exposeGut(meatDose)` | light | as above | as above |
+| consume, water | a cell with water | drinks 1 kg a minute [estimate] until the deficit is made up, through `drink`; pathogens through `exposeGut(waterDose)` | still | the deficit gone | — |
+| approach | anything | walks to it; a moving thing is followed where it now is | (walking) | reached | gone, or 1 hour |
+| avoid | anything | runs straight away for a minute, then walks until 300 m from it | (running) | 300 m away | — |
+| explore | none | walks 600 m on a heading drawn from the agent's stream | (walking) | there | edge or shore |
+| rest | none | lies or sits | still | tiredness < 0.1, or 1 hour | — |
+| sleep | none | sleeps; checks hourly, and every tick for pain | sleep | sleepiness ≤ 0.17, or 12 hours | — |
+| pick up | a lying object, or a cell's loose stone or fallen wood | takes it into a hand (`takeStone`, `takeWood` make an object of the cell's stock); **two hands**, and at most 25 kg × strength held in all [estimates] | light | at once | hands full, too heavy, gone |
+| drop | a held object | lays it where the body stands | — | at once | — |
+| strike | a lying object, with the first held object | five blows of ½ × the striker's mass × (8 m/s)² × strength joules each, precision 0.5, through `strikeObjects` [estimates] | moderate | five blows | nothing held |
+| manipulate | the two held objects | two pieces of wood are rubbed: attempts of 2 minutes at 40 W × strength through `rubWood`; anything else is struck together as in strike | heavy | 10 minutes | fewer than two held |
+
+**Carry** is not an act: whatever is held is carried through every act. **Precision** is a novice's 0.5 until 3.6 wires skills in. Eating and drinking take from the world what is there when the act runs; when an act changes what lies or grows in a cell, it calls perception's `invalidate(cell)`. When a body dies, what it held drops where it lay.
+
+#### 4.9.4 The tick
+The mind system runs after the world and before the bodies (`pipeline.ts`), in two phases (§1.6):
+1. **Decide**, reading tick-start state: every awake agent's drives are read (cheap). An agent chooses when it has no act, its act is done or failed or out of time, or it is **interrupted**: pain risen by more than 0.1 since the act began, or any drive crossed 0.8 since then (§4.7.2; learned fear needs 3.4's memory). A sleeper is checked once an hour, and for pain every tick. Choosing looks (§4.8) and values candidates.
+2. **Act**: every agent's act runs for the tick, in an order shuffled each tick from the run's `RESOLVE` stream, so whoever eats a cell's last berries is a seeded draw, not a place in memory.
+
+#### 4.9.5 Choosing (§4.7.10 made concrete)
+**Candidates** (at most 64 [provisional]): the 12 nearest percepts, each with every act physics allows on it (consume on plants, carcasses and water; pick up on lying things; strike on a lying object while something is held; approach and avoid on anything); drop for each held object; manipulate when two are held; rest, sleep and explore. Persons are targets of approach and avoid only. "Go there" to remembered places waits for 3.4's place memory.
+
+**Value** is §4.7.10's: Σ over channels [*d*² − clamp(*d* + μ, 0, 1)²] − (1 − riskTolerance) σ²_pain + curiosity × √*v*, with μ, *v* and σ²_pain from the `Predictor`, and **softmax** with explorationTemperature, through `dmath.exp`. 3.3's predictor has learned nothing: μ = 0, *v* = *V*₀ = 0.04, σ² = 0 for every key. The dials are constants until 3.4 puts them on the genome: curiosity 0.3, explorationTemperature 0.01, riskTolerance 0 (§4.7.10's toy values) [provisional].
+
+#### 4.9.6 Founders
+`config.founders` (optional; default none): **count** and **radiusM**. At tick 0, which is the spring equinox, the founders system places them:
+- **Where:** a centre drawn uniformly among land cells within 300 m of flowing water (a river or a spring), from the run's `FOUNDERS` stream; each founder at a point drawn uniformly in the disc of radiusM (default 3 km) around it, redrawn if it falls in a lake or off the map. *Body choice:* a body that cannot yet know where water is dies of thirst in 2–10 days (§3.9), so founders start where water is; positions are independent, nothing joins them, and there is nothing built (T5).
+- **When:** spring. *Body choice:* §3.9's naked bodies shiver hard on clear nights even at 20 °C (D-041); winter would kill founders before anything else could, and spring has the year's food ahead.
+- **Bodies:** sex drawn half and half; age uniform from 18 to 35; Hadza-like lean and fat for the sex (§3.8's fixture values: men 44 kg lean, 6.9 kg fat; women 34 and 9.0); **conditioned to a forager's load** (8 load-hours a day, `BodySpec.conditionedTo`, D-043); genomes by `formGenome` (D-047). *Body choice:* bodies are what evolution and a working life gave adults; minds start blank (T5, the blank-slate guardrail).
+Founders are viability choices in the sense of §0.2 and are logged in `DECISIONS.md` as such; none was tuned.
+
+#### 4.9.7 Budget
+The rule is at most about 0.25 decisions per awake agent per tick (§4.7.12). Acts last: eating lasts until full, walks last minutes to an hour, rest an hour, sleep hours. `bench/acts.ts` measures decisions per awake agent-tick and the mind system's cost per agent-tick with founders in a real world.
+
+#### 4.9.8 Not in this version
+- **Animals and agents do not meet**: no striking animals (hunting), no flight of animals from agents, no predators attacking agents. Each is a world mechanism (how animals respond to agents) and needs its own design; a new milestone, **3.3b**, does it before 3.4. Until then agents cannot be hurt by animals, and fear has nothing to learn but fire.
+- No processing of food (pounding, cracking, soaking, cooking), so bitter root is always toxic and grass seed and nuts poorly digested; no water in food.
+- No memory (3.4): no "go there" candidates, no trip cost, no learned fear interrupt. The mind's dials are constants (3.4).
+- Skills do not touch acts (3.6): precision is a novice's.
+- Climbing counted start-to-end per tick; rivers waded freely; no swimming; acts on persons are only approach and avoid (Phase 4).
+
 ## 5. Interaction primitives
 
 ### 5.1 Perceiving others
