@@ -832,14 +832,140 @@ There is **no status drive, belonging drive, meaning drive, or conformity drive.
 - **Expected side effect, which is not coded:** the same machinery over-fires on lightning, drought, and random deaths. That's where superstition, and possibly gods, come from (§7.7).
 
 ### 4.5 Learning
-- Action–outcome learning from own experience (temporal-difference style over contextual features) [provisional; architecture to be designed in Phase 3 as an [F] task].
-- **Delays matter.** Associating a plant with illness hours later is hard, by design, because it makes social learning valuable.
+- Action–outcome learning from own experience over contextual features. *Designed in 3.1 (§4.7): outcomes are predicted per (cue, act) and weighed by the drives of the moment, with eligibility traces for delays, rather than a temporal-difference cache of action values.*
+- **Delays matter.** Associating a plant with illness hours later is hard. *(3.1: it is hard because credit over hours is hard, §4.7.7, with the trace's length a heritable dial; the earlier wording, "by design, because it makes social learning valuable", gave an outcome as the reason and is withdrawn.)*
 - Learning from others (§5.6) and from signals (§6) feeds the same world model, weighted by credibility.
 
 ### 4.6 Action selection
-Value of each available action = expected drive reduction over a short horizon (from the world model), minus expected energy cost and risk (weighted by `riskTolerance`). Choose by softmax with `explorationTemperature`. No scripted behavior trees for agents.
+Value of each available action = expected drive reduction over a short horizon (from the world model), minus expected energy cost and risk (weighted by `riskTolerance`). Choose by softmax with `explorationTemperature`. No scripted behavior trees for agents. *(Made concrete in §4.7.10: energy cost and risk enter through the predicted outcomes themselves.)*
 
----
+### 4.7 The learning architecture (Phase 3.1) [provisional]
+
+Written in 3.1 (2026-11-20, an [F] milestone done on Opus, D-034) before any mind code, and measured with a prototype at full size on a toy world (`bench/mind.ts`) and against what the real world and bodies now cost (`bench/budget.ts`). It makes §4.3–§4.6 concrete and changes them in three places, each said where it happens: learning is model-based (outcomes are predicted, then weighed by the drives of the moment) rather than a cache of action values (§4.7.6); fear is a prediction, not an outcome to predict (§4.7.4); energy cost and risk are not separate terms (§4.7.10). Phases 3.2–3.6 build it; numbers marked [provisional] are starting points that 3.4's tests and 3.7's checks may move, with a log entry.
+
+**The one idea.** A mind learns *what happens when it does something to something, in some context*, as a change in each of its drives, and chooses by asking which act would leave its drives, as they are now, best off. The structure is given; every association is learned. Nothing in it names a kind of thing, a use, or a person.
+
+#### 4.7.1 Why this shape
+- **Devaluation.** A body that has just eaten should not seek food, without having to relearn anything. A cache of action values (model-free TD) learned while hungry keeps valuing food when full. Predicting *outcomes* and weighing them by the current drives (homeostatic reinforcement learning, Keramati & Gutkin 2014) gets this right for free, and it is what goal-directed behaviour in animals looks like (Dickinson's devaluation experiments). There is no habit system; §4.7.15.
+- **Cheap and bounded.** Everything is a fixed-size table per agent, read a few dozen times a decision. The mind's cost does not grow with what it has learned.
+- **One machinery for everything** (§4.3). Plants, animals, water, places, times of day, other individuals (Phase 4) and hidden-cause nodes (§4.4) are all *cues*, and the same table learns what follows acting on or near each. Propitiation-like behaviour (§7.7) can then appear without special code, or not.
+- **Well-studied learning rules.** Rescorla–Wagner with a Kalman gain (Dayan, Kakade & Montague 2000; Gershman 2015) gives one-trial learning of novel things, blocking, latent inhibition (familiar things learn slowly), extinction and relearning, all from one rule, all measured in animals.
+
+#### 4.7.2 The decision cycle: acts last
+An agent does not choose every tick. It chooses an **act**, a primitive of §5.5 aimed at a target (or at nothing: rest, sleep, explore), and keeps doing it until it is **done** (the target is reached and used, the patch is empty, the drive it was reducing is gone, the sleep is over), **fails** (the target is gone or out of reach), is **interrupted**, or reaches a time limit. Only then does it learn from what happened and choose again. A target out of reach makes the act a walk to it first (§4.7.9).
+- **Interrupts**, checked every tick at a few operations' cost: a rise in pain above a threshold this tick; a perceived cue whose learned prediction of pain is above a threshold coming within range (learned fear); a drive crossing into its top fifth. The thresholds are [provisional]. There is no innate startle to particular kinds of thing: fear of anything but pain itself is learned (T6). An innate response to looming or sudden noise would be a new mind mechanism, for the owner.
+- **Sleep** is an act; a sleeping agent checks only hourly (§1.1), and on pain.
+- **Why:** the budget (§4.7.12) allows a full decision every few ticks, not every tick; and acts that last are what a 10-minute tick means anyway.
+
+#### 4.7.3 Cues: what a mind can attend to
+A cue is a 32-bit id: a 4-bit kind and a 24-bit payload. A cue is a perception, never a label: the mind gets "a thing of perceived class 17", never "berry".
+| Kind | Payload | Comes from |
+|---|---|---|
+| perceived class | plant species × visible state (bare, in leaf, bearing fruit or seed), animal species, carcass, material, water by look (flowing, standing), fire, rock shelter | perception, 3.2 |
+| individual | an agent's id (ids are never reused) | recognition, 3.2; used from Phase 4 |
+| place | a cell of a 400 m grid [provisional] | path integration: agents know where they are (§4.7.15) |
+| light | dark, dim, bright, from the light level perceived (§2.4), not the clock | perception |
+| day length | short, lengthening, long, shortening: the photoperiod a body's daily rhythm tracks | perception over days; ALIBI: seasonal food and cold exist without anyone |
+| warmth | cold, mild, hot air, from the skin | interoception |
+| hidden-cause node | the node's index in this agent's own list (§4.7.8) | inference, 3.5 |
+| self | none: the cue of untargeted acts (rest, sleep, explore) | |
+
+At a choice, the **context** is the place, light, day-length and warmth cues, the hidden-cause nodes active here (at most two), and up to two **salient percepts** (the nearest moving animal, agent or fire), so an attack while eating is credited to what was there, not only to what was eaten.
+
+#### 4.7.4 Outcomes: eight drive channels
+Outcomes are changes in eight channels, each 0 to 1, read from the body by interoception (3.3): **hunger, thirst, cold, heat, pain, fatigue, mating, separation** (the last two unused until Phase 4). Each is scaled so 1 is the body's limit: hunger by fat and gut toward starvation (§3.8), thirst by the water deficit toward 15% of mass (§3.9), cold and heat by core temperature's distance from its set point toward the fatal range (fever moves the set point, so a rising fever feels cold), pain by wounds, burns, broken bones, strains and infection severity (§3.10: infection is tissue damage), fatigue by Banister's fatigue (§3.11) plus sleep pressure. The mapping is 3.3's to write in full; scaling by the body's own limits keeps it physiology, not a weighting anyone chose.
+- **Fear is not a channel.** It is the predicted pain of what is here and what is near (§4.2's fear drive, computed, not stored). It drives the interrupt in §4.7.2 and is counted wherever predicted pain is.
+- **Curiosity is not a channel.** It is a bonus for uncertainty (§4.7.10).
+- **Energy cost** is not a separate term: it shows up as the hunger, thirst and fatigue an act was followed by.
+
+#### 4.7.5 The association table (semantic memory)
+Per agent, an open-addressed hash table of **512 slots** [provisional], each holding one association:
+- **Key:** (cue, act kind), 32 bits. Act kind 0 means "whatever was done": the cue alone (Pavlovian; "here, at night, I get cold").
+- **Now:** the predicted change in each channel during the act (8 numbers).
+- **Later:** the predicted change in each channel in the hours after it (8 numbers, §4.7.7).
+- **Uncertainty** of each (a variance for "now", one for "later"); **last used** (a tick).
+
+About 80 bytes a slot, 40 KB an agent [provisional]. **Memory limit:** at three quarters full, a new association replaces the least recently used of 8 slots sampled at random (backward-shift deletion keeps the table exact). The prototype's agents held about 160 associations after 9 toy days. To keep places from filling it, a place's associations are created only when something salient happened there (§4.7.7) or it is in place memory (§4.7.9); otherwise they are only updated if they exist.
+
+**Storage is store columns of category `learned`,** so a new agent's table is zero-filled by the kernel, hashed and saved like any column, and the blank-slate guardrail covers it with no new code. Values are kept as 32-bit floats (rounding is exact and identical on every engine).
+
+#### 4.7.6 Learning now: Kalman–Rescorla–Wagner
+When an act ends, the outcome *o* (the change in each channel from the act's start to its end) is compared with the prediction *p* = the sum of the "now" vectors of every key involved: (target, act), (each context cue, act) for light, day length and warmth, and (each context cue, 0) for all of them; hidden-cause nodes and salient percepts take both forms. The error δ = *o* − *p* is shared by Kalman gains: key *k* moves by *g_k* δ with *g_k* = *v_k* / (Σ *v* + *R*), and its variance shrinks to *v_k*(1 − *g_k*).
+- **Novel things learn fast, familiar ones slowly**: a new key starts at the prior variance and takes most of a surprise (one-trial learning); an established one barely moves (latent inhibition), and an outcome already predicted teaches nothing new (blocking).
+- **Salience by role** [provisional]: a target, a salient percept or a hidden-cause node starts at prior variance *V*₀ = 0.04 (sd 0.2 channel units); context cues at *V*₀/10, so the thing acted on, not the hour, takes the credit first. The toy prototype at *V*₀/4 credited too much to context: food was hardly told from non-food after 30 days.
+- **Forgetting and relearning:** variance grows back by *Q* a tick unused (*Q* = 2 × 10⁻⁵ [provisional]: half the prior in about a compressed week for a target), so an association unused for long becomes plastic again, which lets seasonal and changed things be relearned. Values are not erased: forgetting is a return of plasticity, plus replacement when the table is full.
+- **`learningRate`** (§4.3), a heritable dial, multiplies *V*₀ and *Q*: plasticity. It is survival-critical (at 0 nothing is learned), so founders start at viable values with wide spread, logged as a viability choice (§0.2). *R* = 0.01 is the outcome noise the rule assumes.
+
+#### 4.7.7 Delays: the episodic buffer and eligibility
+The **episodic buffer** (§4.3) holds an agent's last **24 acts** [provisional]: when each ended, its (target, act) key and its place key, the drives at its start, and a credit vector. It serves delayed learning now, hidden-cause matching (§4.7.8), and later recall for signals (Phase 5).
+- At every act's end whose error is **salient** (summed over channels above 0.08 [provisional]), every remembered act in the window adds the error, times its **eligibility** *e* = 2^(−age / `traceHalfLife`), to its credit. When the act leaves the buffer, its key's "later" vector moves toward its credit by a Kalman gain from its own "later" variance. So a consistent cause keeps the association and a bystander loses it the next time nothing follows it, and a novel food eaten before an illness is blamed more than a familiar one (latent inhibition again).
+- **Delayed harm is discounted** by its eligibility: a toxin felt 3.5 hours later is learned at 30% of its strength with a 2-hour half-life, 55% with 4 hours. Delays are hard here because credit assignment over hours is hard, not because a number was set to make them hard. *(This replaces §4.5's "by design, because it makes social learning valuable", which reads as a reason chosen for an outcome. Whether social learning pays is for Phase 4 to find.)*
+- **`traceHalfLife`** is a heritable dial [provisional founders' range 0.25–4 hours, log-uniform]: a faculty's parameter, not a drive or bias (D-047). A longer trace learns slower consequences and more spurious ones. In the toy, half-lives of 2 and 4 hours cut eating of a delayed toxin from 14% to 3% of hungry meals and mean pain by half or more, but foraging was worse and early deaths more frequent than at 1 hour: the trade-off evolution would weigh, with no social content. ALIBI: delayed consequences (plant toxins, §2.7) exist in a world with no one else in it.
+- **What this can't learn.** In the bodies of Phase 2 a gut infection is felt about a day or more after the water (§3.10's course from severity 0.03). Traces of hours give that almost nothing; only place-and-season hidden-cause nodes (§4.7.8), and later others (Phase 4), can carry it. That is a property of the world to report, not to fix.
+- **Prepared learning is not included.** Real mammals tie gut illness to what they ate over hours, far more readily than to anything else (the Garcia effect). That is a bias in the mind, so it waits for the owner (Q12, `STATUS.md`). The buffer would carry it as a second, longer kernel for ingestion acts on the illness channels, as a heritable dial; without it, the single kernel above stands.
+
+#### 4.7.8 Hidden-cause nodes (frame for 3.5)
+§4.4's "salient event with no perceived entity that explains it" becomes measurable: after the update of §4.7.6, what remains of the error (the part no involved key absorbed, because none was uncertain enough to) is the **unexplained** part. If it is salient, the agent posits a node with probability `hiddenCauseBias` × its size (at most 1), or strengthens an existing node whose signature fits.
+- **Signature:** place, light, day length, and the act kinds of the last few acts in the buffer. A node is **active** when at least two of place, light and day length match now. Up to **16 nodes** an agent [provisional], weakest replaced.
+- An active node is a context cue at full salience (§4.7.5): it takes credit for outcomes where it is active, gathers "now" and "later" associations with acts done while it is active, and enters every valuation there. That is the generic entity model of §4.3 applied to an unseen cause, with no other code.
+- `hiddenCauseBias` could feed hoped-for outcomes (§7.7–§7.8), so founders' values are centred on its neutral value, 0, with wide spread (§0.2); 3.5 fixes the range. The Phase 3 exit check compares harm with and without it (`ROADMAP.md`).
+
+#### 4.7.9 Place memory
+Per agent, up to **64 places** [provisional]: a place cell, when it was last seen, the best value found there then, and up to 4 classes perceived there. When choosing, the three remembered places with the highest remembered value, not counting here, become "go there" candidates, valued by what their classes now predict (with the drives of now) plus the place's own Pavlovian association (§4.7.6), minus the trip. **The trip** is the agent's own learned cost of walking, from its (self, explore) association, scaled by distance. Fruit seasons are not remembered as such yet (§4.7.15).
+
+#### 4.7.10 Choosing
+**Candidates** (at most 48): each perceived thing (at most 12, nearest of each class first) with each act its physics allows (consume needs edible matter, water or meat; strike needs reach; pick up needs a loose object; approach and avoid apply to anything), the three remembered places, and rest, sleep and explore. Physics decides what can be done to a thing, never the mind's knowledge.
+
+**Value** of a candidate: its predicted change μ in each channel is the context's Pavlovian prediction, plus the context's prediction for that act kind, plus the (target, act) "now" and "later" vectors, plus the trip. An untried act on an unknown thing therefore predicts what happens here anyway, and nothing more. Then, with *d* the drive levels now,
+
+> V = Σ over channels of [ *d*² − clamp(*d* + μ, 0, 1)² ] − (1 − `riskTolerance`) × σ²_pain + `curiosity` × √*v*
+
+- The first term is homeostatic reward with a quadratic drive cost: relief counts more the worse the drive, eating when full is worth nothing (the clamp), and any harm costs even when the agent feels fine (the square). The prototype first left out the Pavlovian part as "common to all acts"; under the clamp it is not, and agents drifted into exploring forever. It stays in.
+- σ²_pain is the spread of pain outcomes the key has seen (a ninth number per slot, kept for pain only), so a rare large harm counts as more than its mean. `riskTolerance` is a heritable dial with neutral value 0 (variance counted exactly).
+- *v* is the (target, act) uncertainty. `curiosity` (§4.2) is a heritable dial; survival-critical for blank slates (nothing is ever tried without it but by chance), so founders start viable and wide. 0.3 worked in the toy; at 1 the bonus outweighed every real outcome and agents only explored.
+- **Choice:** softmax over candidates with `explorationTemperature` (a heritable dial; 0.01 in the toy), using `dmath.exp`.
+
+#### 4.7.11 What Phases 4–5 will plug in (not built now)
+- **Watching others** (§5.6): an observed act and its visible outcome (eating, being struck, falling ill) updates the observer's (target, act) association as if experienced, with gain scaled by the copying biases and the model's ledger entry. Same table, no new store.
+- **Individuals** are cues, so "what happens when I approach X" is an ordinary association (§4.3's entity models). The ledger (§5.4) stays its own structure.
+- **Signals** (§6.5) decode into the same updates; coined tokens bind to cues and nodes (§6.2).
+None of this is built or needed in Phase 3; each waits for its own milestone and, where it is a mechanism between agents, for the owner.
+
+#### 4.7.12 Compute budget, measured
+- **What is left.** `bench/budget.ts` (2026-11-20, cloud sandbox, Xeon 2.1 GHz): with 500 kept bodies on the full map, the world systems cost about 700–735 µs a tick (1.41–1.47 µs per agent at 500 agents) and the body systems 1.40–1.43 µs per agent per tick, exposure alone 0.81–0.86 (bodies in groups of 25 crowd its 200 m grid). That leaves **about 4.1 µs** of the 6.94 µs budget (§1.7), about 3.5 after the kernel's ~0.5 (D-016).
+- **What the mind costs.** `bench/mind.ts` at 500 agents, tables at full size: about **2.3–2.9 µs per agent per tick at 0.415 decisions per agent per tick**, so about 6 µs a decision including the learning when the act ends; the toy world and a random stand-in policy cost 0.6 on top and are not counted. The prototype has no σ²_pain and its dials are constants; both add a few operations a decision. A stand-in for perception (a 7 × 7 window of 100 m cells, 16 layers each) costs about 2.9 µs a perception.
+- **At the toy's pace it does not fit:** about 3.6–4 µs against 3.5. Three rules make it fit, and 3.2–3.4 must keep to them and measure again:
+  1. **At most about 0.25 full decisions per awake agent per tick.** Acts last (§4.7.2): eating a patch until full or empty, walking to a target, resting. The toy's acts were mostly one or two ticks. Sleeping agents (a third of the day) check hourly.
+  2. **Perceive the still world once per place and hour.** Plants, stone, wood and water change on daily or slower clocks; only animals, agents and fire need a fresh look each decision, through the spatial index.
+  3. **One index for neighbours.** Perception's spatial index should also serve exposure's touching bodies, which now cost 0.8 µs a body in groups (`STATUS.md`, 2.2 benchmark).
+  At 0.25 decisions per awake agent-tick that is roughly 1–1.2 µs for the mind and 0.5 for perception: about half of what is left.
+- **Memory.** About 42 KB an agent (table 40, buffer 1.1, places 0.8, nodes 0.2): 21 MB at 500 agents, saved and hashed with the rest (a full-map world is already about 30 MB). If that proves too much, 256 slots halve it; the prototype's agents used under 200.
+
+#### 4.7.13 The toy check (`bench/mind.ts --learn`)
+300 agents, 30 days, a toy world of 32 × 32 places with 40 classes of thing: 10 that feed, 3 kinds of water, one that hurts at once, one that feeds and hurts 3.5 hours later, 25 that do nothing; a predator in one place in 20. Shares of what agents ate when they began eating hungry (hunger ≥ 0.3), first 3 days → last 5:
+| Policy | Food | Delayed toxin | Nothing | Immediate harm | Deaths, last 5 days | Mean pain |
+|---|---|---|---|---|---|---|
+| random stand-in | 19 → 14% | 2.2 → 1.4% | 67 → 70% | 2.1 → 1.9% | 36 | 0.28 |
+| learner, no delayed credit | 29 → 42% | 4.6 → 13.9% | 55 → 34% | 1.6 → 0.3% | 14 | 0.15 |
+| learner, trace 1 h | 22 → 45% | 3.2 → 8.1% | 64 → 31% | 1.3 → 0.2% | 4 | 0.14 |
+| learner, trace 2 h | 18 → 32% | 2.2 → 2.9% | 70 → 50% | 0.7 → 0.3% | 9 | 0.09 |
+| learner, trace 4 h | 17 → 21% | 1.7 → 3.4% | 74 → 65% | 0.9 → 0.2% | 14 | 0.05 |
+This shows **the code does what this section says** on a toy, nothing about the real world: learners tell food from non-food, stop eating what hurts at once, and with traces stop eating the delayed toxin, at a cost in foraging that grows with the trace. The toy's numbers (drift rates, effects) were picked to exercise the code; three things were corrected while writing it (an agent's first act learned from a garbage "before", context salience too high, the Pavlovian part left out of value), each described above.
+
+#### 4.7.14 Build plan
+- **3.2 [O] Perception:** the cue tables of §4.7.3 from the world's layers, range by light, terrain and vegetation (§4.1), the cache of rule 2, the shared spatial index of rule 3, individual recognition (ids of agents perceived). Measure.
+- **3.3 [O] Drives, acts and choice:** interoception (§4.7.4), the solo acts of §5.5 as physics written in a new `DESIGN.md` section before coding (consume — drinking is consuming water —, move, rest, sleep, pick up, drop, carry, strike, manipulate, approach, avoid), the body's door for plant toxins (§2.7: the values exist, no body reads them yet), choice (§4.7.10), and **founders**: formed from their genomes (D-047), their conditioning (`BodySpec.conditionedTo`, D-043) and where and in which season they start, each written down as a body choice, not a tune. Acts must read capacity (D-048), or minds working flat out starve as the random policy did.
+- **3.4 [O] Memory:** the table, the learning rules, the buffer and delays, place memory; the mind's dials on the genome (`learningRate`, `traceHalfLife`, `curiosity`, `explorationTemperature`, `riskTolerance`), each with its alibi and founders' range. Tests against hand-built cases: one-trial learning, blocking, latent inhibition, extinction, a delayed effect learned and unlearned.
+- **3.5 [O] Hidden-cause nodes** (§4.7.8) and `hiddenCauseBias`.
+- **3.6 [O] Skills into acts** (§3.11's `bySkill`).
+- **3.7 [F] Viability and the emergence checks:** cold deaths of naked bodies (D-041, D-048), old age counted twice (D-045), founders' survival; tuning is logged and aimed at plausibility only (T4).
+
+#### 4.7.15 Not in this version (known limits)
+- **One step of lookahead** plus the trip: no plans of several acts (no "go to the stream, then to the fruit"). Value counts the drives at an act's end, not the time spent in a state, so a pain that lasts hours counts as its peak.
+- **No habit system** (model-free caching), no generalisation between classes of thing except through context-by-act associations, one shared uncertainty per association for all channels.
+- **Perfect path integration** (agents always know where they are on the 400 m grid) and no fruit-season memory as such (only "last seen bearing").
+- **A single exponential trace** for delays; real delays are lumps at a fixed lag, so the learned delayed effect is discounted and smeared.
+- **Fear has no innate trigger but pain.**
 
 ## 5. Interaction primitives
 
