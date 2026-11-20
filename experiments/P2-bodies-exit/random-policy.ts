@@ -255,6 +255,8 @@ say(`overall: ${[c1, c2, c3, c4, c5, c6, c7, c8].every(Boolean) ? 'PASS' : 'FAIL
 const perBodyKcalDay = Array.from({ length: N }, (_, i) => spentSoFar[i] / Math.max(daysLived(i), 1 / 24));
 const lived = (i: number) => daysLived(i) >= 2;
 say(`diag spending: median ${median(perBodyKcalDay.filter((_, i) => lived(i))).toFixed(0)} kcal a day over each body's life (men ${median(perBodyKcalDay.filter((_, i) => lived(i) && i % 2 === 0)).toFixed(0)}, women ${median(perBodyKcalDay.filter((_, i) => lived(i) && i % 2 === 1)).toFixed(0)}); the gut passes at most 4,320`);
+let oldAgeExpected = 0;
+let oldAgeExpectedYoung = 0;
 {
   // Old age: the deaths the Gompertz term predicts over the time each body actually lived (§3.12).
   const H = (x: number) => (1.47e-4 / 0.086) * Math.exp(0.086 * x);
@@ -267,6 +269,8 @@ say(`diag spending: median ${median(perBodyKcalDay.filter((_, i) => lived(i))).t
     if (a0 < 45) expectedYoung += H(Math.min(a1, 45)) - H(a0);
   }
   say(`diag old age: ${old.length} deaths against ${expected.toFixed(1)} expected from the hazard over the time lived; ${old.length - oldOld} under 45 against ${expectedYoung.toFixed(2)} expected`);
+  oldAgeExpected = expected;
+  oldAgeExpectedYoung = expectedYoung;
 }
 for (const [lo, hi] of [[0, 0.25], [0.25, 0.5], [0.5, 0.75], [0.75, 1]]) {
   const g = group((i) => waterPerDay[i] >= lo && waterPerDay[i] < hi);
@@ -282,3 +286,40 @@ function causesOf(ds: Death[]): string {
   for (const d of ds) m.set(CAUSE_NAMES[d.cause], (m.get(CAUSE_NAMES[d.cause]) ?? 0) + 1);
   return [...m].sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}`).join(', ') || '-';
 }
+
+// ---- Part two's criteria (preregistration.md, part two) ----
+say('part two:');
+const severe = group((i) => waterPerDay[i] < 0.25);
+const severeDeaths = known(severe);
+const severeDehy = share(severeDeaths, DeathCause.DEHYDRATION);
+const severeMedian = median(severe.map(daysLived));
+const d3 = severeDehy >= 0.7 && severeMedian >= 5 && severeMedian <= 15;
+say(`3b thirst before hunger, severe: ${d3 ? 'PASS' : 'FAIL'} (n ${severe.length}, dehydration ${(severeDehy * 100).toFixed(1)}%, median ${severeMedian.toFixed(1)} days; ${causesOf(severeDeaths)})`);
+const d4 = hungryDeaths.every((d) => d.cause !== DeathCause.DEHYDRATION) && starvedDays.every((d) => d >= 10 && d <= 40);
+say(`4b hunger takes weeks at this spending: ${d4 ? 'PASS' : 'FAIL'} (n ${hungry.length}, dehydration ${hungryDeaths.filter((d) => d.cause === DeathCause.DEHYDRATION).length}, starvation at ${starvedDays.length ? Math.min(...starvedDays).toFixed(1) + '–' + Math.max(...starvedDays).toFixed(1) : '-'} days)`);
+const bandMedians = (pred: (i: number) => boolean, key: Float64Array, edges: number[]) =>
+  edges.slice(0, -1).map((lo, b) => median(group((i) => pred(i) && key[i] >= lo && key[i] < edges[b + 1]).map(daysLived)));
+const foodBands = bandMedians((i) => waterPerDay[i] >= 3, foodPerDay, [0, 1000, 2000, 3000, 4000]);
+const waterBands = bandMedians(() => true, waterPerDay, [0, 0.25, 0.5, 0.75, 1]);
+const rising = (xs: number[]) => xs.every((x, k) => k === 0 || x > xs[k - 1]);
+const d5 = rising(foodBands) && foodBands[3] >= 1.5 * foodBands[0] && rising(waterBands);
+say(`5b supply buys time: ${d5 ? 'PASS' : 'FAIL'} (food bands ${foodBands.map((x) => x.toFixed(1)).join(' < ')} days; water bands ${waterBands.map((x) => x.toFixed(1)).join(' < ')} days)`);
+const poisson99 = (mean: number): [number, number] => {
+  let p = Math.exp(-mean);
+  let cdf = p;
+  let k = 0;
+  let lo = -1;
+  while (cdf < 0.995) {
+    if (lo < 0 && cdf >= 0.005) lo = k;
+    k++;
+    p *= mean / k;
+    cdf += p;
+  }
+  return [lo < 0 ? k : lo, k];
+};
+const [lo7, hi7] = poisson99(oldAgeExpected);
+const [loY, hiY] = poisson99(oldAgeExpectedYoung);
+const young = old.length - oldOld;
+const d7 = old.length >= lo7 && old.length <= hi7 && young >= loY && young <= hiY;
+say(`7b old age at the hazard's rate: ${d7 ? 'PASS' : 'FAIL'} (${old.length} in ${lo7}–${hi7} for a mean of ${oldAgeExpected.toFixed(1)}; under 45: ${young} in ${loY}–${hiY} for ${oldAgeExpectedYoung.toFixed(2)})`);
+say(`part two overall: ${[c1, c2, d3, d4, d5, c6, d7, c8].every(Boolean) ? 'PASS' : 'FAIL'}`);
