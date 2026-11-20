@@ -204,6 +204,8 @@ test('eating a plant moves food from the cell to the gut and the stomach at a no
   acts.refresh();
   const before = layer[k];
   const gutBefore = f64(sim, BODY_COLUMNS.gut.name)[slot];
+  const waterBefore = f64(sim, HEAT_COLUMNS.water.name)[slot];
+  const waterInBefore = f64(sim, HEAT_COLUMNS.waterIn.name)[slot];
   acts.begin(slot, Act.CONSUME, cue(CueKind.CLASS, plantClass(s, PlantLook.LEAF)), PerceptSource.CELL, k, x, y, NO_DRIVES, 0);
   acts.run(slot);
   const eaten = tally[ActTally.PLANT_KG + s];
@@ -215,6 +217,10 @@ test('eating a plant moves food from the cell to the gut and the stomach at a no
   assert.ok(Math.abs(eaten - expected) < 1e-3, `ate ${eaten} kg, expected ${expected}`);
   assert.ok(Math.abs(f64(sim, BODY_COLUMNS.gut.name)[slot] - gutBefore - eaten * sp.kcalPerKg * sp.rawDigestible) < 1e-3);
   assert.ok(Math.abs(f64(sim, GUT_COLUMNS.stomachKg.name)[slot] - eaten) < 1e-6);
+  // The food's own water goes into the body as an audited inflow (§4.14.2, T-017).
+  assert.ok(sp.waterShare > 0.5, 'a tuber is mostly water');
+  assert.ok(Math.abs(f64(sim, HEAT_COLUMNS.water.name)[slot] - waterBefore - eaten * sp.waterShare) < 1e-9);
+  assert.ok(Math.abs(f64(sim, HEAT_COLUMNS.waterIn.name)[slot] - waterInBefore - eaten * sp.waterShare) < 1e-9);
   assert.equal(sim.state.agents.column<Uint8Array>(BODY_COLUMNS.effort.name).data[slot], Effort.MODERATE, 'digging');
   assert.equal(sim.state.agents.column<Uint8Array>(ACT_COLUMNS.actEnd.name).data[slot], ActEnd.GOING);
 
@@ -260,6 +266,7 @@ test('poisonous plants go through the poison door; meat is cut faster with a kee
   sim.state.store(OBJECT_STORE).column<Uint32Array>('holder').data[flake] = sim.state.agents.id.data[knife];
   sim.state.agents.column<Uint32Array>(ACT_COLUMNS.held.name).data[knife * 2] = sim.state.store(OBJECT_STORE).id.data[flake];
   acts.refresh();
+  const handWater = f64(sim, HEAT_COLUMNS.water.name)[hand];
   for (const who of [hand, knife]) {
     acts.begin(who, Act.CONSUME, cue(CueKind.CLASS, CLASS.carcass), PerceptSource.CELL, m, mx, my, NO_DRIVES, 0);
     acts.run(who);
@@ -269,6 +276,7 @@ test('poisonous plants go through the poison door; meat is cut faster with a kee
   const novices = (ACTS.meatKgPerHourEdge * ACTS.meatNoviceShareEdge) / (ACTS.meatKgPerHourHand * ACTS.meatNoviceShareHand);
   assert.ok(Math.abs(byEdge / byHand - novices) < 1e-6, `${byHand} by hand, ${byEdge} with an edge`);
   assert.ok(f64(sim, INJURY_COLUMNS.gutDose.name)[hand] > 0, 'foul meat swallowed');
+  assert.ok(Math.abs(f64(sim, HEAT_COLUMNS.water.name)[hand] - handWater - byHand * ACTS.meatWaterShare) < 1e-9, 'meat is mostly water');
 
   // Water: a body short of 2 kg drinks it back, and the cell's pathogens with it.
   const water = sim.state.world.layer<Uint8Array>(TERRAIN_LAYERS.waterKind);

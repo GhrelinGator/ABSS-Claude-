@@ -80,6 +80,8 @@ export const ACTS = {
   cuttingEdge: 0.5,
   meatKcalPerKg: 1500,
   meatDigestible: 0.9,
+  /** Share of raw lean meat that is water (§4.14.2, T-017) [estimate: raw venison about 73%]. */
+  meatWaterShare: 0.72,
   /** Drinking, kg a minute; a sip when not short of water, kg. */
   drinkKgPerMinute: 1,
   sipKg: 0.1,
@@ -515,6 +517,8 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     if (kg > 0) {
       tally[ActTally.KCAL] += ingest(sim, slot, kg * kcalPerKg);
       swallow(sim, slot, kg);
+      // The food's own water goes into the body as it is swallowed (§4.14.2).
+      if (sp.waterShare > 0) drink(sim, slot, kg * sp.waterShare);
       if (sp.toxin !== null) {
         const units = kg * sp.toxin.dosePerKg;
         poison(sim, slot, units, sp.toxin.delayHours);
@@ -565,6 +569,7 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     if (kg > 0) {
       tally[ActTally.KCAL] += ingest(sim, slot, kg * kcalPerKg);
       swallow(sim, slot, kg);
+      drink(sim, slot, kg * K.meatWaterShare);
       exposeGut(sim, slot, meatDose(kg, (carcassLoad as Float32Array)[k]));
       meat[k] = stock - kg;
       perception.invalidate(k);

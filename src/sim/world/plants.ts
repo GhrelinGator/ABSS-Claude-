@@ -75,6 +75,11 @@ export interface PlantSpecies {
   readonly patchContrast: number;
   readonly food: SeasonalFood | StandingFood;
   readonly kcalPerKg: number;
+  /**
+   * Share of a fresh kilogram that is water, taken into the body as it is eaten (DESIGN.md §4.14.2,
+   * T-017) [estimates, from food composition tables remembered].
+   */
+  readonly waterShare: number;
   /** Real days for half of a gathered amount to spoil. */
   readonly storageHalfLifeDays: number;
   readonly visible: boolean;
@@ -108,6 +113,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.6,
     food: { kind: 'seasonal', start: 0.2, end: 0.26, annualYieldKgHa: 500, lossPerDay: 0.35 },
     kcalPerKg: 3400,
+    waterShare: 0.1,
     storageHalfLifeDays: 2000,
     visible: true,
     rawDigestible: 0.4,
@@ -133,6 +139,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.8,
     food: { kind: 'stock', stockKgHa: 2500, refillPerRealYear: 1 },
     kcalPerKg: 1000,
+    waterShare: 0.74,
     storageHalfLifeDays: 20,
     visible: false,
     rawDigestible: 0.6,
@@ -158,6 +165,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.9,
     food: { kind: 'seasonal', start: 0.3, end: 0.45, annualYieldKgHa: 400, lossPerDay: 0.15 },
     kcalPerKg: 600,
+    waterShare: 0.85,
     storageHalfLifeDays: 4,
     visible: true,
     rawDigestible: 0.9,
@@ -183,6 +191,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.8,
     food: { kind: 'seasonal', start: 0.55, end: 0.62, annualYieldKgHa: 1200, lossPerDay: 0.01 },
     kcalPerKg: 3000,
+    waterShare: 0.05,
     storageHalfLifeDays: 300,
     visible: true,
     rawDigestible: 0.5,
@@ -208,6 +217,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.5,
     food: { kind: 'seasonal', start: 0, end: 0.45, annualYieldKgHa: 2000, lossPerDay: 0.2 },
     kcalPerKg: 300,
+    waterShare: 0.9,
     storageHalfLifeDays: 2,
     visible: true,
     rawDigestible: 0.7,
@@ -233,6 +243,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.8,
     food: { kind: 'stock', stockKgHa: 3000, refillPerRealYear: 0.8 },
     kcalPerKg: 1500,
+    waterShare: 0.6,
     storageHalfLifeDays: 30,
     visible: false,
     rawDigestible: 0.8,
@@ -258,6 +269,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 1,
     food: { kind: 'seasonal', start: 0.32, end: 0.47, annualYieldKgHa: 300, lossPerDay: 0.2 },
     kcalPerKg: 400,
+    waterShare: 0.85,
     storageHalfLifeDays: 4,
     visible: true,
     rawDigestible: 0.9,
@@ -283,6 +295,7 @@ export const PLANT_SPECIES: readonly PlantSpecies[] = Object.freeze([
     patchContrast: 0.4,
     food: { kind: 'stock', stockKgHa: 1500, refillPerRealYear: 1.5 },
     kcalPerKg: 900,
+    waterShare: 0.75,
     storageHalfLifeDays: 10,
     visible: false,
     rawDigestible: 0.6,

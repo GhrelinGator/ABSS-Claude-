@@ -1005,7 +1005,7 @@ This shows **the code does what this section says** on a toy, nothing about the 
 - **3.4 [O] Memory** *(done: §4.10, D-053)*: the table, the learning rules, the buffer and delays, place memory; the mind's dials on the genome (`learningRate`, `traceHalfLife`, `curiosity`, `explorationTemperature`, `riskTolerance`), each with its alibi and founders' range. Tests against hand-built cases: one-trial learning, blocking, latent inhibition, extinction, a delayed effect learned and unlearned.
 - **3.5 [O] Hidden-cause nodes** (§4.7.8) and `hiddenCauseBias` *(done: §4.11)*.
 - **3.6 [O] Skills into acts** (§3.11's `bySkill`) *(done: §4.12)*.
-- **3.7 [F] Viability and the emergence checks:** cold deaths of naked bodies (D-041, D-048), old age counted twice (D-045), founders' survival; tuning is logged and aimed at plausibility only (T4).
+- **3.7 [F] Viability and the emergence checks:** cold deaths of naked bodies (D-041, D-048), old age counted twice (D-045), founders' survival; tuning is logged and aimed at plausibility only (T4). *(3.7 found the cause of the thirst deaths and added water in food, §4.14; the checks are 3.7b's.)*
 
 #### 4.7.15 Not in this version (known limits)
 - **One step of lookahead** plus the trip: no plans of several acts (no "go to the stream, then to the fruit"). Value counts the drives at an act's end, not the time spent in a state, so a pain that lasts hours counts as its peak.
@@ -1116,7 +1116,7 @@ The rule is at most about 0.25 decisions per awake agent per tick (§4.7.12). Ac
 
 #### 4.9.9 Not in this version
 - *(Done in 3.3b, §2.17: animals keep away from persons, predators take lone persons, struck animals are wounded and fight back. Candidates (§4.9.5) gain strike on an animal percept while something is held; a person in an animal's jaws this tick does not walk.)*
-- No processing of food (pounding, cracking, soaking, cooking), so bitter root is always toxic and grass seed and nuts poorly digested; no water in food.
+- No processing of food (pounding, cracking, soaking, cooking), so bitter root is always toxic and grass seed and nuts poorly digested. *(Water in food since 3.7, §4.14.2.)*
 - *(Done in 3.4, §4.10: memory, "go there" candidates, the trip, the mind's dials on the genome. Candidates now come from every class seen, and pick up only with a free hand (§4.10.7). The learned fear interrupt was not built; §4.10.10.)*
 - *(Done in 3.6, §4.12: eating rates and precision by skill, practice as acts work.)*
 - Climbing counted start-to-end per tick; rivers waded freely; no swimming; acts on persons are only approach and avoid (Phase 4).
@@ -1351,6 +1351,53 @@ Choice weighs every prediction by the drives of now (§4.7.10): V = Σ [*d*² �
 - **Vomiting and fever** as signals for the second kernel: both follow gut illness, but an emptied gut reads as hunger and fever as cold, which have other causes; only the gut's part of pain is read. The general kernel still credits them.
 - **Gut infections** (above): their onset is slow, so nothing is salient and the records are gone.
 - **No change to the salience gate** for gut errors: a second gate would be a further change to learning, outside what D-056 asked; 3.7's diagnosis may revisit it with a log entry.
+
+### 4.14 Viability (Phase 3.7) [provisional]
+
+Written in 3.7 (2026-11-20, an [F] milestone run on Opus, unattended), after measuring what founders die of and before changing any code (`GUARDRAILS.md` §4; T-017). Viability is the one target besides plausibility that tuning may aim at (T4), and every change is logged. Nothing here is aimed at a social outcome or at any of Phase 3's checks.
+
+#### 4.14.1 What founders died of, and why
+Before 3.7, thirst killed more founders than anything else in every run since 3.4 (§4.10.9, §4.11.8, §4.13.6). `experiments/P3-viability/thirst.ts` follows every founder tick by tick (seed 7, 100 founders, a 3 km disc, 40 days) and measures the chain thirsty → water in reach → drinks → learns that drinking relieves thirst → remembers where → goes back. For the 64 learners that died with thirst at its limit:
+
+| Link | Measured |
+|---|---|
+| Water in reach | started a median 807 m from water, 24 of 64 within 400 m (the range water is seen at, §4.8); 80% of their thirsty ticks (thirst > 0.3) had no water within 400 m |
+| Search | of the acts they began while thirst was above 0.5, eating 45%, explore 3% |
+| Drinks | 39 of 64 never drank |
+| Learns, remembers | 17 of 64 held a (water, consume) association predicting a fall in thirst; 9 of 64 remembered a water cell (30 and 30 of the 36 that died of something else) |
+
+Starting every founder within about 800 m of water (a 500 m disc) still left 59 and 42 of 100 dying of thirst (seeds 7 and 8), so placement is not the broken link. Two causes (T-017): **bodies got no water from food** (§4.9.9 listed it as not built), which a body mechanism fixes (§4.14.2); and **nothing makes a body with a pressing need try what it has never tried, or search**: an untried act is valued at the prior, like every other untried act, and known food predicts hunger's relief, so a learner keeps to the food it knows. That second cause is in the mind and goes to the owner (Q14, `STATUS.md`); nothing in the mind was changed.
+
+#### 4.14.2 Water in food (a body mechanism)
+Each plant species in §2.12's catalogue has a **water share**, the part of a fresh kilogram that is water, and lean meat has one; eating takes that water into body water through `drink` (§3.9; an audited inflow) as the food is swallowed. The stomach already held the food's whole mass and kcal per kg were already per fresh kilogram, so nothing else changes; a surplus passes as urine (§3.9). [Estimates from food composition tables remembered, checked against 1 − kcal per kg ÷ 3,800, the energy of a kilogram of starchy dry matter:]
+
+| grass seed | tuber | berry | nut | greens | bitter root | nightshade | reed | meat |
+|---|---|---|---|---|---|---|---|---|
+| 0.10 | 0.74 | 0.85 | 0.05 | 0.90 | 0.60 | 0.85 | 0.75 | 0.72 |
+
+ALIBI: a body that eats a juicy fruit takes in its water whether or not anyone else exists. *(Added without waiting, D-034: a body mechanism; the owner is told.)*
+
+#### 4.14.3 After water in food
+`bench/founders.ts`, 100 founders, a 3 km disc, 40 days; a description, not one of Phase 3's checks (no preregistered threshold).
+
+| | Alive at day 10 / 20 / 30 / 40 | Deaths by cause | Eaten, thousand kcal | Plant kg eaten / water drunk, kg |
+|---|---|---|---|---|
+| seed 7, learners | 98 / 91 / 46 / 3 | starvation 58, animals 22, cold 16, infection 1 | 4,787 | 6,318 / 224 |
+| seed 7, blank | 95 / 90 / 0 / 0 | starvation 88, animals 9, dehydration 3 | 883 | 1,248 / 71 |
+| seed 8, learners | 96 / 93 / 42 / 14 | starvation 73, cold 6, animals 5, dehydration 1, old age 1 | 4,074 | 5,456 / 268 |
+| seed 8, blank | 98 / 98 / 0 / 0 | starvation 94, dehydration 4, animals 1, old age 1 | 896 | 1,462 / 24 |
+
+- **Thirst no longer kills** (1 of 200 learners, 7 of 200 blank minds); the bodies took about 4,500 and 3,900 kg of water from food (seeds 7 and 8) and drank 224 and 268, about 1.5–1.7 kg a day each from food: fresh roots and greens carry most of what a body loses in a mild spring. Learners now drink little.
+- **Starvation is the first cause of death.** Learners eat about five times what blank minds do and outlive them (46 and 42 of 100 alive at day 30 against none), but most starve between days 20 and 35, when their fat runs out (§3.8: a lean founder carries some 30–40 days of it): novices at everything (§4.12) ate about 1,550–1,800 kcal a day. Of the consume acts learners began, 29% and 41% failed (nothing eaten in the first tick: a plant seen whose food was gone), as did 38–39% of blank minds'.
+- **More live into the compressed winter, and cold kills more** (16 and 6). Founders start at the spring equinox; day 36 is the winter solstice, and a naked body cannot keep warm on a clear winter night in the open (D-041). Fire, rock shelters and hides are things to learn; none was learned in 40 days.
+- **Bitter root is a quarter to a third of what learners eat** (2,014 and 1,777 kg), and its share rose over the run on both seeds, as without water in food (§4.13.6).
+
+#### 4.14.4 What is left
+- **Q14 (the owner):** search and trying the untried when a drive is pressing (§4.14.1). With water in food it no longer decides who dies of thirst, but it is the same gap that keeps learners on food they know when it runs short.
+- **Starvation:** not changed. Its links (food in reach, the novice's rates, failed acts, search) are 3.7b's to measure before anything is classified.
+- **Cold:** not changed. The season founders start in and the climate setting are world choices that would be viability tunes; none is made before Phase 3's checks show what learners can learn of fire and shelter.
+- **Old age counted twice** (D-045): not measurable until bodies live to old age.
+- **Persistence for five generations** (the Phase 3 exit) needs births, and conception is a door only Phase 4's acts will call (§3.13). 3.7b must take a reading (a scripted stand-in for mating in the experiment only, as 2.6's tests do, or the persistence check moved to Phase 4's exit) and write it down.
 
 ## 5. Interaction primitives
 
