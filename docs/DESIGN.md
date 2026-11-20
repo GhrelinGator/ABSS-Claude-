@@ -1287,6 +1287,20 @@ Written in 3.6 (2026-11-20, an [O] milestone, unattended) before the code. It wi
 
 **Tests** (`tests/unit/skills-in-acts.test.ts`): a practised eater eats faster than a novice at the same stand, by bySkill's share; eating adds its working seconds as practice to consume × that species and nothing to other pairs, and nothing in the tick a body is spawned; searching an empty cell adds none; a novice's rub never makes an ember on dry wood and an expert's does; an expert's blows on stone flake more often than a novice's; practice from striking an animal goes to strike × its kind; effort is the same for a novice and an expert.
 
+**What skills do, measured** (`bench/founders.ts`, 100 founders on the full map, a 3 km disc, 40 days, genomes' own biases, against `main` before 3.6, which reproduces §4.11.8's "genome" rows exactly). A description of what the code does, not an emergence check: single seeds, no preregistered threshold.
+
+| | Alive at day 10 / 20 / 30 / 40 | Deaths by cause | Eaten, thousand kcal | Bitter root, kg | Water, kg | Mean pain, hourly | Best eating skill of the living, day 10 / 20 / 30 |
+|---|---|---|---|---|---|---|---|
+| seed 7, before | 60 / 32 / 17 / 1 | dehydration 62, animals 17, starvation 13, cold 7 | 3,596 | 1,853 | 624 | 0.139 | — |
+| seed 7, skills | 73 / 39 / 17 / 0 | dehydration 53, starvation 29, animals 12, cold 6 | 2,407 | 851 | 569 | 0.091 | 0.55 / 0.65 / 0.77 |
+| seed 8, before | 90 / 51 / 24 / 12 | dehydration 50, starvation 30, animals 5, cold 1, infection 1, old age 1 | 4,472 | 2,590 | 928 | 0.168 | — |
+| seed 8, skills | 90 / 58 / 22 / 8 | starvation 44, dehydration 35, animals 11, cold 1, old age 1 | 2,849 | 1,119 | 729 | 0.082 | 0.42 / 0.62 / 0.79 |
+
+- **Novice founders eat about a third less, and more of them starve** (29 and 44 against 13 and 30); fewer die of thirst, and more are alive at day 20, fewer at day 40. That is the expected cost of starting every founder at zero skill with the experts' numbers taken from adult foragers (above), not a viability tune; viability is 3.7's.
+- **They eat about half as much bitter root** (poison units 873 and 1,136 against 1,872 and 2,623) and their mean pain is about half. Bitter root and tubers are both dug (a novice's 0.4), but the mix moved from bitter root toward tubers (1,597 kg against 1,383 on seed 7); why was not looked into.
+- **Skill rises quickly at what is done most**: the living's best eating skill is about 0.4–0.55 by day 10 and about 0.8 by day 30, nearly all of them above 0.3 by day 20 (§3.11's curve: hours on the life clock, and learners spend much of the day eating). Striking and rubbing stay near 0 (striking skill 0.01, rubbing wood 0.02–0.08); **no ember was made** in either run, as the arithmetic above says for skills this low. Blows on animals 81 and 70, none killed.
+- **Cost:** `bench/acts.ts` (500 founders, 2 days, interleaved with `main` twice): the mind 6.68 and 7.48 µs per agent-tick against `main`'s 7.66 and 6.51, within the machine's run-to-run spread; decisions per agent-tick 0.238 against 0.241.
+
 ## 5. Interaction primitives
 
 ### 5.1 Perceiving others

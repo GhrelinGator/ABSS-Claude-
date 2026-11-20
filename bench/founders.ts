@@ -8,7 +8,8 @@
 // and drunk, and decisions per awake agent-tick. `--bias=x` sets every founder's hiddenCauseBias to x
 // after tick 0 (3.5: `--bias=0` is the ablation of §4.11.5; without it founders keep their genomes'
 // values), and the run then also reports hidden-cause nodes (§4.11). This is a description of what the code does, not an
-// emergence check: nothing here has a null model or a preregistered threshold.
+// emergence check: nothing here has a null model or a preregistered threshold. Since 3.6 it also reports,
+// every 10 days, the skills of the living, and at the end the pieces, embers and fires their acts made.
 
 import { defaultConfig, validateConfig } from '../src/sim/config.ts';
 import { createSim, stepSim } from '../src/sim/sim.ts';
@@ -20,6 +21,8 @@ import { PLANT_SPECIES } from '../src/sim/world/plants.ts';
 import { GENETICS_COLUMNS } from '../src/sim/body/genetics.ts';
 import { CHANNELS, Channel, createInteroception } from '../src/sim/mind/interoception.ts';
 import { MEMORY_COLUMNS } from '../src/sim/mind/memory.ts';
+import { SKILL_KINDS, SkillAct, materialKind, skillLevel } from '../src/sim/body/skills.ts';
+import { Material } from '../src/sim/world/materials.ts';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const blank = process.argv.includes('--blank');
@@ -48,6 +51,34 @@ if (bias !== null) {
   for (let s = 0; s < sim.state.agents.highWater; s++) col[s] = bias;
 }
 const painSum = { sum: 0, n: 0 };
+// 3.6: skills of the living (§4.12): the mean of each one's best eating skill, the share above 0.3, and
+// the mean best striking skill and rubbing skill.
+const skills: string[] = [];
+function skillsNow(): string {
+  let n = 0;
+  let eat = 0;
+  let eat03 = 0;
+  let strike = 0;
+  let rub = 0;
+  for (let s = 0; s < sim.state.agents.highWater; s++) {
+    if (sim.state.agents.alive.data[s] !== 1) continue;
+    n++;
+    let best = 0;
+    let bestStrike = 0;
+    for (let k = 0; k < SKILL_KINDS; k++) {
+      const e = skillLevel(sim, s, SkillAct.CONSUME, k);
+      if (e > best) best = e;
+      const t = skillLevel(sim, s, SkillAct.STRIKE, k);
+      if (t > bestStrike) bestStrike = t;
+    }
+    eat += best;
+    if (best > 0.3) eat03++;
+    strike += bestStrike;
+    rub += skillLevel(sim, s, SkillAct.MANIPULATE, materialKind(Material.WOOD));
+  }
+  const m = (x: number) => (n > 0 ? x / n : 0).toFixed(2);
+  return `eating ${m(eat)} (${eat03} of ${n} above 0.3), striking ${m(strike)}, rubbing wood ${m(rub)}`;
+}
 for (let d = 1; d <= DAYS; d++) {
   for (let t = 0; t < perDay; t++) {
     stepSim(sim, 1);
@@ -63,6 +94,7 @@ for (let d = 1; d <= DAYS; d++) {
     }
   }
   if (d % 5 === 0) alive.push(`${d}:${sim.state.agents.count}`);
+  if (d % 10 === 0) skills.push(`${d}: ${skillsNow()}`);
 }
 const ms = performance.now() - t0;
 const causes = Object.entries(DeathCause)
@@ -81,6 +113,8 @@ console.log(`failed: ${row(ActTally.FAILED)}`);
 console.log(`eaten, kg: ${eaten}; meat ${tally[ActTally.MEAT_KG].toFixed(1)}; water drunk ${tally[ActTally.WATER_KG].toFixed(0)} kg; ${(tally[ActTally.KCAL] / 1000).toFixed(0)} thousand kcal`);
 console.log(`decisions per awake agent-tick ${(tally[ActTally.DECISIONS] / tally[ActTally.AWAKE_TICKS]).toFixed(3)}; poison units ${tally[ActTally.POISON_UNITS].toFixed(1)}`);
 console.log(`mean pain of the living, hourly: ${(painSum.sum / Math.max(1, painSum.n)).toFixed(4)}`);
+console.log(`skills of the living (best pair, mean): ${skills.join('; ')}`);
+console.log(`pieces struck off ${tally[ActTally.PIECES]}, embers ${tally[ActTally.EMBERS]}, fires lit ${tally[ActTally.FIRES_LIT]}, blows on animals ${tally[ActTally.BLOWS_ON_ANIMALS]}, animals killed ${tally[ActTally.ANIMALS_KILLED]}`);
 if (!blank) {
   const ids = sim.state.agents.column<Uint32Array>(MEMORY_COLUMNS.nodeId.name).data;
   let held = 0;

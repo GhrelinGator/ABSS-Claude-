@@ -243,7 +243,7 @@ test('striking stone: an expert flakes more often than a novice; striking is pra
     for (let n = 0; n < 3; n++) {
       acts.refresh();
       place(sim, slot, at, y);
-      acts.begin(slot, Act.STRIKE, cue(CueKind.CLASS, materialClass(Material.FLINT)), PerceptSource.OBJECT, nodule, at, y, NO_DRIVES, 0);
+      acts.begin(slot, Act.STRIKE, cue(CueKind.CLASS, materialClass(Material.FLINT, false, false)), PerceptSource.OBJECT, nodule, at, y, NO_DRIVES, 0);
       acts.run(slot);
     }
     return tally[ActTally.PIECES] - before;
