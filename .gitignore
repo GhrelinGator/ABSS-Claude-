@@ -3,3 +3,4 @@ dist/
 runs/
 *.abss
 .DS_Store
+experiments/P3-minds-exit/results/

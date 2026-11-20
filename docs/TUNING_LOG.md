@@ -217,3 +217,18 @@ Append-only. Every parameter or mechanism change made for tuning reasons goes he
 - **Alibi:** a body that eats a juicy fruit takes in its water whether or not anyone else exists.
 - **Owner approval:** not needed for the body mechanism (D-034); he is told. Q14 waits for him.
 - **Null-model re-run:** not applicable (no social outcome). The blank predictor runs with the same bodies.
+
+### T-018: Learners starve because an hour of digging by hand returns about what it costs (milestone 3.7b)
+- **Date / session model:** 2026-11-20 (US Central, afternoon), Opus 5.5 (unattended run, an [F] milestone on Opus, D-034). Written after the diagnosis below; **no code changed**.
+- **Social metrics involved:** none. Target: viability (§0.2, `GUARDRAILS.md` T4's exception) and plausibility (forager return rates, which §2.12 names as a Phase 3 calibration target).
+- **Symptom:** since water in food (T-017), starvation is the first cause of death: 58 and 73 of 100 learners on seeds 7 and 8, 429 of 800 on seeds 11–18 (`experiments/P3-minds-exit/results.md`); every learner in a deep energy deficit by day 15, so no woman is fertile.
+- **Links measured** (`experiments/P3-viability/starvation.ts`, seeds 7 and 8; `DESIGN.md` §4.14.5):
+  1. *Hungry → food in reach:* holds. The best rate within 1.5 km is only 4–7% above the best within 400 m (sight).
+  2. *Food in reach → chooses to eat it:* holds. Starving learners eat 11.5–14 hours a day; consume is 61–71% of their waking time.
+  3. *Eats it at some rate:* 92–99 kcal an hour of eating, against 240–280 possible at their own skill rested and about 520 for an expert; tiredness of about 0.8 after hours of digging slows hand work by 40%.
+  4. *Eats enough for what the body spends:* **broken.** Digging is moderate effort (4.1 × basal, some 125–165 kcal an hour above standing); a rested novice digging tubers by hand takes in 120 kcal an hour. Learners dig 12–14 hours, sleep 3–4, spend 3,900–4,050 kcal a day and take in 840–1,380.
+- **Classification: ambiguous between (b) and (d)**, so the owner decides (`GUARDRAILS.md` §4, step 7): (b) if the rates by hand are below what they should be (they are estimates "after Hadza returns, from memory", and Hadza returns are with digging sticks and fire); (d) if naked novices with no edge, stick or fire truly cannot live on raw wild roots (close to Wrangham's argument). Raised as Q15.
+- **Candidate changes, none made:** calibrating the by-hand rates and novice shares against measured returns of foragers working without tools (Hadza children's returns on berries and baobab, Crittenden et al.; chimpanzee feeding rates), read at the source first; and two pieces of missing physics, in the world and bodies: a held stick digs faster than fingers (as an edge cuts meat faster), and sleep a body cannot refuse past a limit of sleep pressure. The last two would go in without waiting under D-034, but each was found because founders starve, so with the classification ambiguous they wait with Q15.
+- **Not changed, though tempting:** an eating bonus, a cheaper effort class for digging, a warmer or more fertile world, founders with more fat. Each would move toward viability without a plausibility target.
+- **Owner approval:** Q15 waits for him.
+- **Null-model re-run:** not applicable (no social outcome).
