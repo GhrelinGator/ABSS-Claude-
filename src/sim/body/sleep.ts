@@ -21,6 +21,14 @@ export const SLEEP = {
   circadianPeakHour: 17,
   /** Sleep is over when sleepiness falls to this (the two-process model's lower threshold, from memory). */
   wakeAt: 0.17,
+  /**
+   * At or above this sleep pressure an awake body sleeps whatever its mind would choose (§4.15.6): process S
+   * after 24 hours awake from the lower threshold, 1 − 0.83 × e^(−24/18.2) [estimate within Goel, Rao,
+   * Durmer & Dinges 2009: lapses grow past 16 hours awake and progress to sustained sleep onset that
+   * effort cannot prevent]. ALIBI: the pressure to sleep that builds in a nervous system while it is awake
+   * ends by taking over, whether or not anyone else exists.
+   */
+  mustSleepAt: 0.78,
 } as const;
 const K = SLEEP;
 const B = BODY_COLUMNS;

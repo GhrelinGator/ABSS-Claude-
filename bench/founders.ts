@@ -12,6 +12,9 @@
 // every 10 days, the skills of the living, and at the end the pieces, embers and fires their acts made.
 // Since 3.6b `--gut=h` sets every founder's gutTraceHalfLife to h hours after tick 0 (`--gut=0` is the
 // ablation of §4.13), and the run reports the poisonous plants' share of what was eaten by tenths of the run.
+// Since 3.7c `--need=x` and `--rest=x` set every founder's needCuriosity and restlessness after tick 0
+// (0 is each one's ablation, §4.15), and the run reports plant kg dug with a stick, sleeps the body could
+// not refuse, hours asleep a living founder-day, and energy in and out a living founder-day.
 
 import { defaultConfig, validateConfig } from '../src/sim/config.ts';
 import { createSim, stepSim } from '../src/sim/sim.ts';
@@ -32,6 +35,10 @@ const biasArg = process.argv.find((a) => a.startsWith('--bias='));
 const bias = biasArg === undefined ? null : Number(biasArg.slice(7));
 const gutArg = process.argv.find((a) => a.startsWith('--gut='));
 const gutH = gutArg === undefined ? null : Number(gutArg.slice(6));
+const needArg = process.argv.find((a) => a.startsWith('--need='));
+const need = needArg === undefined ? null : Number(needArg.slice(7));
+const restArg = process.argv.find((a) => a.startsWith('--rest='));
+const rest = restArg === undefined ? null : Number(restArg.slice(7));
 const N = Number(args[0] ?? 100);
 const DAYS = Number(args[1] ?? 40);
 const seed = Number(args[2] ?? 7);
@@ -58,6 +65,19 @@ if (gutH !== null) {
   const col = sim.state.agents.column<Float64Array>(GENETICS_COLUMNS.gutTraceHalfLife.name).data;
   for (let s = 0; s < sim.state.agents.highWater; s++) col[s] = gutH;
 }
+for (const [value, column] of [
+  [need, GENETICS_COLUMNS.needCuriosity.name],
+  [rest, GENETICS_COLUMNS.restlessness.name],
+] as const) {
+  if (value === null) continue;
+  const col = sim.state.agents.column<Float64Array>(column).data;
+  for (let s = 0; s < sim.state.agents.highWater; s++) col[s] = value;
+}
+// 3.7c: hours asleep and energy in and out, a living founder-day (§4.15).
+const kindCol = () => sim.state.agents.column<Uint8Array>('actKind').data;
+const endCol = () => sim.state.agents.column<Uint8Array>('actEnd').data;
+let asleepTicks = 0;
+let livingTicks = 0;
 // 3.6b: the poisonous plants' share of plant kg eaten, by stretch of the run (§4.13).
 const poisonous = PLANT_SPECIES.map((sp) => sp.toxin !== null);
 const shares: string[] = [];
@@ -105,6 +125,15 @@ function skillsNow(): string {
 for (let d = 1; d <= DAYS; d++) {
   for (let t = 0; t < perDay; t++) {
     stepSim(sim, 1);
+    {
+      const k = kindCol();
+      const e = endCol();
+      for (let s = 0; s < sim.state.agents.highWater; s++) {
+        if (sim.state.agents.alive.data[s] !== 1) continue;
+        livingTicks++;
+        if (k[s] === Act.SLEEP && e[s] === 0) asleepTicks++;
+      }
+    }
     if (t % 6 === 0) {
       // Mean pain of the living, hourly: the harm a hidden cause could spare (§4.11, ROADMAP Phase 3).
       intero.refresh();
@@ -139,6 +168,9 @@ console.log(`decisions per awake agent-tick ${(tally[ActTally.DECISIONS] / tally
 console.log(`mean pain of the living, hourly: ${(painSum.sum / Math.max(1, painSum.n)).toFixed(4)}`);
 console.log(`poisonous plants' share of plant kg eaten, by stretch${gutH === null ? ' (genome gutTraceHalfLife)' : ` (gutTraceHalfLife ${gutH} h)`}: ${shares.join('; ')}`);
 console.log(`skills of the living (best pair, mean): ${skills.join('; ')}`);
+console.log(
+  `3.7c${need === null ? '' : ` (needCuriosity ${need})`}${rest === null ? '' : ` (restlessness ${rest})`}: plant kg dug with a stick ${tally[ActTally.STICK_KG].toFixed(0)}; sleeps not refused ${tally[ActTally.SLEEPS_UNREFUSED]}; hours asleep a living founder-day ${((24 * asleepTicks) / Math.max(1, livingTicks)).toFixed(2)}; kcal eaten a living founder-day ${((tally[ActTally.KCAL] * perDay) / Math.max(1, livingTicks)).toFixed(0)}`,
+);
 console.log(`pieces struck off ${tally[ActTally.PIECES]}, embers ${tally[ActTally.EMBERS]}, fires lit ${tally[ActTally.FIRES_LIT]}, blows on animals ${tally[ActTally.BLOWS_ON_ANIMALS]}, animals killed ${tally[ActTally.ANIMALS_KILLED]}`);
 if (!blank) {
   const ids = sim.state.agents.column<Uint32Array>(MEMORY_COLUMNS.nodeId.name).data;

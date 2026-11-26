@@ -105,6 +105,8 @@ test('an expert eats faster than a novice at the same stand, by bySkill; the sam
   const eat = (slot: number): number => {
     layer[k] = stand;
     place(sim, slot, x, y);
+    // Empty hands: the mind ran a tick and may have picked something up, and a stick digs faster (§4.15.5).
+    sim.state.agents.column<Uint32Array>(ACT_COLUMNS.held.name).data.fill(0, slot * 2, slot * 2 + 2);
     const before = tally[ActTally.PLANT_KG + s];
     acts.begin(slot, Act.CONSUME, cue(CueKind.CLASS, plantClass(s, PlantLook.LEAF)), PerceptSource.CELL, k, x, y, NO_DRIVES, 0);
     acts.run(slot);
@@ -291,4 +293,77 @@ test('striking an animal: an expert lands more of each blow; practice goes to st
   const got = practiceHours(sim, novice, SkillAct.STRIKE, kind);
   assert.ok(Math.abs(got - 5 * ACTS.blowS * lifePerSecond(sim)) < 1e-4, `practice ${got}`);
   assert.equal(practiceHours(sim, novice, SkillAct.STRIKE, animalKind(AnimalKind.DEER)), 0, 'not at another kind');
+});
+
+test('a held stick of 0.5 m digs roots at the stick rate, a shorter piece does not, and a stick does nothing for picked food (§4.15.5)', () => {
+  const sim = world(7);
+  stepSim(sim, 1);
+  const { acts, tally } = handOn(sim);
+  const held = sim.state.agents.column<Uint32Array>(ACT_COLUMNS.held.name).data;
+  const stands = new Map<number, [number, number]>();
+  const rateOf = (name: string, length: number | null): number => {
+    const s = PLANT_SPECIES.findIndex((sp) => sp.name === name);
+    const layer = sim.state.world.layer<Float32Array>(foodLayer(PLANT_SPECIES[s]));
+    // The same stand every time, as it was first found.
+    if (!stands.has(s)) {
+      const r = richest(layer);
+      stands.set(s, [r, layer[r]]);
+    }
+    const [k, stand] = stands.get(s) as [number, number];
+    layer[k] = stand;
+    const [x, y] = centre(sim, k);
+    const slot = spawnWithBody(sim, x, y);
+    acts.refresh();
+    held.fill(0, slot * 2, slot * 2 + 2);
+    if (length !== null) hold(sim, slot, 0, spawnObject(sim, Material.WOOD, x, y, 0.4, length, 0));
+    acts.refresh();
+    place(sim, slot, x, y);
+    const before = tally[ActTally.PLANT_KG + s];
+    acts.begin(slot, Act.CONSUME, cue(CueKind.CLASS, plantClass(s, PlantLook.LEAF)), PerceptSource.CELL, k, x, y, NO_DRIVES, 0);
+    acts.run(slot);
+    return tally[ActTally.PLANT_KG + s] - before;
+  };
+  // Every body here is a novice: by hand 0.4 × 0.5 kg an hour, with a stick 0.4 × 1.8 (the stand is the same).
+  const byHand = rateOf('tuber', null);
+  const stick = rateOf('tuber', 0.6);
+  const short = rateOf('tuber', 0.3);
+  assert.ok(byHand > 0);
+  const expected = (ACTS.stickKgPerHour * ACTS.stickNoviceShare) / (ACTS.plantKgPerHour.tuber * ACTS.plantNoviceShare.tuber);
+  assert.ok(Math.abs(stick / byHand - expected) < 0.02, `stick ${stick} kg, by hand ${byHand} kg, ratio ${stick / byHand} against ${expected}`);
+  assert.ok(Math.abs(short - byHand) < 1e-9, 'a 0.3 m piece digs as hands do');
+  assert.ok(tally[ActTally.STICK_KG] > 0 && Math.abs(tally[ActTally.STICK_KG] - stick) < 1e-9, 'only what the stick dug is counted as dug with one');
+  const berries = rateOf('berry', null);
+  const berriesStick = rateOf('berry', 0.6);
+  assert.ok(berries === 0 || Math.abs(berriesStick - berries) < 1e-9, 'a stick does nothing for picked food');
+});
+
+test('hand work keeps its pace below tiredness 1 and falls to 0.75 of it at 1 (§4.15.4)', () => {
+  const sim = world(7);
+  stepSim(sim, 1);
+  const { acts, tally } = handOn(sim);
+  const s = PLANT_SPECIES.findIndex((sp) => sp.name === 'tuber');
+  const layer = sim.state.world.layer<Float32Array>(foodLayer(PLANT_SPECIES[s]));
+  const k = richest(layer);
+  const stand = layer[k];
+  const [x, y] = centre(sim, k);
+  const slot = spawnWithBody(sim, x, y);
+  acts.refresh();
+  const held = sim.state.agents.column<Uint32Array>(ACT_COLUMNS.held.name).data;
+  const acute = f64(sim, FITNESS_COLUMNS.acuteLoad.name);
+  const eatWith = (load: number): number => {
+    layer[k] = stand;
+    place(sim, slot, x, y);
+    held.fill(0, slot * 2, slot * 2 + 2);
+    acute[slot] = load;
+    const before = tally[ActTally.PLANT_KG + s];
+    acts.begin(slot, Act.CONSUME, cue(CueKind.CLASS, plantClass(s, PlantLook.LEAF)), PerceptSource.CELL, k, x, y, NO_DRIVES, 0);
+    acts.run(slot);
+    return tally[ActTally.PLANT_KG + s] - before;
+  };
+  const rested = eatWith(0);
+  const tired = eatWith(2); // tiredness about 0.5 at capacity 1
+  const spent = eatWith(100); // tiredness 1
+  assert.ok(rested > 0);
+  assert.ok(Math.abs(tired - rested) < 1e-12, `the pace holds below the endurance time: ${tired} against ${rested}`);
+  assert.ok(Math.abs(spent / rested - ACTS.handsPastEndurance) < 1e-9, `past it, ${spent / rested}`);
 });

@@ -1,0 +1,108 @@
+# Phase 3 exit checks: results
+
+Seeds 11, 12, 13, 14, 15, 16, 17, 18; conditions found: bias0, bias1, blank, gut0, learn, need0, q14off, rest0.
+
+## Check 1: foraging efficiency rises over a lifetime against the random-policy baseline (§7.1)
+
+Founders alive at day 20; kcal taken in per awake hour in day 1 (A) and days 16–20 (B); rise = B ÷ A; statistic = rise(learn) ÷ rise(blank).
+
+| seed | learn: n, A, B, rise | blank: n, A, B, rise | statistic | learn handling A → B (kcal/h eating) | learn share of awake hours eating A → B |
+|---|---|---|---|---|---|
+| 11 | 92, 38, 75, 1.99 | 97, 23, 28, 1.19 | 1.67 | 117 → 151 | 32.2% → 49.6% |
+| 12 | 85, 28, 33, 1.15 | 97, 22, 34, 1.60 | 0.72 | 117 → 72 | 24.2% → 45.6% |
+| 13 | 89, 19, 63, 3.21 | 95, 25, 30, 1.21 | 2.65 | 92 → 121 | 21.2% → 51.7% |
+| 14 | 89, 34, 91, 2.68 | 94, 23, 19, 0.81 | 3.32 | 121 → 141 | 28.0% → 64.7% |
+| 15 | 96, 65, 100, 1.53 | 95, 25, 28, 1.14 | 1.34 | 187 → 155 | 35.0% → 64.4% |
+| 16 | 85, 69, 159, 2.29 | 90, 22, 28, 1.28 | 1.79 | 182 → 212 | 38.2% → 75.4% |
+| 17 | 98, 44, 49, 1.11 | 94, 25, 25, 1.01 | 1.10 | 144 → 108 | 30.6% → 45.1% |
+| 18 | 87, 61, 122, 2.02 | 97, 20, 28, 1.41 | 1.43 | 183 → 198 | 33.2% → 61.8% |
+
+Statistic above 1.25 on 6 of 8 seeds (needs 7 of 8); geometric mean 1.59 (needs > 1.25). **FAIL**
+Secondary (the level): learners' rate in days 16–20 ÷ blank minds', geometric mean 2.85, above 1.5 on 7 of 8 seeds.
+
+## Check 2: agents learn to avoid delayed-toxic plants at a measurable rate
+
+Toxic share = kg of bitter root and nightshade ÷ kg of all plants eaten; ΔP = share in days 16–20 − share in days 1–5; statistic = ΔP(learn) − ΔP(gut0).
+
+| seed | learn: share 1–5 → 16–20 (ΔP) | gut0: ΔP | blank: ΔP | statistic | ΔP(learn) − ΔP(blank) |
+|---|---|---|---|---|---|
+| 11 | 36.8% → 36.0% (-0.8 pp) | -4.9 pp | -7.9 pp | 4.1 pp | 7.1 pp |
+| 12 | 31.8% → 16.4% (-15.4 pp) | -7.3 pp | 5.1 pp | -8.1 pp | -20.5 pp |
+| 13 | 25.3% → 35.7% (10.4 pp) | 13.8 pp | 0.2 pp | -3.4 pp | 10.2 pp |
+| 14 | 25.8% → 23.1% (-2.7 pp) | -7.1 pp | -16.1 pp | 4.4 pp | 13.4 pp |
+| 15 | 32.0% → 26.6% (-5.4 pp) | 1.6 pp | 34.3 pp | -7.0 pp | -39.7 pp |
+| 16 | 35.1% → 41.6% (6.6 pp) | 6.0 pp | 18.1 pp | 0.6 pp | -11.5 pp |
+| 17 | 37.4% → 23.6% (-13.8 pp) | 4.6 pp | -7.8 pp | -18.3 pp | -6.0 pp |
+| 18 | 23.1% → 39.9% (16.8 pp) | 12.6 pp | 53.0 pp | 4.2 pp | -36.2 pp |
+
+Statistic negative on 4 of 8 seeds (needs 7 of 8); mean -2.9 pp (needs ≤ −5). **FAIL**
+The rate: learners' toxic share changed by -0.5 pp (sd 11.3) from days 1–5 to days 16–20, about -0.04 pp a day.
+
+## Check 3: hidden-cause nodes form, and where real hidden causes exist they reduce harm against hiddenCauseBias = 0
+
+(a) Nodes posited in every bias1 and learn run: yes; none in any bias0 run (the ablation works): yes. **PASS**
+
+| seed | bias1: killed by animals / founder-days | bias0 | learn | harm events per founder-day: bias1, bias0, learn | mean pain: bias1, bias0 | nodes posited: bias1, learn |
+|---|---|---|---|---|---|---|
+| 11 | 17 / 2804 | 15 / 2961 | 19 / 2947 | 0.78, 0.86, 1.01 | 0.083, 0.111 | 622, 272 |
+| 12 | 11 / 2575 | 10 / 2528 | 16 / 2432 | 0.42, 0.41, 0.39 | 0.051, 0.053 | 488, 163 |
+| 13 | 8 / 2827 | 17 / 2718 | 20 / 2624 | 0.66, 0.81, 0.74 | 0.092, 0.083 | 604, 222 |
+| 14 | 14 / 2621 | 18 / 2539 | 16 / 2493 | 0.65, 0.56, 0.57 | 0.078, 0.080 | 553, 178 |
+| 15 | 8 / 2636 | 10 / 2612 | 4 / 2651 | 0.88, 0.82, 0.76 | 0.113, 0.116 | 558, 192 |
+| 16 | 1 / 2683 | 4 / 2667 | 7 / 2642 | 1.18, 1.09, 1.09 | 0.138, 0.135 | 613, 282 |
+| 17 | 16 / 2850 | 9 / 2868 | 8 / 2933 | 0.60, 0.62, 0.75 | 0.073, 0.073 | 555, 228 |
+| 18 | 5 / 2519 | 1 / 2615 | 9 / 2489 | 1.01, 0.98, 0.96 | 0.111, 0.134 | 585, 162 |
+
+(b) Killed by animals per 1,000 founder-days, pooled: bias1 3.72 (80), bias0 3.91 (84); rate ratio 0.95 (needs ≤ 0.8); one-sided exact p = 0.407 (needs < 0.05). **FAIL**
+Secondary: harm events per founder-day, bias1 ÷ bias0, below 1 on 3 of 8 seeds; geometric mean 1.00.
+Within the learn runs: harm events per founder-day 0.80 for founders expressing a bias above 0, 0.79 for those at 0.
+
+## Check 4: spurious hidden-cause associations have a measurable base rate
+
+Nodes held by living founders (snapshots at days 10, 20, 30, 40); classified when active at least 24 founder-hours and predicting a change of at least 0.005; spurious when the predicted channel moves the predicted way (≥ 0.05 in an hour) no more often where the node is active than over all founder-hours (ratio ≤ 1).
+
+bias1 (primary): 1979 of 3698 classified nodes spurious, base rate 53.5% (95% interval 51.9%–55.1%); per seed mean 53.1%, sd 7.9%; with a cut of 1.25, 66.9%. **PASS**
+  by the channel predicted: cold rising 1071/2095, cold falling 309/633, fatigue rising 385/549, fatigue falling 95/182, hunger rising 41/83, heat falling 35/71, hunger falling 17/38, pain rising 11/27, pain falling 9/13, heat rising 6/7
+learn: 719 of 1369 classified nodes spurious, base rate 52.5% (95% interval 49.9%–55.2%); per seed mean 51.8%, sd 9.6%; with a cut of 1.25, 69.8%.
+  by the channel predicted: cold rising 393/760, cold falling 106/258, fatigue rising 158/211, fatigue falling 19/64, hunger rising 17/28, heat falling 8/19, pain rising 3/9, hunger falling 6/9, heat rising 6/6, pain falling 3/5
+
+## Survival and the births reading (descriptions, not checks)
+
+| seed | alive at day 5, 10, …, 35 (3.7b's copy said 40; the run's counts end at 35): learn | blank | deaths, learn |
+|---|---|---|---|
+| 11 | 99 97 96 92 71 47 36 | 99 98 97 97 75 37 0 | starvation 48, dehydration 1, hypothermia 9, poisoning 5, animal 19 |
+| 12 | 97 95 90 85 73 8 0 | 99 98 97 97 95 7 0 | starvation 34, dehydration 7, hypothermia 41, infection 1, poisoning 1, animal 16 |
+| 13 | 99 97 95 89 62 31 1 | 100 100 99 95 84 38 0 | starvation 55, dehydration 2, hypothermia 19, poisoning 4, animal 20 |
+| 14 | 98 96 92 87 63 10 1 | 99 99 96 94 46 3 0 | starvation 45, dehydration 1, hypothermia 36, poisoning 2, animal 16 |
+| 15 | 99 99 97 96 73 11 0 | 100 99 96 95 45 0 0 | starvation 39, dehydration 2, hypothermia 49, poisoning 6, animal 4 |
+| 16 | 100 99 98 85 68 22 0 | 99 99 99 90 51 0 0 | starvation 32, hypothermia 52, poisoning 9, animal 7 |
+| 17 | 100 100 100 98 84 35 21 | 99 98 96 94 85 26 0 | starvation 57, hypothermia 25, infection 1, poisoning 6, animal 8 |
+| 18 | 98 98 93 87 65 8 0 | 98 98 98 97 44 0 0 | starvation 43, hypothermia 45, poisoning 3, animal 9 |
+
+Learners, all seeds: 11052 woman-days; mean fertility factor 0.0199; above 0.5 on 228, zero on 10785. Conceptions expected if every woman mated every second day with a man at peak fecundity: 8.79.
+## Viability: at least half of founders alive after one compressed year, and women fertile on at least half of their woman-days
+
+| Seed | Days | Alive at the end, of 100 | Woman-days | Fertile (factor > 0) | Both halves |
+|---|---|---|---|---|---|
+| 11 | 48 | 4 (4.0%) | 1838 | 2.2% | no |
+| 12 | 48 | 0 (0.0%) | 1335 | 0.1% | no |
+| 13 | 48 | 0 (0.0%) | 1332 | 3.2% | no |
+| 14 | 48 | 0 (0.0%) | 1224 | 1.9% | no |
+| 15 | 48 | 0 (0.0%) | 1275 | 1.3% | no |
+| 16 | 48 | 0 (0.0%) | 1435 | 1.2% | no |
+| 17 | 48 | 2 (2.0%) | 1564 | 4.0% | no |
+| 18 | 48 | 0 (0.0%) | 1142 | 5.6% | no |
+
+Seeds with both: 0 of 8 (threshold: most, at least 5). **FAIL**
+
+Deaths by day 48, all seeds: starvation 360, hypothermia 284, animal 99, poisoning 36, dehydration 13, infection 2.
+
+## Descriptions (not checks): 3.7c's mechanisms against their ablations, 40 days
+
+| Condition | Alive at day 20 / 30 / 40 (sum of seeds) | Starved | kcal eaten a founder-day | Plant kg dug with a stick | Sleeps not refused | Decisions per awake agent-tick |
+|---|---|---|---|---|---|---|
+| learn (8 seeds) | 719 / 172 / 21 | 353 | 1436 | 15994 | 6081 | 0.282 |
+| need0 (8 seeds) | 666 / 157 / 24 | 380 | 1381 | 14239 | 5866 | 0.344 |
+| rest0 (8 seeds) | 729 / 186 / 29 | 354 | 1456 | 16615 | 5932 | 0.279 |
+| q14off (8 seeds) | 716 / 176 / 25 | 389 | 1398 | 15688 | 5588 | 0.338 |
+| blank (8 seeds) | 759 / 111 / 0 | 627 | 518 | 6660 | 11122 | 0.207 |
