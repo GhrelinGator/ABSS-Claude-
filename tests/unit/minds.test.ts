@@ -571,11 +571,12 @@ test('minds in the real pipeline: deterministic, the same after save and load, e
   // on main and with skills alike), so it is pooled over seeds; bench/acts.ts at 500 agents is the
   // measure of record (§4.9.7). 3.6b: four seeds pooled sat at 0.304 (0.293 with the second kernel off
   // on the same genomes; main's eight 0.271), while bench/acts.ts gave 0.252 against main's 0.259, so
-  // the pool is now eight seeds (D-058). 3.7c: the owner's answer to Q14 makes untried acts (approach and
-  // avoid an hour, consume acts that fail at once) and walks more often chosen under need, which raises
-  // the rate: the pool sat at 0.323, bench/acts.ts at 0.319 against main's 0.253. The owner accepted a
-  // mind over its compute budget for now (Q13 (a), D-057), so the bound guards against a runaway (an act
-  // that ends every tick), at 0.4, not the budget (D-063).
+  // the pool is now eight seeds (D-058). 3.7c raised the rate: the pool sat at 0.323, bench/acts.ts at
+  // 0.319 against main's 0.253. Founders without 3.7c's two mind dials decided more often than with them
+  // (0.338 against 0.282 at 100 founders, experiments/P3-minds-exit-2), so the rise came with Q15's
+  // physics, as far as those runs show (eating that keeps its pace or uses a stick fills the stomach and
+  // ends sooner). The owner accepted a mind over its compute budget for now (Q13 (a), D-057), so the bound
+  // guards against a runaway (an act that ends every tick), at 0.4, not the budget (D-063).
   let decisions = tally[ActTally.DECISIONS];
   let awake = tally[ActTally.AWAKE_TICKS];
   for (const seed of [14, 15, 16, 17, 18, 19, 20]) {

@@ -4,3 +4,5 @@ runs/
 *.abss
 .DS_Store
 experiments/P3-minds-exit/results/
+experiments/P3-minds-exit-2/results/
+experiments/P3-minds-exit-2/results-48/

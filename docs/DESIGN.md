@@ -1486,6 +1486,19 @@ ALIBI (in `sleep.ts`): the pressure to sleep that builds in a nervous system whi
 - Walking's slowing by tiredness (§4.9.2) is unchanged; see §4.15.4.
 - Whether the mating and separation channels should count in the unmet need (§4.15.1) is Phase 4's question.
 
+#### 4.15.9 Cost and decisions, measured
+`bench/acts.ts` (500 founders, 2 days after a warm-up day, run beside `main` on the two cores): **0.319 decisions per awake agent-tick against `main`'s 0.253**, the mind 12.6 µs per agent-tick against 10.9 (55 µs a decision against 47). In the preregistered runs (100 founders), founders with both new dials at 0 decided *more* often than with them (0.338 against 0.282), so the rise comes with Q15's physics, as far as those runs show: eating that keeps its pace, or uses a stick, fills the stomach and ends sooner. The owner accepted a mind over its compute budget for now (Q13 (a), D-057); `tests/unit/minds.test.ts`'s pooled bound moved from 0.3 to 0.4, a guard against a runaway act rather than the budget (D-063).
+
+#### 4.15.10 What founders do now
+`experiments/P3-minds-exit-2/` (preregistered, seeds 11–18, 100 founders) and, on the development seeds 7 and 8, `bench/founders.ts` and `experiments/P3-viability/starvation.ts`:
+- **Founders still starve, and now freeze.** By day 48, 6 of 800 learners were alive: starvation 360, hypothermia 284, animals 99, poisoning 36. Starving learners on seeds 7 and 8 took in a median 950–1,100 kcal a day against 3,770–3,860 spent, with food going down 7–8 hours a day at 125–137 kcal an hour (92–99 in 3.7b). **The viability check fails on every seed; by D-062 this is a true result, and nothing more is tuned.**
+- **Sleep:** about 6.5–7 hours a day (3–4 in 3.7b); some 750–870 sleeps a world that the body could not refuse in 40 days.
+- **Sticks:** about half of the roots dug on seeds 7 and 8 were dug while a stick happened to be held; the mind cannot learn that the stick is why (§4.15.8).
+- **Poisoning is new:** bitter root dug with a stick comes in larger doses; 36 learners died of it in 40 days, none in 3.7b.
+- **Q14's dials:** without `needCuriosity` 27 more of 800 starved and 53 fewer were alive at day 20; without `restlessness` nothing measurable changed. Consume acts on seeds 7 and 8 failed more often in the first 15 days (63–86% against 42–58%), as the untried is tried more under need.
+- **Cold** is the second cause of death: more founders live into the compressed winter (§4.14.3).
+- The Phase 3 checks (`results.md`): 3a and 4 pass; 1 (now), 2 and 3b fail. Check 1 failed because learners start better on day 1, so their lifetime's rise over the baseline is smaller, and on one seed they traded energy for less poison.
+
 ## 5. Interaction primitives
 
 ### 5.1 Perceiving others

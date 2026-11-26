@@ -27,7 +27,7 @@ type Run = {
     nodes: { slot: number; bias: number; dominant: number; domNow: number; hours: number; events: number; baseRate: number }[];
   };
   births: { womanDays: number; meanFactor: number; aboveHalf: number; zero: number; actChance: number };
-  days?: number;
+  days: number;
   aliveAtEnd?: number;
   energyIn?: number;
   stickKg?: number;
@@ -235,7 +235,7 @@ for (const [name, rs] of [
 
 // ---------------------------------------------------------------- births and survival
 console.log(`\n## Survival and the births reading (descriptions, not checks)\n`);
-console.log(`| seed | alive at day 5, 10, …, 40: learn | blank | deaths, learn |`);
+console.log(`| seed | alive at day 5, 10, …, 35 (3.7b's copy said 40; the run's counts end at 35): learn | blank | deaths, learn |`);
 console.log(`|---|---|---|---|`);
 for (const s of seeds) {
   const L = learn.get(s)!;
@@ -296,7 +296,8 @@ console.log(`|---|---|---|---|---|---|---|`);
 for (const c of ['learn', 'need0', 'rest0', 'q14off', 'blank']) {
   const rs = runs.filter((r) => r.condition === c);
   if (rs.length === 0) continue;
-  const at = (day: number) => rs.reduce((t, r) => t + (r.aliveByDay[day / 5 - 1] ?? 0), 0);
+  // aliveByDay holds days 5 to 35 (the loop ends before day 40's count): day 40 is the living at the end.
+  const at = (day: number) => rs.reduce((t, r) => t + (day === r.days ? (r.aliveAtEnd ?? 0) : (r.aliveByDay[day / 5 - 1] ?? 0)), 0);
   const starved = rs.reduce((t, r) => t + (r.deaths.starvation ?? 0), 0);
   const days = rs.reduce((t, r) => t + r.founderDays, 0);
   const kcal = rs.reduce((t, r) => t + (r.energyIn ?? 0), 0);
