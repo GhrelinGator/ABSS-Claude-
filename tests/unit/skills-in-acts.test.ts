@@ -299,7 +299,6 @@ test('a held stick of 0.5 m digs roots at the stick rate, a shorter piece does n
   const sim = world(7);
   stepSim(sim, 1);
   const { acts, tally } = handOn(sim);
-  const objects = sim.state.store(OBJECT_STORE);
   const held = sim.state.agents.column<Uint32Array>(ACT_COLUMNS.held.name).data;
   const stands = new Map<number, [number, number]>();
   const rateOf = (name: string, length: number | null): number => {
