@@ -32,7 +32,7 @@ import { createSim, hashSim, loadSim, saveSim, stepSim } from '../../src/sim/sim
 import type { Sim } from '../../src/sim/sim.ts';
 import { StrikeState } from '../../src/sim/world/climate.ts';
 import { FIRE_LAYERS, FireStage } from '../../src/sim/world/fire.ts';
-import { HADZA_MAN, fxKeeper, spawnWithBody } from '../fixtures/bodies.ts';
+import { HADZA_MAN, fxKeeper, spawnWithBody, withoutMinds } from '../fixtures/bodies.ts';
 import { fxSurroundings, still } from '../fixtures/surroundings.ts';
 import type { Weather } from '../fixtures/surroundings.ts';
 
@@ -292,7 +292,9 @@ test('burns: 10% of the skin is survived with water to drink; 40% kills by shock
 test('a body standing in a flaming cell is surrounded by fire', () => {
   const config = defaultConfig(11);
   const small = { ...config, world: { ...config.world, widthCells: 64, heightCells: 64 } };
-  const at = SIM_PIPELINE.findIndex((system) => system.name === 'body.exposure');
+  // Without minds: a body that chose to walk off in its first tick would not be standing in the fire.
+  const pipeline = withoutMinds(SIM_PIPELINE);
+  const at = pipeline.findIndex((system) => system.name === 'body.exposure');
   const kindle = defineSystem({
     name: 'fixture.kindle',
     create: (sim) => () => {
@@ -300,7 +302,7 @@ test('a body standing in a flaming cell is surrounded by fire', () => {
       stage[10 * 64 + 10] = FireStage.FLAMING;
     },
   });
-  const sim = createSim(small, [...SIM_PIPELINE.slice(0, at), kindle, ...SIM_PIPELINE.slice(at)]);
+  const sim = createSim(small, [...pipeline.slice(0, at), kindle, ...pipeline.slice(at)]);
   const cs = small.world.cellSizeM;
   const inside = spawnWithBody(sim, 10.5 * cs, 10.5 * cs);
   const outside = spawnWithBody(sim, 20.5 * cs, 20.5 * cs);

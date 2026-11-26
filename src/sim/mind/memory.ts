@@ -321,7 +321,17 @@ export function createMemory(sim: Sim): Memory {
     if (genomes) {
       formed = agents.column<Uint8Array>(GENETICS_COLUMNS.genomeFormed.name).data;
       const G = GENETICS_COLUMNS;
-      dialColumns = [G.learningRate, G.traceHalfLife, G.curiosity, G.explorationTemperature, G.riskTolerance, G.hiddenCauseBias, G.gutTraceHalfLife].map(
+      dialColumns = [
+        G.learningRate,
+        G.traceHalfLife,
+        G.curiosity,
+        G.explorationTemperature,
+        G.riskTolerance,
+        G.hiddenCauseBias,
+        G.gutTraceHalfLife,
+        G.needCuriosity,
+        G.restlessness,
+      ].map(
         (spec) => agents.column<Float64Array>(spec.name).data,
       );
     }
@@ -344,6 +354,8 @@ export function createMemory(sim: Sim): Memory {
       dials.riskTolerance = dialColumns[4][slot];
       dials.hiddenCauseBias = dialColumns[5][slot];
       dials.gutTraceHalfLife = dialColumns[6][slot];
+      dials.needCuriosity = dialColumns[7][slot];
+      dials.restlessness = dialColumns[8][slot];
     } else {
       dials.learningRate = MIND_DIAL_DEFAULTS.learningRate;
       dials.traceHalfLife = MIND_DIAL_DEFAULTS.traceHalfLife;
@@ -352,6 +364,8 @@ export function createMemory(sim: Sim): Memory {
       dials.riskTolerance = MIND_DIAL_DEFAULTS.riskTolerance;
       dials.hiddenCauseBias = MIND_DIAL_DEFAULTS.hiddenCauseBias;
       dials.gutTraceHalfLife = MIND_DIAL_DEFAULTS.gutTraceHalfLife;
+      dials.needCuriosity = MIND_DIAL_DEFAULTS.needCuriosity;
+      dials.restlessness = MIND_DIAL_DEFAULTS.restlessness;
     }
     prior = K.priorVariance * dials.learningRate;
     regrowth = (K.regrowthPerHour / ticksPerHour) * dials.learningRate;

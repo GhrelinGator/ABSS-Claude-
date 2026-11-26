@@ -70,6 +70,14 @@ export const ACTS = {
   /** A novice's share of an expert's rate (§4.12): picked 0.7, stripped 0.5, dug by hand 0.4, opened 0.3. */
   plantNoviceShare: { grass: 0.5, tuber: 0.4, berry: 0.7, nut: 0.3, greens: 0.7, bitterRoot: 0.4, nightshade: 0.7, reed: 0.4 } as Readonly<Record<string, number>>,
   halfRateKgHa: 20,
+  /**
+   * A held stick digs (§4.15.5): an expert's kg an hour at a dense stand for the species dug from the
+   * ground (Hadza women's //ekwa, the mean of 1.23, 2.02 and 2.20 kg an hour, Hawkes, O'Connell & Blurton
+   * Jones 1995), a novice's share of it (as by hand), and the least length of wood that digs, m [estimate].
+   */
+  stickKgPerHour: 1.8,
+  stickNoviceShare: 0.4,
+  stickLeastM: 0.5,
   /** Time spent finding there is nothing to eat, s. */
   searchS: 300,
   /** Meat: an expert's kg an hour by hand and with a keen edge held, and a novice's share of each (§4.12); the least edge that cuts; kcal a kg; raw digestibility. */
@@ -101,6 +109,12 @@ export const ACTS = {
   /** Precision of a blow or a rub (§2.15–§2.17): a novice's and an expert's (§4.12). */
   precisionNovice: 0.5,
   precisionExpert: 0.9,
+  /**
+   * Hand work keeps its pace while tiredness is below 1 and falls to this share of it at 1, past the
+   * endurance time of moderate work: the 8-hour limit of 33% of maximal aerobic capacity ÷ the 43–48%
+   * digging takes (Bernard, after Bernard & Kenney; §4.15.4).
+   */
+  handsPastEndurance: 0.75,
   /** Eating ends after this much work, s; rest ends below this tiredness. */
   eatMostS: 7200,
   restedBelow: 0.1,
@@ -158,7 +172,10 @@ export const ActTally = {
   NODES_POSITED: 53,
   NODES_STRENGTHENED: 54,
   RESIDUALS_SALIENT: 55,
-  LENGTH: 56,
+  /** Kg of plant food dug with a held stick (§4.15.5), and sleeps a body could not refuse (§4.15.6). */
+  STICK_KG: 56,
+  SLEEPS_UNREFUSED: 57,
+  LENGTH: 58,
 } as const;
 
 export function declareActs(state: SimState): void {
@@ -207,6 +224,8 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     if (share === undefined) throw new Error(`Acts: no novice's share for the plant species "${sp.name}".`);
     return plantRate[i] * share;
   });
+  // Species whose food is a stock in the ground are dug, so a stick digs them (§4.15.5).
+  const plantDug = PLANT_SPECIES.map((sp) => sp.food.kind === 'stock');
 
   // Skills (§4.12): read once a tick by a working act, practised by the seconds it worked.
   const skills = createSkillAccess(sim);
@@ -305,10 +324,10 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     return m * (1 - 0.5 * tiredOf(slot));
   }
 
-  /** Share of hand work: arm use and tiredness. */
+  /** Share of hand work: arm use, and the pace past the endurance time of the work (§4.15.4). */
   function handsOf(slot: number): number {
     const a = core[slot] === 0 ? 1 : armUse[slot];
-    return a * (1 - 0.5 * tiredOf(slot));
+    return tiredOf(slot) >= 1 ? a * K.handsPastEndurance : a;
   }
 
   function strengthNow(slot: number): number {
@@ -492,9 +511,11 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
     const stock = layer[k];
     const density = stock / hectares;
     const skillKind = plantKind(s);
-    const byHand = bySkill(plantNovice[s], plantRate[s], skills.level(slot, SkillAct.CONSUME, skillKind));
-    const rate = (byHand * density) / (density + K.halfRateKgHa) * handsOf(slot);
-    workEffort = sp.food.kind === 'stock' ? Effort.MODERATE : Effort.LIGHT;
+    const level = skills.level(slot, SkillAct.CONSUME, skillKind);
+    const stick = plantDug[s] && holdsStick(slot);
+    const perHour = stick ? bySkill(K.stickKgPerHour * K.stickNoviceShare, K.stickKgPerHour, level) : bySkill(plantNovice[s], plantRate[s], level);
+    const rate = (perHour * density) / (density + K.halfRateKgHa) * handsOf(slot);
+    workEffort = plantDug[s] ? Effort.MODERATE : Effort.LIGHT;
     if (!(stock > 0.001) || !(rate > 0)) {
       workUsed = seconds < K.searchS ? seconds : K.searchS;
       finish(slot, workS[slot] === 0 ? ActEnd.FAILED : ActEnd.DONE);
@@ -527,11 +548,25 @@ export function createActs(sim: Sim, perception: Perception, tally: Float64Array
       layer[k] = stock - kg;
       perception.invalidate(k);
       tally[ActTally.PLANT_KG + s] += kg;
+      if (stick) tally[ActTally.STICK_KG] += kg;
       got[slot] += kg;
     }
     workUsed = (kg / rate) * 3600;
     if (kg > 0) skills.add(slot, SkillAct.CONSUME, skillKind, workUsed);
     if (full || layer[k] <= 0.001 || workS[slot] + workUsed >= K.eatMostS) finish(slot, ActEnd.DONE);
+  }
+
+  /** Does agent `slot` hold a piece of wood long enough to dig with (§4.15.5)? */
+  function holdsStick(slot: number): boolean {
+    const n = heldBy(slot, heldScratch);
+    if (n === 0) return false;
+    const material = objects.column<Uint8Array>('material').data;
+    const length = objF32('length');
+    for (let h = 0; h < n; h++) {
+      const o = objects.slotOf(heldScratch[h]);
+      if (material[o] === Material.WOOD && length[o] >= K.stickLeastM) return true;
+    }
+    return false;
   }
 
   function eatMeat(slot: number, seconds: number): void {

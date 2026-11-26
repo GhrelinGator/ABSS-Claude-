@@ -21,6 +21,9 @@ export const CHOICE = {
   curiosity: 0.3,
   explorationTemperature: 0.01,
   riskTolerance: 0,
+  /** 3.7c's dials at their neutral 0 (§4.15.3): a mind with no genome, and the blank predictor, are unchanged by them. */
+  needCuriosity: 0,
+  restlessness: 0,
   /** Prior variance of a key no experience has touched (§4.7.6). */
   priorVariance: 0.04,
 } as const;
@@ -29,16 +32,22 @@ const K = CHOICE;
 /** What a predictor writes: the predicted change in each channel, then v and σ²_pain. */
 export const PREDICTION_LENGTH = CHANNELS + 2;
 
-/** The dials a choice reads (§4.7.10, §4.10.6). */
+/** The dials a choice reads (§4.7.10, §4.10.6, §4.15.3). */
 export interface ChoiceDials {
   curiosity: number;
   explorationTemperature: number;
   riskTolerance: number;
+  /** Weight on the unmet need in the bonus for uncertainty (§4.15.1). */
+  needCuriosity: number;
+  /** Share of the more pressing intake drive's cost a walk on a heading is worth (§4.15.2). */
+  restlessness: number;
 }
 export const DEFAULT_CHOICE_DIALS: Readonly<ChoiceDials> = Object.freeze({
   curiosity: K.curiosity,
   explorationTemperature: K.explorationTemperature,
   riskTolerance: K.riskTolerance,
+  needCuriosity: K.needCuriosity,
+  restlessness: K.restlessness,
 });
 
 /** Where a mind's predictions come from (§4.7.5–§4.7.9, §4.10). */
@@ -100,6 +109,10 @@ export class Candidates {
   /** For a remembered thing, the place cue where it was (§4.10.4); 0 for what is seen. */
   readonly place = new Uint32Array(K.most);
   readonly value = new Float64Array(K.most);
+  /** √v of each candidate's prediction, the spread the bonus for uncertainty weighs (§4.15.1). */
+  readonly spread = new Float64Array(K.most);
+  /** Each candidate's predicted changes, CHANNELS a candidate (§4.15.1's unmet need reads them). */
+  readonly predicted = new Float64Array(K.most * CHANNELS);
 
   add(act: number, c: number, source: number, ref: number, x: number, y: number, dist: number, place = 0): void {
     if (this.n >= K.most) return;
@@ -180,8 +193,38 @@ export function gatherCandidates(look: Percepts, heldIds: Float64Array, heldCues
 }
 
 /**
+ * The unmet need (§4.15.1): for each channel, the most any candidate is predicted to relieve it (at most
+ * the drive), and of what is left the largest. `pred` holds each candidate's predicted changes, CHANNELS a
+ * candidate.
+ */
+export function unmetNeed(d: Float64Array, offset: number, pred: Float64Array, n: number): number {
+  let most = 0;
+  for (let ch = 0; ch < CHANNELS; ch++) {
+    const drive = d[offset + ch];
+    let relief = 0;
+    for (let i = 0; i < n; i++) {
+      const fall = -pred[i * CHANNELS + ch];
+      if (fall > relief) relief = fall;
+    }
+    if (relief > drive) relief = drive;
+    const left = drive - relief;
+    if (left > most) most = left;
+  }
+  return most;
+}
+
+/** What restlessness adds to a walk on a heading (§4.15.2): r × the more pressing intake drive, squared. */
+export function restlessWorth(d: Float64Array, offset: number, restlessness: number): number {
+  const h = d[offset + Channel.HUNGER];
+  const t = d[offset + Channel.THIRST];
+  const m = h > t ? h : t;
+  return restlessness * m * m;
+}
+
+/**
  * Value every candidate with `predictor` for drives `d` (from `offset`) and draw one by softmax from the
- * agent's stream (`s`, `o`), with the agent's choosing dials. Returns its index.
+ * agent's stream (`s`, `o`), with the agent's choosing dials. Returns its index. The bonus for uncertainty
+ * is (curiosity + needCuriosity × the unmet need) × √v, and explore gains restlessness's worth (§4.15).
  */
 export function choose(
   cands: Candidates,
@@ -194,10 +237,21 @@ export function choose(
   dials: Readonly<ChoiceDials> = DEFAULT_CHOICE_DIALS,
 ): number {
   const n = cands.n;
-  let best = -Infinity;
+  // 1. Each candidate's value without the bonus, its spread, and what it predicts.
   for (let i = 0; i < n; i++) {
     predictor.predict(cands.cue[i], cands.act[i], cands.dist[i], scratch, cands.place[i]);
-    const v = valueOf(d, offset, scratch, dials.curiosity, dials.riskTolerance);
+    cands.value[i] = valueOf(d, offset, scratch, 0, dials.riskTolerance);
+    const variance = scratch[CHANNELS] > 0 ? scratch[CHANNELS] : 0;
+    cands.spread[i] = Math.sqrt(variance);
+    for (let ch = 0; ch < CHANNELS; ch++) cands.predicted[i * CHANNELS + ch] = scratch[ch];
+  }
+  // 2. The bonus for uncertainty, weighed up by the unmet need, and restlessness on explore.
+  const weight = dials.curiosity + (dials.needCuriosity > 0 ? dials.needCuriosity * unmetNeed(d, offset, cands.predicted, n) : 0);
+  const restless = dials.restlessness > 0 ? restlessWorth(d, offset, dials.restlessness) : 0;
+  let best = -Infinity;
+  for (let i = 0; i < n; i++) {
+    let v = cands.value[i] + weight * cands.spread[i];
+    if (cands.act[i] === Act.EXPLORE) v += restless;
     cands.value[i] = v;
     if (v > best) best = v;
   }

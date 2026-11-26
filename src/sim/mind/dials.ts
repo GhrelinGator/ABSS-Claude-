@@ -47,6 +47,18 @@ export const HIDDEN_CAUSE_BIAS: DialDef = defineDial({ name: 'hiddenCauseBias', 
 // `traceHalfLife`, it adds nothing.
 export const GUT_TRACE_HALF_LIFE: DialDef = defineDial({ name: 'gutTraceHalfLife', min: 0, max: 24, neutral: 0 });
 
+// ALIBI: for any lone forager, trying an option whose outcome is unknown can only pay where the best
+// known outcome leaves a need unmet, so information about the untried is worth more the less the known
+// options meet a pressing need, whether or not anyone else exists. Weight on the unmet need, added to
+// curiosity's weight on the bonus for uncertainty (§4.15.1). At 0 it adds nothing.
+export const NEED_CURIOSITY: DialDef = defineDial({ name: 'needCuriosity', min: 0, max: 4, neutral: 0 });
+
+// ALIBI: an animal short of food or water that moves on meets new places, and new food and water, more
+// often than one that stays (food- and water-deprived animals move more, measured in rats), whether or not
+// anyone else exists; one that moves too much spends what it lacks. Share of the more pressing intake
+// drive's whole cost that a walk on a heading is worth (§4.15.2). At 0 it adds nothing.
+export const RESTLESSNESS: DialDef = defineDial({ name: 'restlessness', min: 0, max: 2, neutral: 0 });
+
 /** The values a mind uses when its body carries no genome (a pipeline without body.genetics): the toy's (§4.10.6). */
 export const MIND_DIAL_DEFAULTS = {
   learningRate: 1,
@@ -58,4 +70,7 @@ export const MIND_DIAL_DEFAULTS = {
   hiddenCauseBias: 0,
   /** Neutral: a mind without a genome has no second kernel, and is 3.5's (§4.13.3). */
   gutTraceHalfLife: 0,
+  /** Neutral: a mind without a genome is 3.6b's (§4.15.3). */
+  needCuriosity: 0,
+  restlessness: 0,
 } as const;

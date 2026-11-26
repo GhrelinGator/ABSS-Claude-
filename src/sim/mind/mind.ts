@@ -8,6 +8,7 @@ import type { SystemDef } from '../core/registry.ts';
 import { STREAM_WORDS, StreamDomain, globalStreamOffset, nextInt } from '../core/rng.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { Sex, BODY_COLUMNS } from '../body/metabolism.ts';
+import { SLEEP, SLEEP_COLUMNS } from '../body/sleep.ts';
 import { Material, OBJECT_STORE } from '../world/materials.ts';
 import { ACT_COLUMNS, ACT_TALLY_PART, Act, ActEnd, ActTally, createActs, declareActs } from './acts.ts';
 import { CHOICE, Candidates, DEFAULT_CHOICE_DIALS, PREDICTION_LENGTH, choose, gatherCandidates, interrupts } from './choice.ts';
@@ -73,6 +74,9 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
       const heldCues = new Uint32Array(2);
       let shuffle = new Int32Array(64);
       const resolve = globalStreamOffset(StreamDomain.RESOLVE);
+      let pressure: Float64Array | null = null;
+      // A sleep begun past the limit carries this as its reference (§4.15.6).
+      const UNREFUSED = 1;
 
       function heldCuesOf(slot: number): number {
         const n = acts.heldBy(slot, heldIds);
@@ -88,10 +92,21 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
         return n;
       }
 
+      /** Is agent `slot` past the sleep pressure at which sleep cannot be refused (§4.15.6)? */
+      function mustSleep(slot: number): boolean {
+        return pressure !== null && pressure[slot] >= SLEEP.mustSleepAt;
+      }
+
       function decide(slot: number): void {
         perception.perceive(slot, look);
         // The act that just ended is learned from before the next is chosen (§4.10.2).
         if (predictor.learn) predictor.learn(slot, look, drives, 0, intero.gutPain(slot));
+        if (mustSleep(slot)) {
+          // Not a choice: the body sleeps, and the act is marked as a sleep it could not refuse (ref 1).
+          acts.begin(slot, Act.SLEEP, SELF_CUE, 0, UNREFUSED, 0, 0, drives, 0);
+          tally[ActTally.SLEEPS_UNREFUSED] += 1;
+          return;
+        }
         const heldN = heldCuesOf(slot);
         gatherCandidates(look, heldIds, heldCues, heldN, order, cands);
         if (predictor.recall) predictor.recall(slot, look, cands, drives, 0);
@@ -113,6 +128,8 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
         const end = agents.column<Uint8Array>(ACT_COLUMNS.actEnd.name).data;
         const started = agents.column<Float64Array>(ACT_COLUMNS.actStart.name).data;
         const before = agents.column<Float32Array>(ACT_COLUMNS.actDrives.name).data;
+        const refOf = agents.column<Float64Array>(ACT_COLUMNS.actRef.name).data;
+        pressure = agents.hasColumn(SLEEP_COLUMNS.sleepPressure.name) ? agents.column<Float64Array>(SLEEP_COLUMNS.sleepPressure.name).data : null;
 
         // What a dead body held drops where it lay.
         if (objects.count > 0) {
@@ -137,7 +154,7 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
           const k = kind[slot];
           const asleep = k === Act.SLEEP && end[slot] === ActEnd.GOING;
           if (!asleep) tally[ActTally.AWAKE_TICKS] += 1;
-          if (k === Act.NONE || end[slot] !== ActEnd.GOING) {
+          if (k === Act.NONE || end[slot] !== ActEnd.GOING || (!asleep && mustSleep(slot))) {
             decide(slot);
             continue;
           }
@@ -145,8 +162,10 @@ export function mindSystem(makePredictor: (sim: Sim) => Predictor): SystemDef {
             decide(slot);
             continue;
           }
+          // A sleep the body could not refuse is ended only by pain or its usual end (§4.15.6).
           const woken = asleep
-            ? drives[Channel.PAIN] - before[slot * CHANNELS + Channel.PAIN] > 0.1 || (onTheHour && interrupts(before, slot * CHANNELS, drives, 0))
+            ? drives[Channel.PAIN] - before[slot * CHANNELS + Channel.PAIN] > 0.1 ||
+              (onTheHour && refOf[slot] !== UNREFUSED && interrupts(before, slot * CHANNELS, drives, 0))
             : interrupts(before, slot * CHANNELS, drives, 0);
           if (woken) {
             tally[ActTally.INTERRUPTS] += 1;

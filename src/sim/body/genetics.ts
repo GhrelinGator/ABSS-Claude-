@@ -18,7 +18,7 @@ import type { ColumnSpec } from '../core/store.ts';
 import type { Sink, Source } from '../core/codec.ts';
 import type { Sim, SimState, StatePart } from '../sim.ts';
 import { BODY_COLUMNS, DeathCause, Sex, deathDoor } from './metabolism.ts';
-import { CURIOSITY, EXPLORATION_TEMPERATURE, GUT_TRACE_HALF_LIFE, HIDDEN_CAUSE_BIAS, LEARNING_RATE, RISK_TOLERANCE, TRACE_HALF_LIFE } from '../mind/dials.ts';
+import { CURIOSITY, EXPLORATION_TEMPERATURE, GUT_TRACE_HALF_LIFE, HIDDEN_CAUSE_BIAS, LEARNING_RATE, NEED_CURIOSITY, RESTLESSNESS, RISK_TOLERANCE, TRACE_HALF_LIFE } from '../mind/dials.ts';
 
 // ALIBI: bodies of one species grow to different sizes, and a parent's size passes in part to its
 // young; a larger body stores and carries more but costs more to keep and to grow, whether or not any
@@ -46,11 +46,12 @@ export interface GeneDial {
 /**
  * The dials on the genome, in order: the body's two (D-047), then the mind's five (3.4, DESIGN.md
  * §4.10.6), then `hiddenCauseBias` (3.5, §4.11.6, in the design's dial list since D-004 and D-005), then
- * `gutTraceHalfLife` (3.6b, §4.13.3, Q12 answered by D-056); each joins with the mechanism
+ * `gutTraceHalfLife` (3.6b, §4.13.3, Q12 answered by D-056), then `needCuriosity` and `restlessness`
+ * (3.7c, §4.15.3, Q14 answered by D-061); each joins with the mechanism
  * that reads it. A drive, or a bias the design does not already list, still waits for approval
  * (CLAUDE.md). Founders' ranges for the mind's survival-critical dials are viability choices (§0.2),
  * logged; `hiddenCauseBias` starts centred on its neutral value instead (D-005); `gutTraceHalfLife` is
- * drawn wide from its neutral 0 up, as D-056 asks (§4.13.3).
+ * drawn wide from its neutral 0 up, as D-056 asks (§4.13.3), and so are 3.7c's two (D-061).
  */
 export const GENE_DIALS: readonly GeneDial[] = Object.freeze([
   { dial: FRAME_SCALE, foundersFrom: 0.75, foundersTo: 1.25, noiseSd: 0.04, mutationSd: 0.05 },
@@ -64,6 +65,9 @@ export const GENE_DIALS: readonly GeneDial[] = Object.freeze([
   { dial: HIDDEN_CAUSE_BIAS, foundersFrom: -2, foundersTo: 2, noiseSd: 0.1, mutationSd: 0.2 },
   // 3.6b (§4.13.3): hours, drawn wide from the neutral 0 to 12, so expressed values centre near 6.
   { dial: GUT_TRACE_HALF_LIFE, foundersFrom: 0, foundersTo: 12, noiseSd: 0.25, mutationSd: 0.5 },
+  // 3.7c (§4.15.3): drawn wide from the neutral 0 up.
+  { dial: NEED_CURIOSITY, foundersFrom: 0, foundersTo: 2, noiseSd: 0.05, mutationSd: 0.1 },
+  { dial: RESTLESSNESS, foundersFrom: 0, foundersTo: 0.5, noiseSd: 0.02, mutationSd: 0.05 },
 ]);
 const DIALS = GENE_DIALS.length;
 /** Index of each dial in GENE_DIALS (and in the `alleles` and `fetusDials` columns). */
@@ -77,6 +81,8 @@ export const DialIndex = {
   RISK_TOLERANCE: 6,
   HIDDEN_CAUSE_BIAS: 7,
   GUT_TRACE_HALF_LIFE: 8,
+  NEED_CURIOSITY: 9,
+  RESTLESSNESS: 10,
 } as const;
 
 /** Every number of genetics, in one place. Estimates unless a source is named (docs/RESEARCH.md, *Genetics*). */
@@ -123,6 +129,8 @@ export const GENETICS_COLUMNS = {
   riskTolerance: { name: 'riskTolerance', dtype: 'f64', category: 'body' },
   hiddenCauseBias: { name: 'hiddenCauseBias', dtype: 'f64', category: 'body' },
   gutTraceHalfLife: { name: 'gutTraceHalfLife', dtype: 'f64', category: 'body' },
+  needCuriosity: { name: 'needCuriosity', dtype: 'f64', category: 'body' },
+  restlessness: { name: 'restlessness', dtype: 'f64', category: 'body' },
   /** Age, years, at which a recessive disorder kills the body; 0 if none will. */
   disorderAtYears: { name: 'disorderAtYears', dtype: 'f64', category: 'body' },
   /** The fetus's genome, on its mother's row while she is pregnant: alleles, broken loci, expressed values. */
@@ -142,6 +150,8 @@ const EXPRESSED: readonly string[] = [
   C.riskTolerance.name,
   C.hiddenCauseBias.name,
   C.gutTraceHalfLife.name,
+  C.needCuriosity.name,
+  C.restlessness.name,
 ];
 if (EXPRESSED.length !== GENE_DIALS.length || GENE_DIALS.some((g, d) => g.dial.name !== EXPRESSED[d])) {
   throw new Error('genetics: the expressed columns do not match the dials on the genome.');
